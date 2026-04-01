@@ -57,6 +57,40 @@ Implement defense in depth — multiple layers, each catching different issues:
 └──────────────────────────────────────────────┘
 ```
 
+### Guardrails Frameworks
+
+The guardrails patterns described in this factor (input validation, output safety, PII detection) are now implemented by mature open-source frameworks that provide declarative, configurable safety layers:
+
+| Framework | Approach | Strengths |
+|-----------|----------|-----------|
+| **NeMo Guardrails** (NVIDIA) | Colang-based dialogue rails | Programmable conversation flows, topic control, fact-checking rails |
+| **Guardrails AI** | Pydantic-style validators for LLM outputs | Structured output validation, type checking, custom validators |
+| **LLM Guard** | Input/output scanner pipeline | Prompt injection detection, PII scanning, toxicity, bias |
+
+These frameworks implement the defense-in-depth architecture above as reusable components. Use them to accelerate guardrail implementation — but remember that frameworks provide *mechanisms*; you must define the *policies* specific to your application.
+
+```python
+# Example: NeMo Guardrails declarative configuration
+# config.yml
+rails:
+  input:
+    flows:
+      - self check input        # block prompt injection
+      - check jailbreak         # block jailbreak attempts
+  output:
+    flows:
+      - self check output       # filter harmful content
+      - check hallucination     # verify against source documents
+      - check pii               # block PII in outputs
+```
+
+**Key selection criteria:**
+- **Input protection**: Does it detect prompt injection and jailbreak attempts? (NeMo, LLM Guard)
+- **Output validation**: Can it validate structured outputs against schemas? (Guardrails AI)
+- **PII scanning**: Does it detect and redact PII in inputs and outputs? (LLM Guard, NeMo)
+- **Customizability**: Can you define domain-specific rules? (all of the above)
+- **Latency impact**: What overhead does the guardrail layer add? (critical for real-time applications)
+
 ### Prompt Injection Defense
 Protect against attempts to override system instructions:
 

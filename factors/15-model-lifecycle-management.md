@@ -185,6 +185,58 @@ deprecation_plan:
     quality_impact: "+3% accuracy"
 ```
 
+### Model Distillation
+
+Distillation uses a larger, more capable model (the "teacher") to generate training data for a smaller, cheaper model (the "student"). Unlike fine-tuning on human-labeled data, distillation leverages the teacher model's capabilities to create high-quality training data at scale — then produces a student model that approximates the teacher's quality at a fraction of the inference cost.
+
+```yaml
+# distillation-pipeline.yaml
+distillation:
+  teacher:
+    model: claude-opus-4-6-20250515
+    purpose: "Generate high-quality labeled data for student training"
+
+  student:
+    base_model: claude-haiku-4-5-20251001   # or open-source base model
+    purpose: "Production inference at 10-20x lower cost than teacher"
+
+  pipeline:
+    - step: generate_training_data
+      source: production_inputs             # real production queries
+      teacher_model: claude-opus-4-6-20250515
+      output_format: jsonl
+      sample_size: 50000
+      quality_filter:
+        # Only keep teacher outputs that pass quality checks
+        min_confidence: 0.9
+        human_spot_check_rate: 0.02         # verify 2% of teacher outputs
+
+    - step: train_student
+      method: supervised_fine_tuning
+      dataset: distillation_output.jsonl
+      hyperparameters:
+        epochs: 3
+        learning_rate_multiplier: 1.5
+
+    - step: evaluate_student
+      compare_against:
+        - teacher_model                     # quality gap vs. teacher
+        - current_production_model          # improvement vs. current
+      threshold:
+        quality_vs_teacher: 0.90            # student must be ≥90% of teacher quality
+        cost_reduction: 0.70                # student must be ≥70% cheaper
+
+    - step: deploy
+      strategy: ab_test
+      traffic_split: 0.10
+      monitor: [quality_score, cost_per_request, latency_p95]
+```
+
+**When to distill vs. fine-tune:**
+- **Distill** when you have a capable teacher model and want to reduce inference cost for a well-defined task. The teacher generates the training labels.
+- **Fine-tune** when you have human-labeled data for a task that off-the-shelf models don't handle well. Humans generate the training labels.
+- **Both** are part of the model lifecycle (this factor) and should follow the same versioning, evaluation, and deployment discipline.
+
 ### Fine-Tuning Pipeline
 
 ```yaml
@@ -239,6 +291,7 @@ fine_tuning:
 - [ ] Deprecation plans exist for every model in use, with migration timelines
 - [ ] Provider model deprecation notices are tracked and acted on proactively
 - [ ] Fine-tuned models follow a versioned pipeline (data → train → eval → deploy)
+- [ ] Model distillation pipelines (teacher → student) are evaluated for quality gap vs. cost reduction
 - [ ] Model changes are tracked in the same release process as code changes (Factor 5)
 - [ ] Embedding model changes are planned as data migration events
 - [ ] Model performance is continuously monitored in production (Factor 14)

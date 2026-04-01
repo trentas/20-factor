@@ -148,6 +148,38 @@ Like traditional backing services, AI backing services should be attachable and 
 - **Swap MCP tool servers**: Point to a different MCP server that implements the same tools. Because MCP defines a standard discovery protocol, agents adapt to the new server's tool schemas automatically.
 - **Scale independently**: LLM providers, vector databases, embedding services, and MCP servers scale on their own axes. Don't couple their scaling to the application.
 
+### AI Gateway as Abstraction Layer
+
+An **AI Gateway** (LiteLLM, Portkey, AWS Bedrock, Azure AI Gateway) is an infrastructure component that sits between your application and LLM providers. It implements the provider abstraction layer described above as a standalone service rather than an in-application library.
+
+```yaml
+# ai-gateway-config.yaml
+ai_gateway:
+  endpoint: http://ai-gateway.internal:8080
+  features:
+    unified_api: true               # single API format → any provider
+    automatic_failover: true        # route to fallback on provider error
+    rate_limit_management: true     # aggregate rate limits across instances
+    cost_tracking: true             # centralized cost attribution (Factor 18)
+    prompt_caching: passthrough     # leverage provider-level caching (Factor 12)
+    request_logging: true           # centralized observability (Factor 14)
+    semantic_caching: optional      # application-level cache (Factor 12)
+
+  providers:
+    - name: anthropic
+      priority: 1
+      models: [claude-sonnet-4-5-*, claude-haiku-4-5-*]
+    - name: openai
+      priority: 2
+      models: [gpt-4o, gpt-4o-mini]
+      note: "Fallback provider"
+```
+
+**When to use an AI Gateway vs. in-app abstraction:**
+- **Use a gateway** when multiple services or teams share AI providers — centralized rate limiting, cost tracking, and failover management.
+- **Use in-app abstraction** when the application is the only consumer and you want minimal infrastructure overhead.
+- **Both enforce** the same principle: AI providers are attached resources swapped via configuration, not hardcoded.
+
 ### Operational Considerations
 AI backing services have unique operational characteristics:
 

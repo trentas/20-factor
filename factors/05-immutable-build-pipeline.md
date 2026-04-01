@@ -24,6 +24,7 @@ This update retains the immutability principle and extends the pipeline to inclu
 ### AI-Assisted Development
 - AI can assist in pipeline authoring (generating CI configs, Dockerfiles, deployment manifests) but pipeline definitions must be reviewed and versioned like any other code (Factor 1).
 - AI-assisted code review can be a stage in the pipeline — automated review comments, security scanning, and style checking.
+- **Autonomous coding agents** (Claude Code, Devin, Codex) can trigger the full build-eval-release pipeline on their own branches. The pipeline must be robust enough to validate agent-generated code without human supervision — evaluation gates (quality, safety, cost) are the automated quality bar that agent contributions must clear before human review.
 
 ### AI-Native Applications
 - **Prompt compilation**: Prompt templates with variables, includes, and conditional sections are compiled into concrete prompts at build time. This catches template errors before runtime.

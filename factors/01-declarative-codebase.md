@@ -26,6 +26,7 @@ The original factor focused on the relationship between a codebase and its deplo
 - AI coding assistants (Copilot, Claude Code, Cursor) generate code that must still pass the same review, lint, and test gates as human-written code. The codebase is the arbiter, not the generation method.
 - AI-generated code should be indistinguishable from human-written code in the repository — no special markers or second-class treatment.
 - Context files (`.cursorrules`, `CLAUDE.md`, `.github/copilot-instructions.md`) that guide AI coding assistants are themselves part of the codebase and should be versioned.
+- **Autonomous coding agents** (Claude Code, Devin, Codex) can create branches, write code, run tests, and open pull requests autonomously. The codebase must be prepared for this: CI gates, evaluation suites (Factor 6), and ephemeral environments (Factor 11) must validate agent-generated changes without human intervention in the loop. The human reviews the output, not the process.
 
 ### AI-Native Applications
 - **Prompt-as-code**: System prompts, few-shot examples, and chain-of-thought templates are versioned alongside application code. They go through pull requests, code review, and CI checks.
@@ -53,7 +54,8 @@ repo/
 ├── tools/                  # Agent tool schemas
 │   └── tool-definitions.json
 ├── .cursorrules            # AI coding assistant context
-├── CLAUDE.md               # AI coding assistant context
+├── CLAUDE.md               # AI coding assistant context (Claude Code)
+├── .github/copilot-instructions.md  # AI coding assistant context (Copilot)
 └── pipeline.yaml           # CI/CD definition
 ```
 

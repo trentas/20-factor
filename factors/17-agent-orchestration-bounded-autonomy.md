@@ -391,6 +391,42 @@ A2A and MCP are complementary in multi-agent systems:
 - **A2A** = how agents delegate to each other (agent → agent)
 - An orchestrator uses A2A to delegate tasks to specialist agents, and each agent uses MCP to interact with its tools.
 
+### Computer Use and GUI Agents
+
+A new class of agent capability has emerged: **computer use** — agents that interact with graphical user interfaces by seeing screenshots and performing mouse/keyboard actions. Unlike structured tool calls (where the agent invokes a well-defined API), computer use involves visual interpretation of dynamic, unstructured interfaces.
+
+This fundamentally challenges bounded autonomy because:
+- **Actions are less predictable**: A tool call to `send_email(to, subject, body)` has a clear contract. Clicking on a UI element has emergent outcomes that depend on the application state.
+- **Observation is continuous**: The agent must repeatedly screenshot, interpret, and act — consuming significantly more tokens per step than structured tool calls.
+- **Rollback is harder**: GUI actions (clicking "Submit", "Delete", "Send") may be irreversible and don't have programmatic undo.
+
+```yaml
+agents:
+  browser-agent:
+    purpose: "Navigate web applications to complete tasks"
+    capabilities:
+      - computer_use
+
+    computer_use_policy:
+      allowed_applications:
+        - "internal-crm.example.com"
+        - "jira.example.com"
+      blocked_patterns:
+        - "*payment*"                  # never interact with payment flows
+        - "*delete*account*"           # never near account deletion
+      screenshot_budget: 50            # max screenshots per task
+      require_confirmation_for:
+        - form_submission              # pause before submitting any form
+        - navigation_away              # pause before leaving target application
+      sandbox: true                    # run in isolated browser environment
+```
+
+**Key design principles for computer use agents:**
+- **Prefer structured tools over computer use**: If an API or MCP server exists for the task, use it. Computer use should be the last resort for systems that don't expose programmatic interfaces.
+- **Sandbox the environment**: Run computer use agents in isolated browser sessions or VMs. Never give them access to the host system.
+- **Tighter budgets**: Computer use consumes far more tokens (screenshots) and has higher risk per action. Apply stricter execution budgets than for structured tool agents.
+- **Visual confirmation gates**: Show the human what the agent sees (screenshot) and what it plans to do before executing high-risk GUI actions.
+
 ### Anti-Patterns
 - **Unbounded agents**: Agents with no step limit, cost limit, or time limit. They can run indefinitely and spend without constraint.
 - **Prompt-only boundaries**: "Don't use this tool unless necessary" in the prompt is not a boundary — it's a suggestion. Enforce boundaries in code.
@@ -399,6 +435,7 @@ A2A and MCP are complementary in multi-agent systems:
 - **Silent agents**: Agents that act without logging. Every tool call, every decision, every error should be traced.
 - **NIH orchestration**: Building custom agent loops, retry logic, and tracing when a standard Agent SDK handles it correctly. Use frameworks for infrastructure; focus custom code on business logic and boundaries.
 - **Hardcoded tool sets**: Defining tools inline instead of using MCP for dynamic discovery. Hardcoded tools create tight coupling and prevent tool reuse across agents.
+- **Computer use for API-available tasks**: Using screenshot-based computer use when a structured API or MCP server exists. Computer use is slower, more expensive, and less reliable than structured tool calls.
 
 ## Compliance Checklist
 
@@ -413,4 +450,5 @@ A2A and MCP are complementary in multi-agent systems:
 - [ ] Agent identities and permissions follow Factor 8 (Identity, Access, Trust)
 - [ ] Agent tools are provided via MCP servers where possible, enabling dynamic discovery and swappability (Factor 10)
 - [ ] Multi-agent communication uses standardized protocols (A2A) for cross-team and cross-framework interoperability
+- [ ] Computer use agents run in sandboxed environments with tighter budgets and confirmation gates for GUI actions
 - [ ] Agent execution patterns and budget usage are monitored for optimization

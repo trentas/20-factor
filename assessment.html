@@ -417,6 +417,7 @@ const FACTORS = [
       "Application processes are stateless \u2014 no in-process state survives a restart",
       "Conversation history and session data are stored in backing services",
       "Semantic caching reduces redundant LLM calls for similar queries",
+      "Provider-level prompt caching is enabled with prompts structured for maximum cache hit rates",
       "Embedding caching avoids recomputation of embeddings for unchanged content",
       "Prompt structure maximizes provider-side prefix/context caching",
       "Cache invalidation strategies account for time, content changes, and model updates",
@@ -466,6 +467,7 @@ const FACTORS = [
       "Deprecation plans exist for every model in use, with migration timelines",
       "Provider model deprecation notices are tracked and acted on proactively",
       "Fine-tuned models follow a versioned pipeline (data \u2192 train \u2192 eval \u2192 deploy)",
+      "Model distillation pipelines (teacher \u2192 student) are evaluated for quality gap vs. cost reduction",
       "Model changes are tracked in the same release process as code changes (Factor 5)",
       "Embedding model changes are planned as data migration events",
       "Model performance is continuously monitored in production (Factor 14)"
@@ -484,7 +486,8 @@ const FACTORS = [
       "Conversation history management has a defined strategy (truncation, summarization)",
       "Prompt effectiveness is measured through evaluations (Factor 6) and production monitoring (Factor 14)",
       "Context assembly strategies handle overflow gracefully (truncation, prioritization)",
-      "Extended thinking / reasoning token budgets are configured per task type with cost awareness (Factor 18)"
+      "Extended thinking / reasoning token budgets are configured per task type with cost awareness (Factor 18)",
+      "Multimodal output generation (images, audio) includes safety scanning and AI-generated content disclosure"
     ]
   },
   {
@@ -501,6 +504,7 @@ const FACTORS = [
       "Agent identities and permissions follow Factor 8 (Identity, Access, Trust)",
       "Agent tools are provided via MCP servers where possible, enabling dynamic discovery and swappability (Factor 10)",
       "Multi-agent communication uses standardized protocols (A2A) for cross-team and cross-framework interoperability",
+      "Computer use agents run in sandboxed environments with tighter budgets and confirmation gates",
       "Agent execution patterns and budget usage are monitored for optimization"
     ]
   },

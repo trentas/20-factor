@@ -82,7 +82,7 @@ prompts/
 # context-budget.yaml — allocate the context window intentionally
 context_budget:
   model: claude-sonnet-4-5-20250929
-  max_context_tokens: 200000
+  max_context_tokens: 200000       # models now support up to 1M+ tokens
   max_output_tokens: 4096
 
   allocation:
@@ -119,6 +119,20 @@ context_budget:
 
   overflow_strategy: trim_lowest_priority
   reserved_for_output: 4096    # Always reserve space for model output
+
+  # Large context window considerations (200K-1M+ tokens)
+  # Having a large context window doesn't mean you should fill it.
+  # More context ≠ better quality. Key trade-offs:
+  #
+  # - Cost scales linearly with input tokens (unless cached — see Factor 12)
+  # - Latency increases with context length (time-to-first-token)
+  # - "Needle in a haystack" degradation: models may miss relevant info
+  #   buried in very large contexts. Reranking and context assembly
+  #   remain important even with 1M+ token windows.
+  # - Provider prompt caching (Factor 12) mitigates cost for stable prefixes
+  #
+  # Rule of thumb: use large context for breadth (many documents),
+  # use RAG + reranking for precision (finding the right passages).
 ```
 
 ### RAG Pipeline Design
@@ -339,6 +353,43 @@ Key multimodal engineering decisions:
 - **Image tokens are expensive**: A single high-resolution image can consume thousands of tokens. Resize to the minimum resolution that preserves the information needed. Factor 18 cost models must account for image token pricing, which differs from text.
 - **Pre-process when possible**: Transcribe audio to text, extract text from PDFs, and sample frames from video *before* sending to the model. This gives you control over token budget and lets you cache intermediate results (Factor 12).
 - **Multimodal observability**: Log input modality types and token consumption per modality. Factor 14 metrics should distinguish between text and image token costs.
+
+### Multimodal Output Generation
+Models now generate not just text but also images, audio, and structured visual content as outputs. This introduces new engineering concerns:
+
+```yaml
+multimodal_outputs:
+  image_generation:
+    models: [dall-e-3, claude-with-image-gen]
+    output_validation:
+      - content_safety_scan: true       # scan generated images for policy violations
+      - watermark: ai_generated         # label AI-generated images (Factor 7 transparency)
+      - format: png                     # standardize output format
+      - max_resolution: 2048x2048
+    cost_tracking:
+      unit: per_image                   # image generation is priced per image, not per token
+      note: "Factor 18 cost model must include image generation as separate line item"
+
+  audio_generation:
+    models: [tts-1, tts-1-hd]
+    output_validation:
+      - content_safety_scan: true
+      - label_as_synthetic: true        # disclose AI-generated audio
+      - max_duration_seconds: 300
+    cost_tracking:
+      unit: per_character               # TTS is typically priced per character
+
+  structured_visual:
+    types: [charts, diagrams, code_rendering]
+    strategy: generate_spec_then_render # model generates spec (Mermaid, SVG), renderer produces image
+    note: "Cheaper and more controllable than direct image generation"
+```
+
+**Key engineering decisions for multimodal outputs:**
+- **Safety scanning is mandatory**: Generated images and audio must pass content safety checks before serving to users (Factor 7). A text response that passes safety filters can still generate an unsafe image.
+- **Disclosure**: AI-generated images and audio must be labeled as synthetic (Factor 7 transparency, EU AI Act requirements).
+- **Cost modeling differs**: Image generation is priced per image (not per token), audio per character. Factor 18 cost models must account for these different units.
+- **Prefer spec-based rendering**: When possible, have the model generate a structured specification (SVG, Mermaid, chart config) and render it deterministically. This is cheaper, cacheable, and more controllable than direct image generation.
 
 ### Extended Thinking and Reasoning Models
 

@@ -24,6 +24,7 @@ This update retains the core parity principle and extends it to cover:
 
 ### AI-Assisted Development
 - Developers using AI coding assistants get a different experience than CI/CD pipelines that may use different (or no) AI tools. This is an acceptable divergence — the codebase (Factor 1) is the source of truth, not the development tool.
+- **Autonomous coding agents** (Claude Code, Devin, Codex) amplify the need for ephemeral environments. An agent generating code on a branch cannot manually verify "it works on staging" — it needs an automated, production-parity environment that spins up, validates, and reports results. See the Ephemeral Environments section below.
 
 ### AI-Native Applications
 - **Model behavior parity**: If production uses `claude-sonnet-4-5-20250929`, staging should use the same model version, not `claude-haiku-4-5-20251001` to save costs. Behavior differences between models are the most common source of staging-vs-production surprises.

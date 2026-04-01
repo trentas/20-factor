@@ -278,7 +278,7 @@ class CachingROI:
 | **Semantic caching** | 20-40% | Medium | Stale responses possible |
 | **Prompt optimization** (shorter prompts) | 10-30% | Low | May reduce quality |
 | **Batch processing** (batch API discounts) | 50% | Low | Higher latency (24h) |
-| **Context caching** (prefix caching) | 30-50% on input | Low | Requires stable prompt prefixes |
+| **Provider prompt caching** (Anthropic/OpenAI/Google) | 80-90% on cached input | Low | Requires stable prompt prefixes, min token threshold, ephemeral cache TTL |
 | **Output length control** (max_tokens) | 10-20% | Low | May truncate useful content |
 | **Thinking budget tuning** (limit reasoning tokens) | 20-50% | Low | May reduce quality on complex tasks |
 | **Fine-tuning** (smaller fine-tuned model) | 40-70% | High | Training cost, maintenance burden |

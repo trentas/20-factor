@@ -148,7 +148,70 @@ class EmbeddingCache:
         return results
 ```
 
-### Context/Prefix Caching
+### Provider-Level Prompt Caching
+
+Major LLM providers (Anthropic, OpenAI, Google) now offer **native prompt caching** as a first-class feature. When the prefix of a request matches a previously cached prefix, the provider reuses cached computation — reducing input token costs by up to 90% and latency by up to 85%. This is one of the highest-leverage cost optimizations available.
+
+```python
+# Anthropic prompt caching — mark stable content with cache_control
+response = await client.messages.create(
+    model="claude-sonnet-4-5-20250929",
+    system=[
+        {
+            "type": "text",
+            "text": large_system_prompt,        # ~4000 tokens
+            "cache_control": {"type": "ephemeral"}  # cache this block
+        },
+        {
+            "type": "text",
+            "text": large_knowledge_base,        # ~10000 tokens
+            "cache_control": {"type": "ephemeral"}  # cache this block
+        }
+    ],
+    messages=[
+        {"role": "user", "content": user_message}  # variable per request
+    ],
+)
+
+# Result: first request pays full price + small cache write fee
+# Subsequent requests with same prefix: 90% discount on cached tokens
+# response.usage.cache_creation_input_tokens → tokens written to cache
+# response.usage.cache_read_input_tokens → tokens read from cache (discounted)
+```
+
+**Design patterns that maximize provider cache hit rates:**
+- **Stable prefix, variable suffix**: Put system prompts, knowledge bases, and few-shot examples *before* the variable user content. The prefix must match byte-for-byte.
+- **Order matters**: Rearranging content invalidates the cache. Keep the order of system prompt sections consistent across requests.
+- **Minimum cacheable length**: Most providers require a minimum prefix length (e.g., 1024 tokens for Anthropic) to activate caching.
+- **Cache lifetime**: Provider caches are ephemeral (typically 5 minutes). High-traffic endpoints benefit most; low-traffic endpoints may see few cache hits.
+- **Multi-turn conversations**: In chat applications, the conversation history grows but the system prompt prefix stays the same — naturally benefiting from prefix caching.
+
+```yaml
+# prompt-caching-config.yaml
+prompt_caching:
+  strategy: prefix_stable
+  min_cacheable_tokens: 1024
+
+  # Structure: cached sections first, variable sections last
+  sections_order:
+    - system_prompt          # stable — always cached
+    - safety_instructions    # stable — always cached
+    - knowledge_base         # stable per session — cached
+    - few_shot_examples      # stable per task type — cached
+    - conversation_history   # grows per turn — partially cached
+    - user_message           # variable — never cached
+
+  monitoring:
+    track_cache_hit_rate: true          # % of input tokens served from cache
+    track_cost_savings: true            # $ saved vs. uncached requests
+    alert_on_low_hit_rate:
+      threshold: 0.30                   # alert if <30% cache hits
+      action: investigate_prefix_stability
+```
+
+This is distinct from the application-level semantic caching above. Provider-level caching is automatic, exact-match, and provider-managed. Semantic caching is application-level, similarity-based, and manages LLM *responses*. Use both for maximum cost reduction.
+
+### Prompt Prefix Design for Caching
 Design prompts to maximize provider-side prefix caching:
 
 ```python
@@ -219,7 +282,8 @@ AI caches need careful invalidation strategies:
 - [ ] Conversation history and session data are stored in backing services
 - [ ] Semantic caching reduces redundant LLM calls for similar queries
 - [ ] Embedding caching avoids recomputation of embeddings for unchanged content
-- [ ] Prompt structure maximizes provider-side prefix/context caching
+- [ ] Provider-level prompt caching is enabled and prompts are structured for maximum cache hit rates (stable prefix, variable suffix)
+- [ ] Prompt caching metrics (hit rate, cost savings) are monitored
 - [ ] Cache invalidation strategies account for time, content changes, and model updates
 - [ ] Cache hit rates and cost savings are monitored (Factor 14)
 - [ ] Any process instance can handle any request — no sticky sessions required

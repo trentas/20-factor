@@ -160,6 +160,8 @@ autoscaling:
 
 ### Multi-Provider Load Balancing
 
+An **AI Gateway** (Factor 10) can handle multi-provider routing at the infrastructure level, centralizing rate limit management, failover, and cost tracking across all application instances. When using a gateway, the application delegates routing decisions to the gateway; when managing routing in-app, implement it as follows:
+
 ```python
 class MultiProviderRouter:
     """Route requests across providers based on rate limits and cost."""

@@ -134,15 +134,18 @@ quality_gates:
 ### Evaluation in the Development Workflow
 
 ```
-1. Write/modify prompt or AI logic
-2. Run eval suite locally (quick subset)
-3. Open pull request
-4. CI runs full eval suite
-5. Compare results against baseline (previous release)
-6. Review regression/improvement analysis
-7. Merge only if quality gates pass
-8. Post-deploy monitoring continues evaluation on live traffic
+Human-driven workflow:                  Agent-driven workflow:
+1. Write/modify prompt or AI logic      1. Agent writes/modifies code
+2. Run eval suite locally (quick)       2. Agent runs eval suite locally
+3. Open pull request                    3. Agent opens pull request
+4. CI runs full eval suite              4. CI runs full eval suite
+5. Compare results against baseline     5. Compare results against baseline
+6. Review regression/improvement        6. Agent iterates if gates fail
+7. Merge only if quality gates pass     7. Human reviews when gates pass
+8. Post-deploy monitoring               8. Post-deploy monitoring
 ```
+
+Autonomous coding agents (Claude Code, Devin, Codex) make evaluation gates *more* critical, not less. When an agent can generate dozens of PRs per day, the eval suite is the primary quality gate — the human reviews what passed, not what was generated. Without robust evaluations, agent-generated code bypasses the quality bar that human intuition would otherwise provide.
 
 ### Continuous Evaluation
 Evaluations don't stop at deployment:
