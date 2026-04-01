@@ -104,7 +104,7 @@ See [MAPPING.md](MAPPING.md) for a detailed mapping of every original factor to 
 
 ## Maturity Assessment
 
-Use the interactive **[Maturity Assessment Tool](assessment.html)** to evaluate your applications against all 18 factors (180 checklist items). Features:
+Use the interactive **[Maturity Assessment Tool](assessment.html)** to evaluate your applications against all 18 factors (187 checklist items). Features:
 
 - **Radar chart** updates in real time as you check off compliance items
 - **Maturity scoring** (0–5 per factor) based on percentage of applicable items completed

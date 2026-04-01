@@ -19,10 +19,11 @@ The temptation is to give agents broad capabilities and rely on the model's judg
 This factor *is* the AI change. It addresses:
 
 - **Agent architecture patterns**: How to structure agents for reliability, observability, and control.
-- **Tool permission management**: What tools an agent can use, with what parameters, and under what conditions.
+- **Tool permission management**: What tools an agent can use, with what parameters, and under what conditions — including MCP-based tool discovery.
 - **Execution budgets**: Hard limits on time, tokens, cost, and actions per agent invocation.
 - **Human-in-the-loop design**: When and how to involve humans in agent decision-making.
-- **Multi-agent orchestration**: Patterns for coordinating multiple agents.
+- **Multi-agent orchestration**: Patterns for coordinating multiple agents, including standardized protocols (A2A) and agent frameworks.
+- **Agent SDKs and frameworks**: Leveraging standardized toolkits that implement these patterns natively.
 
 ## In Practice
 
@@ -285,12 +286,119 @@ class SupervisorOrchestrator:
 }
 ```
 
+### Agent SDKs and Frameworks
+
+The orchestration patterns described above (router, pipeline, supervisor) are now implemented natively by standardized Agent SDKs. Rather than building agent infrastructure from scratch, use these frameworks and focus engineering effort on the business logic, tool definitions, and boundary enforcement that are unique to your application.
+
+**Standardized Agent SDKs:**
+
+| Framework | Provider | Strengths |
+|-----------|----------|-----------|
+| **Anthropic Agent SDK** | Anthropic | Native Claude integration, tool use, guardrails, agent loops with built-in budget enforcement |
+| **OpenAI Agents SDK** | OpenAI | Handoffs between agents, guardrails, tracing, built-in orchestration primitives |
+| **Google ADK** | Google | Multi-agent orchestration, A2A protocol support, Vertex AI integration |
+
+These SDKs share common architectural patterns:
+- **Agent loop with tool use**: The core loop (plan → tool call → observe → repeat) is built-in, with configurable termination conditions.
+- **Handoffs / delegation**: Agents can delegate to sub-agents, implementing the router and supervisor patterns natively.
+- **Guardrails integration**: Input/output validation, content filtering, and safety checks are first-class features (Factor 7).
+- **Tracing and observability**: Agent steps, tool calls, and token usage are automatically traced (Factor 14).
+
+**When to use an SDK vs. custom orchestration:**
+- **Use an SDK** when your orchestration follows standard patterns (tool use loops, delegation, pipelines). SDKs handle the infrastructure correctly — retries, error handling, token counting, tracing — so you don't have to.
+- **Build custom** when you need orchestration logic that SDKs don't support (custom scheduling, domain-specific checkpoint/resume, proprietary tool protocols).
+- **Combine both**: Use an SDK for the agent loop and tool execution, but layer your own budget enforcement, approval gates, and observability on top.
+
+The bounded autonomy principles from this factor (execution budgets, tool permissions, human-in-the-loop gates) apply regardless of whether you use an SDK or build custom. SDKs provide the *mechanism*; you define the *policy*.
+
+### MCP for Agent Tool Integration
+
+The **Model Context Protocol (MCP)** standardizes how agents discover and invoke tools. Instead of hardcoding tool definitions per agent, agents connect to MCP servers that expose tools dynamically.
+
+```yaml
+# agent-definition.yaml — tools via MCP servers
+agents:
+  research-assistant:
+    purpose: "Research topics using web search and knowledge base"
+    model: claude-sonnet-4-6-20260115
+
+    # Tools provided via MCP servers (Factor 10 backing services)
+    mcp_servers:
+      - name: web-search
+        transport: sse
+        endpoint: https://mcp.example.com/web-search
+        tool_permissions:
+          web_search: autonomous
+          web_browse: autonomous
+
+      - name: knowledge-base
+        transport: stdio
+        command: "npx @company/mcp-kb"
+        tool_permissions:
+          search_documents: autonomous
+          update_document: human_approval
+
+    # Direct tool definitions (non-MCP) still supported
+    tools:
+      - name: send_email
+        permission: human_approval
+        approval_timeout_seconds: 300
+```
+
+MCP enables key capabilities for agent orchestration:
+- **Dynamic tool discovery**: Agents discover available tools at runtime via `tools/list`, adapting to the tools available in their environment.
+- **Swappable tool providers**: Replace an MCP server without changing agent code — the agent discovers the new server's tools automatically (Factor 10).
+- **Permission layering**: MCP defines what tools *exist*; the agent's permission model (above) defines what tools it's *allowed to use*. These are separate concerns.
+- **Resource access**: Beyond tools, MCP servers can expose resources (files, data) and prompt templates that agents can use contextually.
+
+### A2A for Multi-Agent Interoperability
+
+For multi-agent systems where agents may be built by different teams, use different frameworks, or run on different infrastructure, the **Agent-to-Agent (A2A) protocol** provides a standard communication layer.
+
+```python
+class A2AOrchestrator:
+    """Orchestrate agents via A2A protocol — framework-agnostic."""
+
+    def __init__(self, agent_registry: dict[str, str]):
+        # Registry maps agent names to their A2A endpoint URLs
+        self.agents = agent_registry
+
+    async def delegate_task(self, agent_name: str, task: str) -> A2ATaskResult:
+        endpoint = self.agents[agent_name]
+
+        # Discover agent capabilities via Agent Card
+        card = await self.fetch_agent_card(endpoint)
+
+        # Submit task via A2A protocol
+        task_id = await self.submit_task(endpoint, task)
+
+        # Stream progress updates
+        async for update in self.stream_updates(endpoint, task_id):
+            if update.status == "working":
+                log.info(f"Agent {agent_name}: {update.message}")
+            elif update.status == "completed":
+                return update.result
+            elif update.status == "input_required":
+                # Agent needs human input — escalate
+                response = await self.request_human_input(update)
+                await self.send_input(endpoint, task_id, response)
+
+        raise AgentTimeoutError(agent_name, task_id)
+```
+
+A2A and MCP are complementary in multi-agent systems:
+- **MCP** = how agents use tools (agent → tool)
+- **A2A** = how agents delegate to each other (agent → agent)
+- An orchestrator uses A2A to delegate tasks to specialist agents, and each agent uses MCP to interact with its tools.
+
 ### Anti-Patterns
 - **Unbounded agents**: Agents with no step limit, cost limit, or time limit. They can run indefinitely and spend without constraint.
 - **Prompt-only boundaries**: "Don't use this tool unless necessary" in the prompt is not a boundary — it's a suggestion. Enforce boundaries in code.
 - **God agents**: A single agent with every tool and permission. Prefer specialized agents with minimal tool sets.
 - **No checkpoint/resume**: If an agent fails after 20 steps, it has to start over. Checkpoint state to enable resume.
 - **Silent agents**: Agents that act without logging. Every tool call, every decision, every error should be traced.
+- **NIH orchestration**: Building custom agent loops, retry logic, and tracing when a standard Agent SDK handles it correctly. Use frameworks for infrastructure; focus custom code on business logic and boundaries.
+- **Hardcoded tool sets**: Defining tools inline instead of using MCP for dynamic discovery. Hardcoded tools create tight coupling and prevent tool reuse across agents.
 
 ## Compliance Checklist
 
@@ -299,8 +407,10 @@ class SupervisorOrchestrator:
 - [ ] Execution budgets (steps, tokens, cost, time) are enforced with hard limits
 - [ ] Human-in-the-loop gates exist for high-risk actions
 - [ ] Agent actions are fully observable with distributed tracing (Factor 14)
-- [ ] Multi-agent orchestration uses defined patterns (router, pipeline, supervisor)
+- [ ] Multi-agent orchestration uses defined patterns (router, pipeline, supervisor) — via Agent SDKs or custom implementation
 - [ ] Agents checkpoint state periodically to enable resume after failures
 - [ ] Failed agent actions can be rolled back where possible
 - [ ] Agent identities and permissions follow Factor 8 (Identity, Access, Trust)
+- [ ] Agent tools are provided via MCP servers where possible, enabling dynamic discovery and swappability (Factor 10)
+- [ ] Multi-agent communication uses standardized protocols (A2A) for cross-team and cross-framework interoperability
 - [ ] Agent execution patterns and budget usage are monitored for optimization

@@ -36,6 +36,14 @@ cost_model:
       cache_read_per_1m_tokens: 0.30
       typical_use: "Complex reasoning, document analysis"
 
+    claude-opus-4-6-20250515:
+      input_per_1m_tokens: 15.00
+      output_per_1m_tokens: 75.00
+      cache_read_per_1m_tokens: 1.50
+      thinking_tokens_per_1m: 75.00    # thinking tokens billed as output
+      typical_use: "Complex reasoning, multi-step analysis, research"
+      note: "Extended thinking can generate 10-100x more thinking tokens than visible output"
+
     claude-haiku-4-5-20251001:
       input_per_1m_tokens: 0.80
       output_per_1m_tokens: 4.00
@@ -45,6 +53,14 @@ cost_model:
     text-embedding-3-small:
       input_per_1m_tokens: 0.02
       typical_use: "Document embedding, semantic search"
+
+  # Reasoning models introduce thinking token economics
+  reasoning:
+    thinking_tokens: "Internal reasoning tokens generated before the visible response"
+    cost_impact: "A 500-token response may consume 10,000-30,000 thinking tokens"
+    pricing: "Thinking tokens are typically billed at output token rates"
+    optimization: "Budget thinking tokens per task type — not all tasks benefit from extended reasoning"
+    note: "See Factor 16 for reasoning budget configuration per task profile"
 
   # Multimodal inputs have different token economics
   multimodal:
@@ -96,19 +112,24 @@ class CostAwareRouter:
 
         match complexity:
             case Complexity.SIMPLE:
-                # Simple tasks: cheapest model
+                # Simple tasks: cheapest model, no extended thinking
                 # Examples: classification, yes/no questions, format conversion
                 return self.get_model("haiku")
 
             case Complexity.MODERATE:
-                # Moderate tasks: mid-tier model
+                # Moderate tasks: mid-tier model, no extended thinking
                 # Examples: summarization, Q&A with context
                 return self.get_model("sonnet")
 
             case Complexity.COMPLEX:
                 # Complex tasks: most capable model
                 # Examples: multi-step reasoning, creative writing, code generation
-                return self.get_model("opus")
+                return self.get_model("sonnet", thinking_budget=16000)
+
+            case Complexity.RESEARCH:
+                # Deep reasoning tasks: reasoning model with high thinking budget
+                # Examples: multi-step analysis, research synthesis, complex planning
+                return self.get_model("opus", thinking_budget=32000)
 
     async def route_with_fallback(self, request: AIRequest) -> ModelConfig:
         """Try cheaper model first, escalate if quality is insufficient."""
@@ -213,6 +234,7 @@ class CostAttributor:
                 "model": response.model,
                 "provider": response.provider,
                 "cache_hit": response.cache_hit,
+                "thinking_tokens": response.thinking_tokens,  # reasoning model overhead
             },
         )
 ```
@@ -258,7 +280,9 @@ class CachingROI:
 | **Batch processing** (batch API discounts) | 50% | Low | Higher latency (24h) |
 | **Context caching** (prefix caching) | 30-50% on input | Low | Requires stable prompt prefixes |
 | **Output length control** (max_tokens) | 10-20% | Low | May truncate useful content |
+| **Thinking budget tuning** (limit reasoning tokens) | 20-50% | Low | May reduce quality on complex tasks |
 | **Fine-tuning** (smaller fine-tuned model) | 40-70% | High | Training cost, maintenance burden |
+| **Model distillation** (large model → small specialist) | 50-80% | High | Distillation cost, narrow task scope |
 | **Provider negotiation** (volume discounts) | 10-30% | Low | Vendor lock-in |
 
 ### Cost Dashboards
@@ -271,6 +295,7 @@ Essential views:
 - **Cache savings**: How much is caching saving?
 - **Budget utilization**: How close are we to budget limits?
 - **Cost per interaction**: What does each user interaction cost on average?
+- **Thinking token ratio**: How many thinking tokens are consumed per output token? Are reasoning models being used for tasks that don't benefit?
 
 ## Compliance Checklist
 
@@ -283,4 +308,5 @@ Essential views:
 - [ ] Cost dashboards provide visibility into spending by feature, model, and tenant
 - [ ] Prompt and output token budgets are configured to prevent waste
 - [ ] Cost optimization strategies (routing, caching, batching) are actively used
+- [ ] Reasoning model thinking tokens are budgeted per task type and tracked separately from output tokens
 - [ ] AI cost is a line item in capacity planning and business case analysis

@@ -264,7 +264,8 @@ const FACTORS = [
       "All service APIs have machine-readable contract definitions (OpenAPI, protobuf, GraphQL SDL)",
       "Contracts are written before implementations and stored in version control",
       "Asynchronous event interfaces have schema definitions (AsyncAPI, CloudEvents)",
-      "AI agent tool definitions include typed parameters with descriptions and constraints",
+      "AI agent tool definitions include typed parameters with descriptions and constraints (MCP tool schemas preferred)",
+      "Agent-to-agent interfaces use standardized protocols (A2A) with machine-readable capability declarations",
       "LLM structured output schemas are explicitly defined and validated at runtime",
       "Contract tests verify that implementations match their specifications",
       "Contracts are versioned with clear compatibility and deprecation policies",
@@ -344,6 +345,8 @@ const FACTORS = [
       "AI-generated content is clearly disclosed to users",
       "Non-production environments use anonymized data with automated PII scanning to prevent leaks",
       "Regulatory compliance (GDPR/LGPD) is addressed: legal basis, data minimization, right to erasure, and DPIA for high-risk AI features",
+      "EU AI Act risk classification is determined and documented for each AI system",
+      "High-risk AI systems implement mandatory requirements: risk management, data governance, technical documentation, record-keeping, transparency, human oversight, and accuracy/robustness testing",
       "An AI incident response playbook exists and is practiced",
       "Red teaming exercises run on a defined cadence with adversarial eval datasets maintained in CI"
     ]
@@ -381,7 +384,7 @@ const FACTORS = [
   {
     num: 10, name: "Intelligent Backing Services", tier: "operation",
     items: [
-      "All backing services (including AI services) are attached via configuration, not hardcoded",
+      "All backing services (including AI services and MCP servers) are attached via configuration, not hardcoded",
       "LLM providers are abstracted behind a common interface, enabling provider swapping",
       "Vector database access goes through an abstraction layer",
       "Embedding service changes are planned as data migration operations",
@@ -480,7 +483,8 @@ const FACTORS = [
       "Prompt templates are validated at build time (variables defined, within budget)",
       "Conversation history management has a defined strategy (truncation, summarization)",
       "Prompt effectiveness is measured through evaluations (Factor 6) and production monitoring (Factor 14)",
-      "Context assembly strategies handle overflow gracefully (truncation, prioritization)"
+      "Context assembly strategies handle overflow gracefully (truncation, prioritization)",
+      "Extended thinking / reasoning token budgets are configured per task type with cost awareness (Factor 18)"
     ]
   },
   {
@@ -491,10 +495,12 @@ const FACTORS = [
       "Execution budgets (steps, tokens, cost, time) are enforced with hard limits",
       "Human-in-the-loop gates exist for high-risk actions",
       "Agent actions are fully observable with distributed tracing (Factor 14)",
-      "Multi-agent orchestration uses defined patterns (router, pipeline, supervisor)",
+      "Multi-agent orchestration uses defined patterns (router, pipeline, supervisor) — via Agent SDKs or custom implementation",
       "Agents checkpoint state periodically to enable resume after failures",
       "Failed agent actions can be rolled back where possible",
       "Agent identities and permissions follow Factor 8 (Identity, Access, Trust)",
+      "Agent tools are provided via MCP servers where possible, enabling dynamic discovery and swappability (Factor 10)",
+      "Multi-agent communication uses standardized protocols (A2A) for cross-team and cross-framework interoperability",
       "Agent execution patterns and budget usage are monitored for optimization"
     ]
   },
@@ -510,6 +516,7 @@ const FACTORS = [
       "Cost dashboards provide visibility into spending by feature, model, and tenant",
       "Prompt and output token budgets are configured to prevent waste",
       "Cost optimization strategies (routing, caching, batching) are actively used",
+      "Reasoning model thinking tokens are budgeted per task type and tracked separately from output tokens",
       "AI cost is a line item in capacity planning and business case analysis"
     ]
   }

@@ -340,6 +340,46 @@ Key multimodal engineering decisions:
 - **Pre-process when possible**: Transcribe audio to text, extract text from PDFs, and sample frames from video *before* sending to the model. This gives you control over token budget and lets you cache intermediate results (Factor 12).
 - **Multimodal observability**: Log input modality types and token consumption per modality. Factor 14 metrics should distinguish between text and image token costs.
 
+### Extended Thinking and Reasoning Models
+
+Reasoning models (Claude's extended thinking, OpenAI o1/o3/o4-mini, DeepSeek R1) introduce a fundamentally different token economy: **thinking tokens**. These models generate internal reasoning chains before producing a visible response, and those thinking tokens consume budget, incur cost, and affect latency — but are not shown to the user.
+
+This changes context engineering in several ways:
+
+```yaml
+# reasoning-budget.yaml — budget thinking tokens explicitly
+reasoning_budget:
+  model: claude-opus-4-6-20250515
+  extended_thinking:
+    enabled: true
+    max_thinking_tokens: 32000       # hard cap on internal reasoning
+    budget_strategy: task_adaptive   # simple tasks get less thinking budget
+
+  task_profiles:
+    classification:
+      thinking_budget: 1024          # simple tasks need minimal reasoning
+      note: "Reasoning adds latency with little quality gain for classification"
+
+    code_generation:
+      thinking_budget: 16000         # complex tasks benefit from deep reasoning
+      note: "More thinking tokens = better code quality and fewer bugs"
+
+    multi_step_analysis:
+      thinking_budget: 32000         # max budget for complex analytical tasks
+      note: "Research, planning, and multi-step reasoning benefit most"
+
+    simple_qa:
+      thinking_budget: 0             # disable extended thinking entirely
+      note: "Use a non-reasoning model or disable thinking for simple retrieval"
+```
+
+**Key engineering decisions for reasoning models:**
+- **Thinking tokens are invisible but expensive**: A response with 500 output tokens may consume 10,000+ thinking tokens. Factor 18 cost models must account for this — thinking tokens are typically priced differently from output tokens.
+- **Not all tasks benefit from reasoning**: Classification, simple Q&A, and format conversion see little quality improvement from extended thinking. Use reasoning models selectively — route simple tasks to standard models (Factor 18 model routing).
+- **Thinking budget as a quality lever**: More thinking tokens generally improve quality for complex tasks, but with diminishing returns. Tune the thinking budget per task type based on evaluation results (Factor 6).
+- **Streaming considerations**: With reasoning models, the first visible token may take significantly longer to appear (the model is "thinking" first). Design UIs to handle this latency — show a "thinking" indicator rather than an empty response.
+- **Summarized thinking for observability**: Some providers return a summarized version of the thinking process. Log this for debugging and quality analysis (Factor 14), but be aware it's a summary, not the full chain.
+
 ### Prompt Optimization Strategies
 
 - **Prompt compression**: Remove redundant instructions. Models understand concise prompts well.
@@ -347,6 +387,7 @@ Key multimodal engineering decisions:
 - **Conversation summarization**: Instead of passing full conversation history, summarize older turns.
 - **Structured output over prose**: JSON schemas for output reduce tokens and improve reliability.
 - **Chain-of-thought budgeting**: If using CoT, budget tokens for reasoning steps that won't be shown to the user.
+- **Reasoning model routing**: Not every request needs extended thinking. Route simple tasks to standard models and reserve reasoning models for tasks where quality measurably improves (see Factor 18 for cost-aware routing).
 
 ## Compliance Checklist
 
@@ -360,3 +401,4 @@ Key multimodal engineering decisions:
 - [ ] Conversation history management has a defined strategy (truncation, summarization)
 - [ ] Prompt effectiveness is measured through evaluations (Factor 6) and production monitoring (Factor 14)
 - [ ] Context assembly strategies handle overflow gracefully (truncation, prioritization)
+- [ ] Extended thinking / reasoning token budgets are configured per task type with cost awareness (Factor 18)

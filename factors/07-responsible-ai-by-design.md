@@ -200,6 +200,77 @@ AI applications that process personal data must comply with data protection regu
 - **Cross-border data transfers**: When AI models or APIs are hosted in a different jurisdiction than the user's data, ensure adequate transfer mechanisms (SCCs, adequacy decisions) are in place.
 - **Data processor agreements**: Third-party AI providers (model APIs, embedding services) are data processors. Ensure DPAs are signed and their data handling policies are compatible with your obligations.
 
+### EU AI Act Compliance
+The EU AI Act establishes a risk-based classification framework that imposes architectural requirements on AI systems. Unlike GDPR (which focuses on data), the AI Act regulates the *AI system itself* — how it's built, tested, deployed, and monitored. Compliance is not optional for systems operating in or affecting EU citizens.
+
+**Risk classification determines architectural requirements:**
+
+```yaml
+eu_ai_act:
+  system_classification:
+    # Step 1: Classify your AI system by risk level
+    risk_level: high               # unacceptable | high | limited | minimal
+    category: "AI system that profiles natural persons"
+    determination_date: "2025-08-01"
+    review_cadence: on_significant_change
+
+  # High-risk systems must implement all of the following:
+  high_risk_requirements:
+    risk_management:
+      system: documented            # continuous risk management system
+      residual_risks: documented    # identify and mitigate residual risks
+      testing: "pre-deployment and ongoing"
+
+    data_governance:
+      training_data: documented     # provenance, relevance, representativeness
+      bias_testing: "across protected characteristics"
+      data_quality_criteria: defined
+
+    technical_documentation:
+      system_description: complete  # purpose, intended use, limitations
+      architecture: documented      # model, training, evaluation methodology
+      performance_metrics: published
+
+    record_keeping:
+      automatic_logging: enabled    # system must log events for traceability
+      log_retention: "as required by deployer, minimum per regulation"
+      audit_trail: complete         # decisions traceable to inputs and model version
+
+    transparency:
+      user_notification: required   # users must know they're interacting with AI
+      instructions_for_use: provided # deployers receive clear operating instructions
+      capabilities_and_limitations: documented
+
+    human_oversight:
+      mechanism: defined            # human can understand, monitor, and override
+      override_capability: "stop button or manual override"
+      monitoring_dashboard: required
+
+    accuracy_robustness_cybersecurity:
+      accuracy_levels: documented   # declared and tested accuracy metrics
+      robustness: "tested against adversarial inputs and edge cases"
+      cybersecurity: "protected against manipulation of training data and inputs"
+
+  # Limited-risk systems (e.g., chatbots) require transparency
+  limited_risk_requirements:
+    disclosure: "Users must be informed they are interacting with an AI system"
+    ai_generated_content: "Must be labeled as AI-generated (deepfakes, synthetic text)"
+
+  # Conformity assessment
+  conformity:
+    assessment_type: internal       # internal | third_party (depends on category)
+    eu_database_registration: required  # high-risk systems must register
+    ce_marking: required            # before placing on EU market
+```
+
+**Architectural implications:**
+- **Automatic logging** is not optional for high-risk systems — Factor 14 (Observability) must capture every decision input and output for traceability.
+- **Human oversight mechanisms** must be architectural, not advisory — Factor 17 (Agent Orchestration) human-in-the-loop gates satisfy this when properly implemented.
+- **Risk management** is continuous, not a one-time assessment — integrate AI Act risk reviews into your CI/CD pipeline (Factor 5) and evaluation suite (Factor 6).
+- **Conformity assessment** must be completed before deployment. For high-risk systems, this may require third-party audit.
+
+The AI Act also prohibits certain AI practices outright (social scoring, real-time biometric identification in public spaces with exceptions, manipulation of vulnerable groups). Ensure your system does not fall into the "unacceptable risk" category.
+
 ### Non-Production Data Anonymization
 Non-production environments (dev, staging, QA) must never contain real personal data. This is one of the most common — and most preventable — regulatory violations.
 
@@ -297,5 +368,7 @@ ai_incident_playbook:
 - [ ] AI-generated content is clearly disclosed to users
 - [ ] Non-production environments use anonymized data with automated PII scanning to prevent leaks
 - [ ] Regulatory compliance (GDPR/LGPD) is addressed: legal basis, data minimization, right to erasure, and DPIA for high-risk AI features
+- [ ] EU AI Act risk classification is determined and documented for each AI system
+- [ ] High-risk AI systems implement mandatory requirements: risk management, data governance, technical documentation, record-keeping, transparency, human oversight, and accuracy/robustness testing
 - [ ] An AI incident response playbook exists and is practiced
 - [ ] Red teaming exercises run on a defined cadence with adversarial eval datasets maintained in CI
