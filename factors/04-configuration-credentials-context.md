@@ -116,6 +116,38 @@ ai-config.local.yaml            # Local overrides (gitignored)
 - **Cost limits only in code**: Operators need to adjust budgets without developer involvement.
 - **Mixing credentials and configuration**: Don't put API keys in the same config map as feature flags. Different sensitivity levels require different storage.
 
+### OIDC and Workload Identity (Keyless Auth)
+
+Long-lived API keys are a credential rotation liability and a breach vector. Replace them with **Workload Identity Federation**: cloud platforms issue short-lived OIDC tokens that services exchange for AI provider credentials at runtime — no static secrets to rotate or leak.
+
+- **GCP Workload Identity**: Kubernetes service accounts federate to GCP IAM roles
+- **AWS IAM Roles for Service Accounts (IRSA)**: pods assume IAM roles via projected service account tokens
+- **SPIFFE/SPIRE**: platform-agnostic workload identity for multi-cloud or on-prem environments
+
+Most major AI providers (Anthropic, Google, AWS Bedrock) support workload identity federation for API access as of 2025-2026. The pattern: the application requests a short-lived token from the cloud identity provider and presents it to the AI provider — no `ANTHROPIC_API_KEY` in environment variables.
+
+### OpenFeature for Dynamic Configuration
+
+[OpenFeature](https://openfeature.dev) (CNCF standard) decouples feature flag evaluation from implementation. Instead of bespoke flag systems for model selection, A/B routing, or capability toggles, use an OpenFeature-compatible provider (LaunchDarkly, Flagsmith, Unleash, Flipt, Harness). This enables:
+- Integration-testing flag evaluation without a live flag service dependency
+- Consistent flag semantics across services using different providers
+- Model routing decisions expressed as flag evaluations, observable and auditable
+
+```python
+client = OpenFeature.get_client()
+model = client.get_string_value("ai.summarization.model", "claude-sonnet-4-6", ctx)
+```
+
+### HSM/KMS for AI Context Encryption
+
+Sensitive AI context — RAG documents containing PII, medical records, or financial data injected into prompts — must be encrypted at rest and in transit. Use hardware-backed keys:
+
+- **AWS KMS** / **GCP Cloud KMS** / **Azure Key Vault** for cloud-hosted applications
+- **HashiCorp Vault Transit** secrets engine for multi-cloud or on-prem
+- **HSMs** (Hardware Security Modules) for regulated industries requiring FIPS 140-2 Level 3
+
+Encryption keys must never coexist with the encrypted context in the same config file or the same environment variable set. Apply envelope encryption: the data key encrypts the context; the master key (HSM/KMS-backed) encrypts the data key.
+
 ### Configuration Validation
 Validate AI configuration at startup — fail fast if configuration is invalid:
 
@@ -141,3 +173,6 @@ def validate_ai_config(config):
 - [ ] Configuration changes are auditable (who changed what, when)
 - [ ] Local development uses `.env` or equivalent files that are gitignored
 - [ ] Sensitive configuration values are never logged or exposed in error messages
+- [ ] AI service credentials use Workload Identity Federation (OIDC/IRSA/SPIFFE) rather than static API keys wherever the provider supports it
+- [ ] Feature flags for model selection and routing use an OpenFeature-compatible provider, not bespoke flag systems
+- [ ] Sensitive AI context (PII-containing RAG documents, medical/financial data) is encrypted with HSM/KMS-backed keys; encryption keys are never co-located with encrypted data

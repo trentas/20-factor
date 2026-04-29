@@ -150,6 +150,47 @@ Mitigate slow model loading:
 - **Shared GPU memory**: In multi-process setups, share model weights across processes using memory-mapped files.
 - **Quantization**: Use quantized models (INT8, INT4) for faster loading and lower memory footprint, trading some accuracy for operational agility.
 
+### Kubernetes GPU Node Cordoning and Draining
+
+GPU nodes require careful handling before maintenance or scale-down. Cordon the node first to prevent new pods from scheduling, then use a `PodDisruptionBudget` to guarantee minimum availability during draining.
+
+```yaml
+# PodDisruptionBudget — always keep at least 1 inference pod running during drain
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: inference-pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: inference-server
+```
+
+```bash
+# Safe drain sequence for a GPU node
+kubectl cordon <gpu-node>                         # stop new pods scheduling
+kubectl drain <gpu-node> --grace-period=120       # wait 120s for in-flight requests
+# Pod SIGTERM handler should: stop accepting traffic, drain requests, release GPU, exit
+```
+
+For vLLM and other inference servers, the shutdown hook must flush the KV cache and release GPU memory via `torch.cuda.empty_cache()` before process exit — stranded GPU memory on a partially drained node blocks the next scheduled pod from starting.
+
+### Spot and Preemptible GPU Instances
+
+GPU spot instances (AWS EC2 Spot, GCP Spot/Preemptible, Azure Spot) cost 60–90% less than on-demand but can be reclaimed with 30-second to 2-minute notice. Prepare for preemption:
+
+- Register a SIGTERM handler that immediately stops accepting requests, drains in-flight inference, and saves checkpoint state before exit
+- Pair with Factor 13 (Durable Agent Runtime) for multi-step workflows that span preemption events — the workflow resumes on a new node from the last durable checkpoint
+- Use Kubernetes `priorityClass` to ensure inference pods are evicted before lower-priority batch pods when the node is reclaimed
+- Test preemption handling in CI by injecting SIGTERM mid-inference and verifying graceful recovery
+
+### CRIU for Warm Model Pools
+
+[CRIU (Checkpoint/Restore in Userspace)](https://criu.org) captures the full process memory state — including loaded model weights and GPU allocations — to disk. Restoring from a CRIU checkpoint is orders of magnitude faster than cold model loading, enabling fast horizontal scaling and burst-warm instances without the GPU memory loading penalty.
+
+This is particularly valuable for models with long load times (30B+ parameter models) where cold-start latency violates readiness SLOs. The CRIU checkpoint is itself a versioned artifact stored in object storage (Factor 10) and invalidated when the model version changes.
+
 ### Crash Recovery
 
 ```python
@@ -180,3 +221,6 @@ class RequestHandler:
 - [ ] Model loading is optimized through caching, preloading, or quantization
 - [ ] Request handling is idempotent to support crash recovery
 - [ ] SIGTERM handlers are registered and tested
+- [ ] Kubernetes PodDisruptionBudgets protect inference pods during node drain; GPU memory is explicitly released on shutdown
+- [ ] Spot/preemptible GPU instance handling is tested: SIGTERM mid-inference triggers graceful drain and checkpoint before exit
+- [ ] CRIU checkpoint-restore is evaluated for model-serving pods with startup times exceeding readiness SLO targets

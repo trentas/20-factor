@@ -184,6 +184,42 @@ ephemeral_environments:
 
 This pattern is especially powerful when combined with Factor 18 (Agent Orchestration): an autonomous agent creates a branch, the ephemeral environment validates it, and the results feed back to the agent for iteration — or surface to a human reviewer when the solution passes all gates.
 
+### Dev Containers for Environment Parity
+
+[Dev containers](https://containers.dev) (VS Code Dev Containers, GitHub Codespaces, Gitpod) standardize the local development environment as code — a `devcontainer.json` specifying the base image, CUDA drivers, Python version, environment variables, and VS Code extensions. For AI applications, the dev container spec closes the "works on my machine" gap for model serving dependencies.
+
+The dev container spec is versioned alongside application code (Factor 1), meaning new developers and CI pipelines share the same environment. This is especially valuable for teams where some members have NVIDIA GPUs and others have Apple Silicon — the dev container uses the appropriate base image per platform via multi-arch variants.
+
+### Region and Data-Residency Parity
+
+For applications with data residency requirements (GDPR, LGPD, data sovereignty laws), environment parity extends to cloud regions. Staging must be in the same cloud region as production, and AI provider API calls must route to the same data-processing region.
+
+A "data must stay in EU" requirement violated in staging creates gaps that only appear in production compliance audits. Key parity dimensions:
+- **AI provider region**: Anthropic, OpenAI, Google all offer EU-based API endpoints — ensure staging and production call the same one
+- **Vector database region**: embeddings of user data must co-locate with the data residency requirements of the source documents
+- **Object store region**: multimodal assets (images, documents) must be stored in the required geography
+
+Document region assignments in the environment config alongside model versions.
+
+### Traffic Mirroring / Shadow Mode
+
+Traffic mirroring (shadow traffic, dark launch) runs new model versions or prompt changes against real production traffic without serving results to users. The shadow response is logged and evaluated, providing production-fidelity validation before cutover.
+
+```yaml
+# AI Gateway shadow routing config
+routes:
+  - name: document-summary
+    primary: anthropic/claude-sonnet-4-6
+    shadow:
+      model: anthropic/claude-opus-4-7   # evaluate new model on live traffic
+      sample_rate: 0.10                  # mirror 10% of requests
+      log_responses: true
+      evaluate_quality: true             # run Factor 6 eval on shadow responses
+      compare_against: primary           # surface quality diff in dashboard
+```
+
+Shadow mode is the production-safe way to validate Factor 6 quality gates against real traffic distributions, not just golden datasets. Implement via your AI Gateway's routing layer (Factor 10) to avoid shadow traffic logic in application code.
+
 ### Accepted Divergences
 Some differences are intentional and acceptable if documented:
 
@@ -212,3 +248,6 @@ What should **never** diverge:
 - [ ] Ephemeral environments spin up per branch to validate AI-generated code with production parity
 - [ ] Staging data is refreshed on a regular cadence
 - [ ] The evaluation suite (Factor 6) runs against the same model configuration used in production
+- [ ] Dev container specs are versioned in the repository and include AI-specific dependencies (CUDA, model files, environment variables)
+- [ ] Data-residency parity is validated: staging AI provider calls and data stores use the same region/geography as production
+- [ ] Traffic mirroring (shadow mode) is available via the AI Gateway for validating new models or prompts against production traffic distributions

@@ -363,6 +363,21 @@ Cost has two units now: dollars and gCO₂e. EU procurement and several enterpri
 
 This isn't replacing dollar cost as a concern — it's adding a parallel one. Modeling both prevents teams from being surprised when a procurement RFP asks for carbon disclosure.
 
+### Model Liability and Incident Reporting
+
+AI model liability is a financial and legal concern as of 2026, requiring architectural preparation:
+
+**EU AI Act serious-incident reporting (Art. 73)**: Operators of high-risk AI systems must notify competent authorities within 15 business days of a serious incident. This requires an **AI incident log** separate from general application logs, capturing: model version at time of incident, sanitized input/output (where permitted by data minimization rules), safety flag activations, and the timeline of detection and remediation.
+
+**Model insurance**: Insurance products from Munich Re, Lloyds, and others now cover financial loss from AI-related incidents — hallucinations causing contract errors, classification errors in insurance or lending decisions, IP infringement from training data. Review coverage options annually as model capabilities and legal precedents evolve.
+
+**Vendor liability clauses**: AI vendor MSAs now include explicit liability caps, indemnification for model behavior, and IP indemnification for training data. Review these annually and ensure your use case falls within the covered scope. Document the vendor's liability obligations alongside the model entry in the registry (Factor 16).
+
+Architectural implications:
+- Maintain an AI incident log at the application level, distinct from standard observability (Factor 15), to satisfy regulatory reporting cadences
+- Store model version, inference parameters, and sanitized I/O for a minimum retention period aligned with your jurisdiction's AI Act requirements
+- If your application falls in an EU AI Act high-risk category, complete a Conformity Assessment before the August 2, 2026 enforcement deadline
+
 ### FinOps Maturity for AI
 
 The 2026 State of FinOps shows real-time AI cost visibility as the top tooling request. Practical maturity model:
@@ -406,3 +421,6 @@ Essential views:
 - [ ] Carbon-per-request (gCO₂e) is tracked alongside dollar cost, with regional grid factors
 - [ ] Fallback chains are explicitly defined per route, including a "fail loudly" option for cost-sensitive jobs
 - [ ] FinOps maturity is at least Level 3 (chargeback) before major product expansion involving new AI features
+- [ ] An AI incident log is maintained (separate from general observability) capturing model version, sanitized I/O, and safety activations for potential EU AI Act Art. 73 reporting
+- [ ] Vendor MSA liability terms (caps, indemnification, IP coverage) are reviewed annually and documented alongside model registry entries
+- [ ] Applications in EU AI Act high-risk categories have completed or scheduled a Conformity Assessment ahead of the August 2, 2026 enforcement deadline

@@ -180,6 +180,34 @@ ai_gateway:
 - **Use in-app abstraction** when the application is the only consumer and you want minimal infrastructure overhead.
 - **Both enforce** the same principle: AI providers are attached resources swapped via configuration, not hardcoded.
 
+### GraphRAG and Knowledge Graphs as Backing Services
+
+Graph databases (Neo4j, Amazon Neptune, Kuzu, FalkorDB) serve as knowledge graph backing services that complement vector search with entity relationships. GraphRAG pipelines extract entities and relationships from documents, encode them as a knowledge graph, and enable queries that require multi-hop reasoning or global summarization across a large corpus — capabilities standard vector RAG cannot address.
+
+Treat the knowledge graph as an attached resource with the same swappability discipline as vector databases: abstracted behind an interface, configured via URL, and replaceable without application code changes. For RAG pipeline design with GraphRAG, see Factor 17.
+
+### Hybrid Search (BM25 + Vector + Reranker)
+
+Production RAG systems use hybrid search: sparse BM25 (exact keyword matching) combined with dense vector search, then reranked with a cross-encoder model. The three components are separate backing services:
+
+- **Full-text search engine** (Elasticsearch, OpenSearch, Typesense, Quickwit) — sparse retrieval, keyword matching
+- **Vector database** (Pinecone, Weaviate, Qdrant, pgvector) — dense retrieval, semantic similarity
+- **Reranker** (Cohere Rerank, BGE-Reranker, cross-encoder model) — precision scoring on the combined candidate set
+
+All three are swappable attached resources. Some platforms (Weaviate, Qdrant, Elasticsearch with kNN) combine sparse and dense retrieval into a single service, simplifying infrastructure at the cost of less independent scalability.
+
+### Feature Stores
+
+Feature stores (Feast, Tecton, Hopsworks, Vertex AI Feature Store) provide precomputed user and entity features injected into AI requests for personalization. At inference time, a feature store lookup returns user embeddings, behavioral features, or real-time context that enriches the LLM prompt without recomputing them per request.
+
+Treat feature stores as read-mostly attached resources: they have their own ingestion pipelines, their own latency SLOs (typically <5ms for online serving), and their own schema versioning. A prompt that depends on a feature store should declare that dependency explicitly in the backing-services manifest.
+
+### Object Stores for Multimodal
+
+Multimodal applications handle images, audio, video, and documents as first-class inputs and outputs. An object store (Amazon S3, Google Cloud Storage, Azure Blob Storage, MinIO) is the canonical backing service for binary content. Reference multimodal assets by object store URI rather than embedding binary data in requests — this keeps requests small, enables CDN-layer caching, and decouples content lifecycle from inference lifecycle.
+
+Apply the same region, encryption, and lifecycle policies to the object store as to other backing services (Factor 4 for credentials, Factor 7 for content safety before serving generated media).
+
 ### Operational Considerations
 AI backing services have unique operational characteristics:
 
@@ -201,3 +229,7 @@ AI backing services have unique operational characteristics:
 - [ ] Credentials for AI services are managed through secrets management (Factor 4)
 - [ ] Cost, latency, and availability are monitored per backing service
 - [ ] Backing service dependencies are documented with their operational characteristics
+- [ ] GraphRAG / knowledge graph services are treated as attached resources when multi-hop reasoning is required
+- [ ] Hybrid search (BM25 + vector + reranker) uses three independently swappable backing services
+- [ ] Feature stores are declared as backing services with latency SLOs for online serving
+- [ ] Object stores are used for multimodal binary content; applications reference assets by URI, not embedded binary

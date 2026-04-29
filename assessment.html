@@ -255,7 +255,9 @@ const FACTORS = [
       "Evaluation datasets and benchmarks are versioned artifacts",
       "AI coding assistant context files are maintained and versioned",
       "Model configuration (selection, parameters) is declared in config files",
-      "Every production deployment is traceable to a specific commit"
+      "Every production deployment is traceable to a specific commit",
+      "An AIBOM/MLBOM is generated as a build output in SPDX 3.0 or CycloneDX 1.6 format",
+      "Encrypted secrets committed to Git use SOPS or Sealed Secrets — no plaintext secrets in any branch"
     ]
   },
   {
@@ -289,7 +291,10 @@ const FACTORS = [
       "Dependency trees are audited for vulnerabilities, including AI-specific supply chain risks",
       "Container images use multi-stage builds to minimize runtime attack surface",
       "Hardware requirements (GPU type, memory, drivers) are documented as system dependencies",
-      "A process exists to test and roll out AI SDK upgrades safely"
+      "A process exists to test and roll out AI SDK upgrades safely",
+      "SLSA provenance attestations are generated for model artifacts; cosign signatures block unsigned weights at deploy time",
+      "Model cards and dataset cards (with license and intended-use records) are versioned alongside model-dependency manifests",
+      "AI accelerator dependencies (CUDA, ROCm, Neuron SDK, TPU runtimes) are declared per container variant with fallback paths documented"
     ]
   },
   {
@@ -304,7 +309,10 @@ const FACTORS = [
       "AI configuration files are validated at application startup",
       "Configuration changes are auditable (who changed what, when)",
       "Local development uses .env or equivalent files that are gitignored",
-      "Sensitive configuration values are never logged or exposed in error messages"
+      "Sensitive configuration values are never logged or exposed in error messages",
+      "AI service credentials use Workload Identity Federation (OIDC/IRSA/SPIFFE) rather than static API keys wherever the provider supports it",
+      "Feature flags for model selection and routing use an OpenFeature-compatible provider, not bespoke flag systems",
+      "Sensitive AI context (PII-containing RAG documents) is encrypted with HSM/KMS-backed keys; encryption keys are never co-located with the encrypted data"
     ]
   },
   {
@@ -337,7 +345,10 @@ const FACTORS = [
       "Evaluation results are tracked over time to detect trends and regressions",
       "New failure modes discovered in production are added to evaluation datasets",
       "Model upgrades and prompt changes are evaluated before deployment",
-      "Online evaluation continuously monitors production output quality"
+      "Online evaluation continuously monitors production output quality",
+      "Synthetic eval data generation pipelines scale coverage beyond human-labeled examples with quality filtering",
+      "LLM-as-judge calibration is tracked against a locked human anchor set; alerts fire when judge-human agreement drops below threshold",
+      "Public benchmarks (MMLU, SWE-bench, HumanEval, etc.) are used as reference points during model selection, not as primary eval gates"
     ]
   },
   {
@@ -391,7 +402,10 @@ const FACTORS = [
       "Streaming responses send proper completion signals during shutdown",
       "Model loading is optimized through caching, preloading, or quantization",
       "Request handling is idempotent to support crash recovery",
-      "SIGTERM handlers are registered and tested"
+      "SIGTERM handlers are registered and tested",
+      "Kubernetes PodDisruptionBudgets protect inference pods during node drain; GPU memory is explicitly released on shutdown",
+      "Spot/preemptible GPU instance handling is tested: SIGTERM mid-inference triggers graceful drain and checkpoint before exit",
+      "CRIU checkpoint-restore is evaluated for model-serving pods with startup times exceeding readiness SLO targets"
     ]
   },
   {
@@ -406,7 +420,11 @@ const FACTORS = [
       "Rate limiting is implemented client-side for all AI backing services",
       "Credentials for AI services are managed through secrets management (Factor 4)",
       "Cost, latency, and availability are monitored per backing service",
-      "Backing service dependencies are documented with their operational characteristics"
+      "Backing service dependencies are documented with their operational characteristics",
+      "GraphRAG / knowledge graph services are treated as attached resources when multi-hop entity reasoning is required",
+      "Hybrid search (BM25 + vector + reranker) uses three independently swappable backing services",
+      "Feature stores are declared as backing services with latency SLOs for online serving",
+      "Object stores are used for multimodal binary content; applications reference assets by URI, not embedded binary"
     ]
   },
   {
@@ -421,7 +439,10 @@ const FACTORS = [
       "Automated parity checks compare configurations across environments",
       "Ephemeral environments spin up per branch to validate AI-generated code with production parity",
       "Staging data is refreshed on a regular cadence",
-      "The evaluation suite (Factor 6) runs against the same model configuration used in production"
+      "The evaluation suite (Factor 6) runs against the same model configuration used in production",
+      "Dev container specs are versioned in the repository and include AI-specific dependencies (CUDA, model files, environment variables)",
+      "Data-residency parity is validated: staging AI provider calls and data stores use the same region/geography as production",
+      "Traffic mirroring (shadow mode) is available via the AI Gateway for validating new models or prompts against production traffic distributions"
     ]
   },
   {
@@ -437,7 +458,10 @@ const FACTORS = [
       "Cache hit rates and cost savings are monitored (Factor 15)",
       "Any process instance can handle any request \u2014 no sticky sessions required",
       "KV cache management is configured for self-hosted model serving",
-      "Cache storage itself is a backing service (Factor 10), not local process memory"
+      "Cache storage itself is a backing service (Factor 10), not local process memory",
+      "Self-hosted inference engines have PagedAttention and prefix-tree KV caching configured; GPU memory utilization and prefix cache hit rate are monitored",
+      "Speculative decoding is evaluated for output-heavy task types and enabled where it improves throughput without quality loss",
+      "Multi-region cache replication strategy is defined and respects data residency constraints"
     ]
   },
   {
@@ -505,7 +529,11 @@ const FACTORS = [
       "Model distillation pipelines (teacher \u2192 student) are evaluated for quality gap vs. cost reduction",
       "Model changes are tracked in the same release process as code changes (Factor 5)",
       "Embedding model changes are planned as data migration events",
-      "Model performance is continuously monitored in production (Factor 15)"
+      "Model performance is continuously monitored in production (Factor 15)",
+      "LoRA/QLoRA adapters are registered as first-class model artifacts with base model reference, training data version, and eval scores",
+      "Alignment technique (RLHF/DPO/RLAIF) and training dataset version are recorded in the registry for every fine-tuned model",
+      "Teacher model license is verified and documented before using its outputs as distillation training data",
+      "Open-weight models are pinned to a specific Hugging Face commit hash with VRAM requirements declared in the registry"
     ]
   },
   {
@@ -522,7 +550,9 @@ const FACTORS = [
       "Prompt effectiveness is measured through evaluations (Factor 6) and production monitoring (Factor 15)",
       "Context assembly strategies handle overflow gracefully (truncation, prioritization)",
       "Extended thinking / reasoning token budgets are configured per task type with cost awareness (Factor 20)",
-      "Multimodal output generation (images, audio) includes safety scanning and AI-generated content disclosure"
+      "Multimodal output generation (images, audio) includes safety scanning and AI-generated content disclosure",
+      "GraphRAG is used for multi-hop entity queries; standard vector RAG for point-in-time retrieval; retrieval recall vs. context position is monitored",
+      "Automatic prompt optimization (DSPy, TextGrad, or equivalent) is evaluated for high-traffic prompts; optimized prompts are committed as versioned artifacts"
     ]
   },
   {
@@ -540,7 +570,11 @@ const FACTORS = [
       "Agent tools are provided via MCP servers where possible, enabling dynamic discovery and swappability (Factor 10)",
       "Multi-agent communication uses standardized protocols (A2A) for cross-team and cross-framework interoperability",
       "Computer use agents run in sandboxed environments with tighter budgets and confirmation gates",
-      "Agent execution patterns and budget usage are monitored for optimization"
+      "Agent execution patterns and budget usage are monitored for optimization",
+      "Skills are versioned, registered artifacts — agents declare capabilities as skill-name + version, not inline tool definitions",
+      "Voice/realtime agents have TTFA SLOs configured, VAD barge-in handling implemented, and session state persisted (Factor 13)",
+      "Reflexion / self-critique loops are gated on task complexity with token budget tracked separately; quality improvement is validated in the eval suite",
+      "Agent swarms (CrewAI, AutoGen, MetaGPT, etc.) have aggregate swarm-level budgets and circuit breakers in addition to per-agent limits"
     ]
   },
   {
@@ -575,7 +609,10 @@ const FACTORS = [
       "All production model traffic flows through an AI Gateway (LiteLLM, Portkey, Kong AI, Cloudflare AI Gateway, or equivalent) — never via direct SDK calls",
       "Every scheduled job and production route declares an explicit pinned model + version + thinking-effort; \"latest\" aliases are forbidden",
       "Steady-state high-volume workloads run on reserved/provisioned throughput (Bedrock PT, Azure PTUs, or reserved GPU)",
-      "Carbon-per-request (gCO₂e) is tracked alongside dollar cost"
+      "Carbon-per-request (gCO₂e) is tracked alongside dollar cost",
+      "An AI incident log is maintained (separate from general observability) capturing model version, sanitized I/O, and safety activations for regulatory reporting",
+      "Vendor MSA liability terms (caps, indemnification, IP coverage) are reviewed annually and documented alongside model registry entries",
+      "Applications in EU AI Act high-risk categories have completed or scheduled a Conformity Assessment ahead of the August 2, 2026 enforcement deadline"
     ]
   }
 ];

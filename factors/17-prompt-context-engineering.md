@@ -431,6 +431,37 @@ reasoning_budget:
 - **Streaming considerations**: With reasoning models, the first visible token may take significantly longer to appear (the model is "thinking" first). Design UIs to handle this latency — show a "thinking" indicator rather than an empty response.
 - **Summarized thinking for observability**: Some providers return a summarized version of the thinking process. Log this for debugging and quality analysis (Factor 15), but be aware it's a summary, not the full chain.
 
+### GraphRAG for Knowledge Graph Retrieval
+
+GraphRAG (Microsoft Research, 2024) extends RAG by indexing documents as a knowledge graph — extracting entities, relationships, and community summaries — enabling queries requiring multi-hop reasoning or global document-collection summarization. Standard vector RAG excels at local, point-in-time retrieval; GraphRAG excels at "what patterns span this entire corpus?"
+
+The query pipeline splits into local (vector search for precise factual lookup) and global (graph community summaries for broad synthesis) modes based on query type. This requires dedicated ingestion: entity extraction, relationship graph construction, and community detection — significantly more compute than standard embedding ingestion. Use GraphRAG when your retrieval tasks require connecting entities across documents; use standard vector RAG when point retrieval suffices (Factor 10 covers the knowledge graph as a backing service).
+
+### ColBERT and Late-Interaction Retrieval
+
+ColBERT's late-interaction approach stores **token-level embeddings** for each document — not a single document-level embedding — and computes relevance as the sum of maximum cosine similarities between each query token and its closest document token. This provides higher retrieval precision than single-vector dense retrieval for queries where specific terms matter.
+
+Use when: retrieval precision on domain-specific terminology is critical and you can afford ~10× storage vs. single-vector retrieval. Implementations: ColBERT v2, RAGatouille, Vespa. Late interaction can be layered on top of a standard ANN index as a re-ranking stage, limiting storage cost to the top-K candidates.
+
+### Automatic Prompt Optimization (DSPy, TextGrad, APE)
+
+Manual prompt engineering is iterative and doesn't optimize globally across diverse inputs. Automatic prompt optimization frameworks treat prompt design as an optimization problem grounded in your evaluation suite:
+
+- **DSPy** (Stanford): programs are written as module signatures; optimizers (BootstrapFewShot, MIPROv2) automatically tune prompts and few-shot examples using your labeled eval set. The optimized prompt is compiled to a concrete string committed back to version control.
+- **TextGrad**: uses LLM-generated "textual gradients" — critique and improvement suggestions — to iteratively refine prompts without labeled data.
+- **APE** (Automatic Prompt Engineer): searches a candidate instruction space and selects by eval score; useful when you have labeled examples and want to discover better instruction phrasings.
+
+These tools connect directly to Factor 6 (eval suites provide the optimization signal) and Factor 1 (optimized prompts are committed as versioned artifacts). The risk: auto-optimized prompts can overfit to the eval set — always validate on a held-out test partition and production shadow traffic (Factor 11).
+
+### Long-Context Degradation
+
+Models with large context windows (200K–1M+ tokens) can still degrade when relevant information is buried in the middle of a long context — the "lost in the middle" effect. Mitigations:
+
+- **Position-aware context assembly**: place the most relevant retrieved passages immediately before or after the query, not buried mid-context
+- **Reranking before context assembly**: use a reranker (Factor 10) to ensure the top-K passages by relevance are positioned where the model attends best
+- **Summary hierarchies for large corpora**: for breadth-oriented queries, summarize document groups at multiple granularities rather than injecting full documents
+- **Monitor retrieval recall vs. context position**: measure whether the model correctly uses passages at different positions in your eval suite; degrade gracefully by shortening context if recall drops below threshold
+
 ### Prompt Optimization Strategies
 
 - **Prompt compression**: Remove redundant instructions. Models understand concise prompts well.
@@ -453,3 +484,6 @@ reasoning_budget:
 - [ ] Prompt effectiveness is measured through evaluations (Factor 6) and production monitoring (Factor 15)
 - [ ] Context assembly strategies handle overflow gracefully (truncation, prioritization)
 - [ ] Extended thinking / reasoning token budgets are configured per task type with cost awareness (Factor 20)
+- [ ] GraphRAG is used for queries requiring multi-hop entity reasoning; standard vector RAG is used for point-in-time retrieval
+- [ ] Retrieval recall vs. context position is monitored in the eval suite; context assembly places highest-relevance passages in positions the model attends best
+- [ ] Automatic prompt optimization (DSPy, TextGrad, or equivalent) is evaluated for high-traffic prompts; optimized prompts are committed as versioned artifacts validated on held-out test data

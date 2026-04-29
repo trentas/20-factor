@@ -427,6 +427,55 @@ agents:
 - **Tighter budgets**: Computer use consumes far more tokens (screenshots) and has higher risk per action. Apply stricter execution budgets than for structured tool agents.
 - **Visual confirmation gates**: Show the human what the agent sees (screenshot) and what it plans to do before executing high-risk GUI actions.
 
+### The Skills Primitive
+
+A **Skill** is a named, versioned, composable unit of agent capability — a bundle of a prompt template, one or more tool definitions, and an execution policy. Skills are a higher-level abstraction than raw tools: a tool is a single function; a skill encodes the *context* for using it correctly.
+
+Skills are versioned artifacts committed to version control (Factor 1) and registered via MCP tool schemas (Factor 2). An agent's capability manifest declares a list of skill names + versions, not a loose bag of tool definitions. This enables:
+- Skill reuse across agents without copy-pasting tool definitions
+- Independent versioning and A/B testing of skill implementations
+- Skill discovery via agent directory services (cross-ref Factor 2)
+
+### Voice and Realtime Agents
+
+Real-time speech agents (OpenAI Realtime API, Pipecat, LiveKit Agents, AWS Bedrock AgentCore, Hume AI) operate under engineering constraints that differ from standard request/response agents:
+
+- **Sub-300ms time-to-first-audio-byte**: user-perceptible as natural conversation; requires streaming execution where each agent step begins before the prior step's response completes
+- **End-of-turn detection**: Voice Activity Detection (VAD) determines when the user stops speaking; barge-in (user interrupting the agent mid-speech) must be handled gracefully without dropping context
+- **Session durability**: voice conversations are long-lived sessions; use Factor 13 (Durable Agent Runtime) for session state persistence across network interruptions
+- **Observability**: Factor 15 voice SLOs apply — track TTFT, TTFA (time-to-first-audio), end-of-turn latency, and barge-in latency separately from text agent metrics
+
+The bounded autonomy principles from this factor apply equally: voice agents have tool permissions, execution budgets, and human escalation paths. The difference is latency sensitivity — approval gates for voice agents must complete in hundreds of milliseconds, not seconds.
+
+### Reflexion and Self-Critique Loops
+
+Reflexion (Shinn et al., 2023) patterns an agent to critique its own output and generate a revised response before returning to the user. In production:
+
+```python
+async def reflexion(task: str, budget: ReflexionBudget) -> str:
+    draft = await agent.generate(task)
+
+    if budget.critique_tokens > 0:
+        critique = await agent.critique(draft, task)  # "What's wrong with this?"
+        if critique.has_issues:
+            draft = await agent.revise(draft, critique)  # "Fix the issues identified"
+
+    return draft
+```
+
+Apply reflexion selectively: it doubles token consumption and latency. Gate reflexion on task complexity (Factor 20) and measure quality improvement in your eval suite (Factor 6) before enabling broadly. Budget the critique step's thinking tokens separately from the generation step.
+
+### Agent Swarms (CrewAI, AutoGen, MetaGPT)
+
+Multi-agent frameworks — CrewAI, Microsoft AutoGen, MetaGPT, and others — implement coordinated agent swarms where multiple LLM-backed agents collaborate by taking on roles (researcher, coder, reviewer, critic). Each agent in a swarm is a bounded agent as defined by this factor; the swarm adds an orchestration layer on top.
+
+Apply bounded autonomy at both levels:
+- **Per-agent budgets**: each agent in the swarm has its own step limit, token budget, cost limit, and tool permissions
+- **Aggregate swarm budget**: the swarm-level orchestrator tracks total cost and steps across all agents; the swarm has its own circuit breaker
+- **Human gates at the swarm level**: some decisions require human approval that isn't visible to any individual agent — wire this into the orchestrator, not into each agent
+
+Swarm frameworks accelerate prototyping but require explicit budget enforcement and observability wiring before production. Don't inherit the framework's default unlimited concurrency — apply the same constraints you'd apply to any other agent.
+
 ### Anti-Patterns
 - **Unbounded agents**: Agents with no step limit, cost limit, or time limit. They can run indefinitely and spend without constraint.
 - **Prompt-only boundaries**: "Don't use this tool unless necessary" in the prompt is not a boundary — it's a suggestion. Enforce boundaries in code.
@@ -452,3 +501,7 @@ agents:
 - [ ] Multi-agent communication uses standardized protocols (A2A) for cross-team and cross-framework interoperability
 - [ ] Computer use agents run in sandboxed environments with tighter budgets and confirmation gates for GUI actions
 - [ ] Agent execution patterns and budget usage are monitored for optimization
+- [ ] Skills are versioned, registered artifacts — agents declare capabilities as skill-name + version, not inline tool definitions
+- [ ] Voice/realtime agents have TTFA SLOs configured, VAD barge-in handling implemented, and session state persisted via Factor 13
+- [ ] Reflexion / self-critique loops are gated on task complexity with token budget tracked separately; quality improvement is validated against the eval suite before broad enablement
+- [ ] Agent swarms (CrewAI, AutoGen, MetaGPT, etc.) have aggregate swarm-level budgets and circuit breakers in addition to per-agent limits

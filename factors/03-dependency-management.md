@@ -94,6 +94,29 @@ models:
 - **Vendor API compatibility**: When using hosted model APIs (OpenAI, Anthropic, Google), pin API versions in headers or configuration, not just SDK versions.
 - **Abstraction layers**: Consider thin abstraction layers over vendor SDKs to make provider switching feasible without rewriting application code.
 
+### SLSA Provenance and sigstore for AI Artifacts
+
+Beyond checksums, supply-chain security for AI artifacts requires provenance attestations that prove a model came from a known source and wasn't tampered with in transit. **SLSA provenance** records link a model artifact to its build pipeline. [sigstore/cosign](https://github.com/sigstore/cosign) can sign model weights and prompt artifacts at publish time and verify signatures at deploy time — blocking unsigned or tampered artifacts.
+
+For models sourced from Hugging Face or other registries, prefer models with a verified commit hash over floating branch references, and pin the commit SHA in your model-dependencies manifest.
+
+### Model Cards and Dataset Cards as Versioned Metadata
+
+A **model card** (Hugging Face standard) documents intended use, limitations, training data summary, known biases, and evaluation results. A **dataset card** documents data provenance, licensing terms, and statistical characteristics. These should be stored alongside `model-dependencies.yaml` as versioned artifacts — they are part of the model dependency record, not separate documentation.
+
+When using a third-party dataset for fine-tuning or evaluation, verify the license allows your intended use case (commercial, derivative works, etc.) and record this in the dataset card.
+
+### AI Accelerator Diversity
+
+AI workloads increasingly run on hardware beyond NVIDIA CUDA. Declare accelerator-specific dependencies explicitly and provide runtime detection or build variants:
+
+- **AWS Trainium (Trn1/Trn2)** and **AWS Inferentia (Inf2)** — inference-optimized ASICs via the Neuron SDK
+- **Google Cloud TPU v4/v5** — requires JAX/XLA or PyTorch-XLA runtime
+- **AMD ROCm** — HIP-compatible GPU compute, covers Instinct MI300X series
+- **Apple Silicon / Metal** — MLX framework or Core ML for on-device/edge inference
+
+Containers targeting specific accelerators use different base images and runtime libraries. Pin these alongside standard CUDA dependencies, and test the fallback path when the target accelerator is unavailable.
+
 ### Dependency Auditing
 - Run vulnerability scans on AI-specific dependencies — ML libraries have had supply-chain attacks (malicious model files, compromised pip packages).
 - Audit transitive dependencies — AI SDKs pull in large dependency trees.
@@ -111,3 +134,6 @@ models:
 - [ ] Container images use multi-stage builds to minimize runtime attack surface
 - [ ] Hardware requirements (GPU type, memory, drivers) are documented as system dependencies
 - [ ] A process exists to test and roll out AI SDK upgrades safely
+- [ ] SLSA provenance attestations are generated and verified for model artifacts; cosign signatures block unsigned weights at deploy time
+- [ ] Model cards and dataset cards are versioned alongside model-dependency manifests, including license and intended-use records
+- [ ] AI accelerator dependencies (CUDA, ROCm, Neuron SDK, TPU runtimes) are declared per container variant with fallback paths documented
