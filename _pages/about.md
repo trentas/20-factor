@@ -61,7 +61,7 @@ The methodology is organized in **4 tiers** that build on each other, from found
 <div class="row mt-4">
   <div class="col text-center">
     <a href="{{ '/factors/' | relative_url }}" class="btn btn-outline-primary btn-lg me-3">Browse All 20 Factors →</a>
-    <a href="{{ '/18-factor/assessment.html' | relative_url }}" class="btn btn-outline-secondary btn-lg">📊 Maturity Assessment</a>
+    <a href="{{ '/assessment.html' | relative_url }}" class="btn btn-outline-secondary btn-lg">📊 Maturity Assessment</a>
   </div>
 </div>
 
