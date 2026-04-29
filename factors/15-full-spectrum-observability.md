@@ -1,3 +1,10 @@
+---
+title: "15. Full-Spectrum Observability"
+parent: "Tier 3: Operation"
+nav_order: 7
+description: "Logs, traces, and metrics — plus token economics, quality scores, and safety monitoring."
+---
+
 # Factor 15: Full-Spectrum Observability
 
 > Emit structured logs, distributed traces, and metrics — augmented with token economics, AI quality scores, safety monitoring, and cost attribution.

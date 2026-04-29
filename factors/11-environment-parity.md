@@ -1,3 +1,10 @@
+---
+title: "11. Environment Parity"
+parent: "Tier 3: Operation"
+nav_order: 3
+description: "Keep dev, staging, and production similar — including model behavior and data representativeness."
+---
+
 # Factor 11: Environment Parity
 
 > Keep development, staging, and production as similar as possible — including model behavior, vector database content representativeness, and AI service configurations.

@@ -1,3 +1,10 @@
+---
+title: "13. Durable Agent Runtime"
+parent: "Tier 3: Operation"
+nav_order: 5
+description: "Persist long-running agent execution state with journaling, idempotent tool calls, and durable HITL interrupts."
+---
+
 # Factor 13: Durable Agent Runtime
 
 > Long-running agent execution state — multi-step plans, tool-call journals, human approvals, retries — is persisted in a durable runtime. Workers stay stateless; workflow state is journaled, replayable, and resumable across crashes, deploys, and human-in-the-loop pauses.

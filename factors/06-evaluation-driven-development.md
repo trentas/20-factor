@@ -1,3 +1,10 @@
+---
+title: "06. Evaluation-Driven Development"
+parent: "Tier 2: Construction"
+nav_order: 2
+description: "Use evaluations, statistical quality gates, and LLM-as-judge for non-deterministic systems."
+---
+
 # Factor 6: Evaluation-Driven Development
 
 > Non-deterministic systems demand a new testing paradigm — use evaluations, statistical quality gates, and LLM-as-judge to maintain confidence in AI outputs.

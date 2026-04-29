@@ -1,3 +1,10 @@
+---
+title: "08. Identity, Access & Trust"
+parent: "Tier 2: Construction"
+nav_order: 4
+description: "Every actor — human, service, and AI agent — has verifiable identity and scoped permissions."
+---
+
 # Factor 8: Identity, Access, and Trust
 
 > Every actor — human user, service, and AI agent — has a verifiable identity, scoped permissions, and auditable actions, with trust boundaries enforced at every layer.

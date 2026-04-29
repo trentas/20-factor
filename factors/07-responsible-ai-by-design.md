@@ -1,3 +1,10 @@
+---
+title: "07. Responsible AI by Design"
+parent: "Tier 2: Construction"
+nav_order: 3
+description: "Build safety, fairness, and accountability into the architecture from the start."
+---
+
 # Factor 7: Responsible AI by Design
 
 > Build safety, fairness, and accountability into the architecture from the start — not as an afterthought or a compliance checkbox.

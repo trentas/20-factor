@@ -1,3 +1,10 @@
+---
+title: "03. Dependency Management"
+parent: "Tier 1: Foundation"
+nav_order: 3
+description: "Explicitly declare and isolate all dependencies, including AI SDKs and model weights."
+---
+
 # Factor 3: Dependency Management
 
 > Explicitly declare and isolate all dependencies — including AI SDKs, model weights, native ML libraries, and hardware-specific runtimes.

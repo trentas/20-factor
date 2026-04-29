@@ -1,3 +1,10 @@
+---
+title: "10. Intelligent Backing Services"
+parent: "Tier 3: Operation"
+nav_order: 2
+description: "Treat LLM providers, vector DBs, and embedding services as attached resources."
+---
+
 # Factor 10: Intelligent Backing Services
 
 > Treat all backing services — databases, queues, LLM providers, vector stores, and embedding services — as attached resources, swappable via configuration.

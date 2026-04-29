@@ -1,3 +1,10 @@
+---
+title: "12. Stateless Processes + Smart Cache"
+parent: "Tier 3: Operation"
+nav_order: 4
+description: "Stateless workers with semantic, embedding, and provider prompt caching for AI operations."
+---
+
 # Factor 12: Stateless Processes with Intelligent Caching
 
 > Execute the application as stateless processes that share nothing — and use semantic caching, embedding caching, and context caching to manage the cost and latency of AI operations. Durable, long-running agent execution state lives in Factor 13 (Durable Agent Runtime), not here.

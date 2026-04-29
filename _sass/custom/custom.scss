@@ -1,0 +1,243 @@
+// ─── Landing page ────────────────────────────────────────────────────────────
+
+.home-hero {
+  text-align: center;
+  padding: 2.5rem 0 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.hero-tagline {
+  font-size: 1.2rem;
+  color: $grey-dk-000;
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.hero-desc {
+  max-width: 580px;
+  margin: 0 auto 1.75rem;
+  color: $grey-dk-000;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.hero-btns {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 2.25rem;
+}
+
+.hero-btns a {
+  padding: 0.65rem 1.5rem;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-decoration: none !important;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.hero-btns a:hover {
+  opacity: 0.85;
+  transform: translateY(-1px);
+}
+
+.btn-primary {
+  background: #4f46e5;
+  color: #fff !important;
+  border: 2px solid #4f46e5;
+}
+
+.btn-outline {
+  border: 2px solid #4f46e5;
+  color: #4f46e5 !important;
+}
+
+// ─── Stats row ───────────────────────────────────────────────────────────────
+
+.stat-row {
+  display: flex;
+  gap: 2.5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  padding: 1.5rem 0 0.5rem;
+  border-top: 1px solid $border-color;
+  margin-top: 1rem;
+}
+
+.stat {
+  text-align: center;
+}
+
+.stat-num {
+  font-size: 2.25rem;
+  font-weight: 800;
+  line-height: 1;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  opacity: 0.6;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 0.2rem;
+}
+
+// ─── Tier grid ────────────────────────────────────────────────────────────────
+
+.tier-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 1.1rem;
+  margin: 1.5rem 0 2.5rem;
+}
+
+.tier-card {
+  border-radius: 8px;
+  padding: 1.25rem 1.35rem;
+  background: $sidebar-color;
+  border: 1px solid $border-color;
+  border-top: 4px solid;
+  transition: box-shadow 0.15s;
+}
+
+.tier-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.tier-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  opacity: 0.65;
+  margin-bottom: 0.3rem;
+}
+
+.tier-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 0.9rem;
+}
+
+.tier-card ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.75rem;
+  font-size: 0.83rem;
+}
+
+.tier-card li {
+  padding: 0.18rem 0;
+}
+
+.tier-card li a {
+  text-decoration: none;
+  opacity: 0.82;
+}
+
+.tier-card li a:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.tier-more {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.tc-f { border-top-color: #2563eb; }
+.tc-c { border-top-color: #d97706; }
+.tc-o { border-top-color: #059669; }
+.tc-i { border-top-color: #7c3aed; }
+
+// ─── Factor page header badge ──────────────────────────────────────────────
+
+.factor-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.factor-num-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2em 0.65em;
+  border-radius: 20px;
+  color: #fff;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.badge-foundation   { background: #2563eb; }
+.badge-construction { background: #d97706; }
+.badge-operation    { background: #059669; }
+.badge-intelligence { background: #7c3aed; }
+
+// ─── Tier overview tables ─────────────────────────────────────────────────
+
+.factors-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.9rem;
+}
+
+.factors-table th {
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 2px solid $border-color;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+}
+
+.factors-table td {
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid $border-color;
+  vertical-align: top;
+}
+
+.factors-table tr:last-child td {
+  border-bottom: none;
+}
+
+.factors-table td:first-child {
+  font-weight: 700;
+  white-space: nowrap;
+  width: 2.5rem;
+  opacity: 0.7;
+}
+
+// ─── Guiding principles cards ────────────────────────────────────────────────
+
+.principles-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  gap: 1rem;
+  margin: 1rem 0 2rem;
+}
+
+.principle-card {
+  border: 1px solid $border-color;
+  border-radius: 8px;
+  padding: 1.1rem 1.25rem;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.principle-card strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.9rem;
+}

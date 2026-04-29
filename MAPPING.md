@@ -1,3 +1,9 @@
+---
+title: Factor Mapping
+nav_order: 6
+description: "How every original 12-Factor and 15-Factor principle maps to The 20-Factor App."
+---
+
 # Factor Mapping: Original 15 → The 20-Factor App
 
 This document maps every factor from the original [12-Factor App](https://12factor.net) and Kevin Hoffman's [Beyond the Twelve-Factor App](https://www.oreilly.com/library/view/beyond-the-twelve-factor/9781492042631/) to The 20-Factor App, with rationale for each change.

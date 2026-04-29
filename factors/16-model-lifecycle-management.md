@@ -1,3 +1,10 @@
+---
+title: "16. Model Lifecycle Management"
+parent: "Tier 4: Intelligence"
+nav_order: 1
+description: "Model registry, version pinning, A/B testing, deprecation planning, fine-tuning pipelines."
+---
+
 # Factor 16: Model Lifecycle Management
 
 > Manage models as versioned, tested, and deployable artifacts with their own lifecycle — from selection through fine-tuning, deployment, monitoring, and deprecation.

@@ -1,3 +1,10 @@
+---
+title: "17. Prompt & Context Engineering"
+parent: "Tier 4: Intelligence"
+nav_order: 2
+description: "Prompt versioning, context window management, RAG pipeline design, token budgeting."
+---
+
 # Factor 17: Prompt and Context Engineering
 
 > Treat prompts as versioned software artifacts and context as a managed resource — with intentional design for prompt structure, context window utilization, RAG pipelines, and token budgeting.

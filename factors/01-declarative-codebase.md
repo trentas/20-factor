@@ -1,3 +1,10 @@
+---
+title: "01. Declarative Codebase"
+parent: "Tier 1: Foundation"
+nav_order: 1
+description: "Every artifact — code, infrastructure, prompts — lives in version control as a declarative specification."
+---
+
 # Factor 1: Declarative Codebase
 
 > Every artifact — application code, infrastructure, configuration, and AI prompts — lives in version control as a declarative, reproducible specification.

@@ -1,3 +1,10 @@
+---
+title: "04. Configuration, Credentials & Context"
+parent: "Tier 1: Foundation"
+nav_order: 4
+description: "Store config in the environment, credentials in secrets management, AI context in versioned files."
+---
+
 # Factor 4: Configuration, Credentials, and Context
 
 > Store configuration in the environment, credentials in secrets management, and AI context in versioned, structured files — never hardcode any of them.

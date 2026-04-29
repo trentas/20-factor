@@ -1,3 +1,10 @@
+---
+title: "14. Adaptive Concurrency"
+parent: "Tier 3: Operation"
+nav_order: 6
+description: "Scale independently across CPU, GPU, rate limits, and cost budgets."
+---
+
 # Factor 14: Adaptive Concurrency
 
 > Scale each process type independently, adapting to heterogeneous resource demands — CPU, GPU, memory, token-per-minute rate limits, and cost budgets.

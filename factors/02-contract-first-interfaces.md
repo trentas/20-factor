@@ -1,3 +1,10 @@
+---
+title: "02. Contract-First Interfaces"
+parent: "Tier 1: Foundation"
+nav_order: 2
+description: "Define interfaces before implementation — for APIs, events, and agent tool schemas."
+---
+
 # Factor 2: Contract-First Interfaces
 
 > Define the interface before the implementation — for APIs, events, agent tools, and every boundary where systems or models interact.

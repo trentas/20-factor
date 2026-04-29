@@ -1,3 +1,10 @@
+---
+title: "18. Agent Orchestration & Bounded Autonomy"
+parent: "Tier 4: Intelligence"
+nav_order: 3
+description: "Agent architecture, tool permissions, execution budgets, human-in-the-loop gates."
+---
+
 # Factor 18: Agent Orchestration and Bounded Autonomy
 
 > Design AI agents with explicit capabilities, clear boundaries, execution budgets, and human-in-the-loop gates — orchestrated through well-defined patterns.

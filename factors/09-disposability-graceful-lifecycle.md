@@ -1,3 +1,10 @@
+---
+title: "09. Disposability & Graceful Lifecycle"
+parent: "Tier 3: Operation"
+nav_order: 1
+description: "Fast startup, graceful shutdown — with GPU release and LLM request draining."
+---
+
 # Factor 9: Disposability and Graceful Lifecycle
 
 > Processes start fast, shut down gracefully, and handle interruptions cleanly — including GPU resource release, model unloading, and LLM request draining.

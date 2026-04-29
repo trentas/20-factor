@@ -1,3 +1,10 @@
+---
+title: "05. Immutable Build Pipeline"
+parent: "Tier 2: Construction"
+nav_order: 1
+description: "Build once, deploy everywhere — with prompt compilation, model pinning, and eval gates."
+---
+
 # Factor 5: Immutable Build Pipeline
 
 > Build once, deploy everywhere — and extend the pipeline to compile prompts, pin model versions, and gate releases on evaluation results.

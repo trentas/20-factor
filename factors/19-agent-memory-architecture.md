@@ -1,3 +1,10 @@
+---
+title: "19. Agent Memory Architecture"
+parent: "Tier 4: Intelligence"
+nav_order: 4
+description: "Vector, graph, and episodic memory layers with identity-bound lifecycle, decay, and right-to-erasure."
+---
+
 # Factor 19: Agent Memory Architecture
 
 > Long-term agent memory — vector, graph, and episodic — is a curated, mutable, identity-bound layer with its own lifecycle: write, recall, decay, redact, audit. It is distinct from caching (reactive, ephemeral) and from RAG (read-mostly knowledge) and demands its own design and compliance posture.
