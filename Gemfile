@@ -1,9 +1,13 @@
-source "https://rubygems.org"
-
-gem "jekyll", "~> 4.3"
-gem "just-the-docs", "~> 0.10"
+source 'https://rubygems.org'
 
 group :jekyll_plugins do
-  gem "jekyll-seo-tag"
-  gem "jekyll-github-metadata"
+  gem 'jekyll'
+  gem 'jekyll-remote-theme'
+  gem 'jekyll-feed'
+  gem 'jekyll-sitemap'
+  gem 'jekyll-seo-tag'
+  gem 'jekyll-link-attributes'
+  gem 'jekyll-toc'
+  gem 'jekyll-tabs'
+  gem 'webrick'
 end

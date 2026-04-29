@@ -1,6 +1,8 @@
 ---
+layout: page
+importance: 10
+category: "Tier 3: Operation"
 title: "10. Intelligent Backing Services"
-parent: "Tier 3: Operation"
 nav_order: 2
 description: "Treat LLM providers, vector DBs, and embedding services as attached resources."
 ---

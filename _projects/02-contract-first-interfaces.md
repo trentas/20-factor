@@ -1,6 +1,8 @@
 ---
+layout: page
+importance: 2
+category: "Tier 1: Foundation"
 title: "02. Contract-First Interfaces"
-parent: "Tier 1: Foundation"
 nav_order: 2
 description: "Define interfaces before implementation — for APIs, events, and agent tool schemas."
 ---

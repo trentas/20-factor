@@ -1,6 +1,8 @@
 ---
+layout: page
+importance: 4
+category: "Tier 1: Foundation"
 title: "04. Configuration, Credentials & Context"
-parent: "Tier 1: Foundation"
 nav_order: 4
 description: "Store config in the environment, credentials in secrets management, AI context in versioned files."
 ---

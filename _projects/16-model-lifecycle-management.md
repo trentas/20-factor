@@ -1,6 +1,8 @@
 ---
+layout: page
+importance: 16
+category: "Tier 4: Intelligence"
 title: "16. Model Lifecycle Management"
-parent: "Tier 4: Intelligence"
 nav_order: 1
 description: "Model registry, version pinning, A/B testing, deprecation planning, fine-tuning pipelines."
 ---

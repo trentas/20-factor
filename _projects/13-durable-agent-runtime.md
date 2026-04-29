@@ -1,6 +1,8 @@
 ---
+layout: page
+importance: 13
+category: "Tier 3: Operation"
 title: "13. Durable Agent Runtime"
-parent: "Tier 3: Operation"
 nav_order: 5
 description: "Persist long-running agent execution state with journaling, idempotent tool calls, and durable HITL interrupts."
 ---

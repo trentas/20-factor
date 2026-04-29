@@ -1,6 +1,8 @@
 ---
+layout: page
+importance: 9
+category: "Tier 3: Operation"
 title: "09. Disposability & Graceful Lifecycle"
-parent: "Tier 3: Operation"
 nav_order: 1
 description: "Fast startup, graceful shutdown — with GPU release and LLM request draining."
 ---

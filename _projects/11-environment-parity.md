@@ -1,6 +1,8 @@
 ---
+layout: page
+importance: 11
+category: "Tier 3: Operation"
 title: "11. Environment Parity"
-parent: "Tier 3: Operation"
 nav_order: 3
 description: "Keep dev, staging, and production similar — including model behavior and data representativeness."
 ---

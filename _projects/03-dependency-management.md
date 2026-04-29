@@ -1,6 +1,8 @@
 ---
+layout: page
+importance: 3
+category: "Tier 1: Foundation"
 title: "03. Dependency Management"
-parent: "Tier 1: Foundation"
 nav_order: 3
 description: "Explicitly declare and isolate all dependencies, including AI SDKs and model weights."
 ---

@@ -1,6 +1,8 @@
 ---
+layout: page
+importance: 6
+category: "Tier 2: Construction"
 title: "06. Evaluation-Driven Development"
-parent: "Tier 2: Construction"
 nav_order: 2
 description: "Use evaluations, statistical quality gates, and LLM-as-judge for non-deterministic systems."
 ---

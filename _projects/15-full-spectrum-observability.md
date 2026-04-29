@@ -1,6 +1,8 @@
 ---
+layout: page
+importance: 15
+category: "Tier 4: Intelligence"
 title: "15. Full-Spectrum Observability"
-parent: "Tier 3: Operation"
 nav_order: 7
 description: "Logs, traces, and metrics — plus token economics, quality scores, and safety monitoring."
 ---

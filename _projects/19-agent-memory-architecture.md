@@ -1,6 +1,8 @@
 ---
+layout: page
+importance: 19
+category: "Tier 4: Intelligence"
 title: "19. Agent Memory Architecture"
-parent: "Tier 4: Intelligence"
 nav_order: 4
 description: "Vector, graph, and episodic memory layers with identity-bound lifecycle, decay, and right-to-erasure."
 ---

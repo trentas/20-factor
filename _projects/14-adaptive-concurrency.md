@@ -1,6 +1,8 @@
 ---
+layout: page
+importance: 14
+category: "Tier 3: Operation"
 title: "14. Adaptive Concurrency"
-parent: "Tier 3: Operation"
 nav_order: 6
 description: "Scale independently across CPU, GPU, rate limits, and cost budgets."
 ---

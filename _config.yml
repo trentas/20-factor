@@ -1,73 +1,113 @@
+# -----------------------------------------------------------------------------
+# Site settings
+# -----------------------------------------------------------------------------
+
 title: The 20-Factor App
-description: Cloud-Native Application Development in the AI Era
-theme: just-the-docs
+description: >
+  A methodology for building cloud-native AI applications —
+  extending the original 12-Factor App for LLMs, agents, and AI-native systems.
+footer_text: >
+  Licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>.
+  Contributions welcome on <a href="https://github.com/trentas/18-factor">GitHub</a>.
 
-url: "https://trentas.github.io"
-baseurl: "/18-factor"
+keywords: ai, llm, agents, cloud-native, 12-factor, methodology, software-architecture
+lang: en
+icon: 🤖
 
-# ── Default layout for all pages ─────────────────────────────────────────────
-defaults:
-  - scope:
-      path: ""
-    values:
-      layout: "default"
+url: https://trentas.github.io
+baseurl: /18-factor
 
-# ── Navigation ──────────────────────────────────────────────────────────────
-heading_anchors: true
+last_updated: false
+back_to_top: true
+
+# -----------------------------------------------------------------------------
+# Theme
+# -----------------------------------------------------------------------------
+
+remote_theme: alshedivat/al-folio@master
+
+# -----------------------------------------------------------------------------
+# Layout
+# -----------------------------------------------------------------------------
+
+navbar_fixed: true
+footer_fixed: false
+search_enabled: true
+socials_in_search: false
+bib_search: false
+max_width: 960px
+
+# -----------------------------------------------------------------------------
+# Features
+# -----------------------------------------------------------------------------
+
+enable_darkmode: true
+enable_math: false
+enable_tooltips: false
+enable_navbar_social: false
+enable_project_categories: true
+enable_medium_zoom: false
+enable_progressbar: true
+enable_video_embedding: false
+
+# -----------------------------------------------------------------------------
+# Collections
+# -----------------------------------------------------------------------------
+
+collections:
+  projects:
+    output: true
+    permalink: /factors/:path/
+  news:
+    output: false
+    permalink: /news/:path/
+
+# Disable optional al-folio features we don't need
+announcements:
+  enabled: false
+
+latest_posts:
+  enabled: false
+
+# -----------------------------------------------------------------------------
+# Jekyll settings
+# -----------------------------------------------------------------------------
+
+markdown: kramdown
+highlighter: rouge
+kramdown:
+  input: GFM
+  syntax_highlighter_opts:
+    css_class: "highlight"
+    span:
+      line_numbers: false
+    block:
+      line_numbers: false
+      start_line: 1
+
 permalink: pretty
 
-aux_links:
-  "📊 Assessment":
-    - "assessment.html"
-  "GitHub ↗":
-    - "https://github.com/trentas/18-factor"
-aux_links_new_tab: false
+# -----------------------------------------------------------------------------
+# Plugins
+# -----------------------------------------------------------------------------
 
-nav_sort: order   # use nav_order front matter, not alphabetical
-
-# ── Appearance ───────────────────────────────────────────────────────────────
-color_scheme: dark
-
-# ── Search ───────────────────────────────────────────────────────────────────
-search_enabled: true
-search:
-  heading_level: 2
-  previews: 3
-  preview_words_before: 5
-  preview_words_after: 10
-  tokenizer_separator: /[\s/]+/
-  button: false
-
-# ── Footer ────────────────────────────────────────────────────────────────────
-footer_content: >
-  Licensed under
-  <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>.
-  Contributions welcome on
-  <a href="https://github.com/trentas/18-factor">GitHub</a>.
-
-back_to_top: true
-back_to_top_text: "Back to top"
-
-# ── GitHub Edit Links ─────────────────────────────────────────────────────────
-gh_edit_link: true
-gh_edit_link_text: "Edit this page on GitHub"
-gh_edit_repository: "https://github.com/trentas/18-factor"
-gh_edit_branch: "main"
-gh_edit_view_mode: "tree"
-
-last_edit_timestamp: true
-
-# ── Plugins (whitelist for GitHub Pages) ─────────────────────────────────────
 plugins:
+  - jekyll-remote-theme
+  - jekyll-feed
+  - jekyll-sitemap
   - jekyll-seo-tag
-  - jekyll-github-metadata
 
-# ── Exclude from Jekyll processing ───────────────────────────────────────────
+# -----------------------------------------------------------------------------
+# Exclude from Jekyll processing
+# -----------------------------------------------------------------------------
+
 exclude:
-  - README.md
   - Gemfile
   - Gemfile.lock
   - vendor/
   - .claude/
   - node_modules/
   - "*.gemspec"
+  - README.md
+  - MAPPING.md
+  - docs/

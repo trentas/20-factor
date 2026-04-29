@@ -1,6 +1,8 @@
 ---
+layout: page
+importance: 7
+category: "Tier 2: Construction"
 title: "07. Responsible AI by Design"
-parent: "Tier 2: Construction"
 nav_order: 3
 description: "Build safety, fairness, and accountability into the architecture from the start."
 ---

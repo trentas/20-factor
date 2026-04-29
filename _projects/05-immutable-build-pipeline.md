@@ -1,6 +1,8 @@
 ---
+layout: page
+importance: 5
+category: "Tier 2: Construction"
 title: "05. Immutable Build Pipeline"
-parent: "Tier 2: Construction"
 nav_order: 1
 description: "Build once, deploy everywhere — with prompt compilation, model pinning, and eval gates."
 ---

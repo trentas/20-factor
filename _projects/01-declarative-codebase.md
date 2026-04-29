@@ -1,6 +1,8 @@
 ---
+layout: page
+importance: 1
+category: "Tier 1: Foundation"
 title: "01. Declarative Codebase"
-parent: "Tier 1: Foundation"
 nav_order: 1
 description: "Every artifact — code, infrastructure, prompts — lives in version control as a declarative specification."
 ---

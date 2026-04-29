@@ -1,6 +1,8 @@
 ---
+layout: page
+importance: 20
+category: "Tier 4: Intelligence"
 title: "20. AI Economics & Cost Architecture"
-parent: "Tier 4: Intelligence"
 nav_order: 5
 description: "Per-token cost modeling, model routing, semantic caching ROI, budget circuit breakers."
 ---
