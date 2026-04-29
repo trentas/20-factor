@@ -271,7 +271,10 @@ const FACTORS = [
       "Contracts are versioned with clear compatibility and deprecation policies",
       "Schema descriptions are written to be useful for both humans and AI models",
       "Breaking changes go through a review process with migration plans",
-      "Cross-team interfaces have shared contract ownership and review processes"
+      "Cross-team interfaces have shared contract ownership and review processes",
+      "Production MCP servers sit behind an MCP Gateway with OAuth 2.1, rate limits, audit logging, and circuit breakers",
+      "Skill manifests (Anthropic Skills format or equivalent) are versioned artifacts under contract review",
+      "Telemetry conforms to OpenTelemetry GenAI semantic conventions for portable traces and metrics"
     ]
   },
   {
@@ -316,7 +319,10 @@ const FACTORS = [
       "Evaluation results (quality, safety, cost) are recorded as part of the release metadata",
       "Container images are scanned for vulnerabilities before release",
       "Rollback is achieved by deploying a previous immutable release",
-      "Progressive delivery mechanisms (canary, shadow) are used for AI feature releases"
+      "Progressive delivery mechanisms (canary, shadow) are used for AI feature releases",
+      "An AI Bill of Materials (CycloneDX 1.6 ML or SPDX 3.0 AI) is emitted as a release artifact and signed",
+      "SLSA provenance attestations are generated for container images, prompt bundles, and fine-tuned model weights",
+      "Release artifacts are signed (sigstore/cosign) and signatures are verified at deploy time"
     ]
   },
   {
@@ -348,7 +354,11 @@ const FACTORS = [
       "EU AI Act risk classification is determined and documented for each AI system",
       "High-risk AI systems implement mandatory requirements: risk management, data governance, technical documentation, record-keeping, transparency, human oversight, and accuracy/robustness testing",
       "An AI incident response playbook exists and is practiced",
-      "Red teaming exercises run on a defined cadence with adversarial eval datasets maintained in CI"
+      "Red teaming exercises run on a defined cadence with adversarial eval datasets maintained in CI",
+      "AI-generated content carries C2PA Content Credentials and/or SynthID-class watermarks (EU AI Act Article 50, applied 2 Aug 2026)",
+      "ISO/IEC 42001 AIMS or equivalent management system is in place, cross-mapped to NIST AI RMF and EU AI Act controls",
+      "Training, fine-tuning, and RAG datasets carry license declarations captured in the AIBOM (Factor 5)",
+      "Crawlers and ingestion pipelines respect AI opt-out signals (robots.txt, noai/noimageai, C2PA training_mining)"
     ]
   },
   {
@@ -363,7 +373,10 @@ const FACTORS = [
       "Agent credentials use short-lived, scoped tokens with automatic rotation",
       "Trust boundaries are enforced between users, agents, and tools",
       "Rate limits and cost budgets are enforced per agent",
-      "Agent permission policies are reviewed regularly and follow least-privilege principles"
+      "Agent permission policies are reviewed regularly and follow least-privilege principles",
+      "Computer-use / browser-agent sessions run in per-session sandboxes with scoped action policy and out-of-band confirmation for irreversible actions",
+      "GPU TEE attestation (H100/H200/Blackwell Confidential Computing) is required for inference on regulated/sensitive data",
+      "MCP authorization uses OAuth 2.1 with scoped, short-lived tokens"
     ]
   },
   {
@@ -454,7 +467,10 @@ const FACTORS = [
       "Multi-provider routing balances load across providers based on capacity and cost",
       "Batch processing is used for throughput-oriented workloads",
       "Scale-down respects graceful shutdown (Factor 9) with drain timeouts",
-      "Scaling decisions and cost impact are observable (Factor 15)"
+      "Scaling decisions and cost impact are observable (Factor 15)",
+      "Thinking-token budgets are configured per route (effort low/medium/high/auto) and rate-limited separately from output tokens",
+      "Inference placement (edge/NPU vs GPU vs cloud) is a routing decision, not hardcoded",
+      "Inference-engine choice (vLLM / TensorRT-LLM / TGI / SGLang) is pinned per release and measured in tokens/sec/dollar"
     ]
   },
   {
@@ -469,7 +485,11 @@ const FACTORS = [
       "Alert rules cover cost anomalies, quality regressions, safety spikes, and provider degradation",
       "Prompt and completion logging respects PII policies (redacted or hashed)",
       "Business outcomes (adoption, task completion, revenue impact) are tracked per AI feature",
-      "Observability data is retained long enough to support trend analysis and incident investigation"
+      "Observability data is retained long enough to support trend analysis and incident investigation",
+      "Telemetry conforms to OpenTelemetry GenAI semantic conventions (gen_ai.* attributes and metrics)",
+      "Carbon-per-request and energy-per-request are tracked as standard metrics, with regional grid factors",
+      "Thinking-token ratio is monitored per route as a saturation signal",
+      "Fallback-drift detection alerts when multi-provider fallback rate exceeds baseline"
     ]
   },
   {
@@ -551,7 +571,11 @@ const FACTORS = [
       "Prompt and output token budgets are configured to prevent waste",
       "Cost optimization strategies (routing, caching, batching) are actively used",
       "Reasoning model thinking tokens are budgeted per task type and tracked separately from output tokens",
-      "AI cost is a line item in capacity planning and business case analysis"
+      "AI cost is a line item in capacity planning and business case analysis",
+      "All production model traffic flows through an AI Gateway (LiteLLM, Portkey, Kong AI, Cloudflare AI Gateway, or equivalent) — never via direct SDK calls",
+      "Every scheduled job and production route declares an explicit pinned model + version + thinking-effort; \"latest\" aliases are forbidden",
+      "Steady-state high-volume workloads run on reserved/provisioned throughput (Bedrock PT, Azure PTUs, or reserved GPU)",
+      "Carbon-per-request (gCO₂e) is tracked alongside dollar cost"
     ]
   }
 ];

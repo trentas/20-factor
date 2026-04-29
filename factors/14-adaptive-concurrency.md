@@ -226,6 +226,68 @@ class BatchProcessor:
             future.set_result(result)
 ```
 
+### Thinking-Token Budgets as a Concurrency Dimension
+
+Reasoning models (Claude with extended thinking, OpenAI o-series, DeepSeek R/V-series, Gemini reasoning modes) introduced a new resource axis: **thinking tokens**. A request with 500 output tokens may consume 10,000–50,000 thinking tokens internally — at separate, often higher, per-token pricing. Concurrency planning must treat thinking tokens as a first-class budget.
+
+By 2026 the per-call configuration shifted from raw `budget_tokens` to **effort levels**:
+
+```python
+# Anthropic Claude 4.6+ (and similar APIs from other providers)
+response = await client.messages.create(
+    model="claude-sonnet-4-6",
+    thinking={"effort": "auto"},        # auto | low | medium | high
+    messages=[...],
+)
+# `auto` lets the model adapt thinking depth to task complexity.
+# Explicit levels give predictable cost and latency for production routing.
+```
+
+Production patterns:
+
+- **Route by reasoning depth, not just by model**: classification → effort=low; multi-step plans → effort=medium; research/repair tasks → effort=high. This is orthogonal to model selection and often more impactful for cost.
+- **Cap thinking-token rate per tenant**: high-effort traffic from one tenant can exhaust shared quota. Apply a separate `thinking_tokens_per_minute` semaphore alongside `output_tokens_per_minute`.
+- **Track thinking-token ratio** as a saturation signal: if `thinking_tokens / output_tokens` rises above expected baseline for a given route, either the task is harder than intended (alert) or a prompt regression is causing wasted reasoning (investigate).
+- **Don't over-route to reasoning**: many workloads see no quality gain from extended thinking (classification, format conversion, factual lookup). Default new routes to `effort=low` and prove a quality lift before escalating.
+
+### Edge / NPU vs GPU vs Cloud Routing
+
+By 2026, hybrid cloud+edge inference is mainstream. On-device NPUs (Apple A19 Pro Neural Accelerators ~75 TOPS, Gemini Nano via Android AICore, Phi-3.5-mini and Llama-3.2-1B running on 2GB-RAM devices) handle a growing share of latency-sensitive and privacy-sensitive traffic. Cloud handles the rest. Treat **inference placement** as a per-request scheduling decision:
+
+```python
+async def route_inference(req: InferenceRequest) -> RouteDecision:
+    if req.contains_sensitive_pii and device_has_capable_npu():
+        return RouteDecision(target="device-npu", model="phi-3.5-mini")
+    if req.expected_latency_ms < 300 and req.tokens < 256:
+        return RouteDecision(target="edge-region", model="haiku-class")
+    if req.requires_extended_reasoning:
+        return RouteDecision(target="cloud", model="opus-class", effort="high")
+    return RouteDecision(target="cloud", model="sonnet-class", effort="auto")
+```
+
+The trilemma is **latency-privacy-cost**: device wins on privacy and latency but loses on capability; cloud wins on capability but loses on per-request cost and round-trip latency. The router enforces the policy.
+
+### Inference-Engine Selection as an Architectural Decision
+
+For self-hosted inference, the **inference engine** choice has compounding effects on throughput, cost, and operational complexity. The 2026 landscape:
+
+| Engine | Strength | Notable techniques |
+|--------|----------|---------------------|
+| **vLLM** | Mature general-purpose serving | PagedAttention, continuous batching, prefix caching, speculative decoding |
+| **TensorRT-LLM** | Maximum NVIDIA GPU throughput | NVFP4 (Blackwell), fused MoE kernels, custom CUDA |
+| **TGI** (HuggingFace) | Easy operationalization | Streaming, watermarking hooks, simple deployment |
+| **SGLang** | Programmable serving with structured outputs | Constrained decoding, control flow in serving |
+
+The compounding effect comes from stacking optimizations:
+
+- **Speculative decoding** (e.g., EAGLE-3 reporting ~6.5× speedup) — a small draft model proposes tokens, the target model verifies in parallel
+- **NVFP4 / FP4 quantization** on Blackwell — 20–30% throughput vs FP16 with minimal quality loss for many models
+- **Continuous batching with chunked prefill** — table stakes
+- **KV-cache offload** to CPU/SSD for long-context workloads
+- **Fused MoE kernels** for sparse-expert models
+
+These choices belong at architectural decision time, not as runtime tuning. Pin the engine version, measure tokens-per-second-per-watt and tokens-per-second-per-dollar, and make the choice explicit in the release manifest (Factor 5).
+
 ### Scaling Signals
 Go beyond CPU and memory for auto-scaling decisions:
 
@@ -251,3 +313,8 @@ Go beyond CPU and memory for auto-scaling decisions:
 - [ ] Batch processing is used for throughput-oriented workloads
 - [ ] Scale-down respects graceful shutdown (Factor 9) with drain timeouts
 - [ ] Scaling decisions and cost impact are observable (Factor 15)
+- [ ] Thinking-token budgets are configured per route (effort levels low/medium/high/auto) and rate-limited separately from output tokens
+- [ ] Inference placement (edge/NPU vs GPU vs cloud) is a routing decision, not hardcoded
+- [ ] Inference-engine choice (vLLM / TensorRT-LLM / TGI / SGLang) is pinned per release and measured in tokens/sec/dollar and tokens/sec/watt
+- [ ] Inference optimizations (speculative decoding, FP4/INT4 quantization, continuous batching, PagedAttention) are evaluated as architectural levers, not runtime knobs
+- [ ] Spot/preemptible GPU usage is tested for graceful drain and recovery (cross-ref Factor 9, Factor 13)

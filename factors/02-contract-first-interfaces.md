@@ -205,6 +205,80 @@ A2A and MCP are complementary:
 - **A2A** = agent-to-agent contracts (how agents delegate tasks to each other)
 - Together, they provide a complete contract framework for AI-native applications
 
+### MCP Gateway as Production Topology
+
+In production, putting an **MCP Gateway** in front of MCP servers is now the default topology. Direct agent → MCP server connections suffice for local development; production needs a control plane:
+
+- **OAuth 2.1 enforcement**: MCP standardized on OAuth 2.1 (with audited spec by 2026). The gateway centralizes auth, scope, token rotation, and audit logging — application code doesn't reimplement it.
+- **Tool catalog**: a single `tools/list` aggregating servers across the org, with versioning, deprecation flags, and per-tenant exposure rules.
+- **Rate limiting and budget enforcement**: per-tool, per-tenant, per-agent — enforced at the gateway, not in each server.
+- **Observability**: every tool call is logged in one place with the same correlation IDs as model calls (cross-ref Factor 15).
+- **Fail-closed defaults**: a tool that returns 5xx repeatedly is automatically circuit-broken at the gateway level.
+
+```yaml
+# mcp-gateway.yaml — minimal example
+gateway:
+  upstreams:
+    - name: knowledge-base
+      url: http://kb-mcp:8080
+      oauth: { scopes: ["kb.read"] }
+      rate_limit: { rpm_per_tenant: 60 }
+    - name: code-execution
+      url: http://exec-mcp:8080
+      oauth: { scopes: ["exec.run"] }
+      tenant_allowlist: ["tier-pro", "tier-enterprise"]
+      rate_limit: { rpm_per_tenant: 10 }
+  defaults:
+    audit_log: true
+    circuit_breaker: { failure_threshold: 0.5, window_seconds: 60 }
+```
+
+Vendors in this space include Portkey, Kong AI Gateway, and dedicated MCP-aware gateways. Whether built or bought, the principle is: **the contract layer needs an enforcement layer in production**.
+
+### Skills as a Capability Primitive
+
+**Skills** consolidated in 2025–2026 as a packaging primitive for agent capabilities — Anthropic introduced the format, OpenAI adopted it shortly after. A skill bundles:
+
+- A name and description (the discovery contract)
+- Required tools (which can be MCP server tools)
+- Required resources (files, knowledge bases)
+- Optional system prompt fragment
+
+Skills are contracts at the *capability* level, sitting above individual tool schemas. Where MCP says "here is a tool," a skill says "here is a way of doing something that requires these tools and behaves like this." Treat the skill manifest as a versioned artifact — same review and CI rules as OpenAPI or protobuf.
+
+```yaml
+# skill.yaml
+name: invoice-reconciliation
+description: Reconcile invoices against payment records and flag discrepancies
+version: 1.2.0
+tools:
+  - mcp://accounts-mcp/list_invoices
+  - mcp://payments-mcp/list_payments
+  - mcp://accounts-mcp/flag_discrepancy
+resources:
+  - reconciliation-policy.md
+prompt_fragment: prompts/invoice-reconciliation.md
+guardrails:
+  max_invoices_per_run: 500
+  human_approval_required_above_amount_usd: 10000
+```
+
+### AGNTCY: Discovery for Agent Networks
+
+For multi-agent systems that span teams, organizations, or vendors, A2A's Agent Cards work but discovery becomes the bottleneck — how does an orchestrator find a "research agent" without hardcoding URLs? The **AGNTCY Agent Directory Service** (DNS-like discovery for agents) emerged to fill this gap. Agents publish capability declarations to a directory; orchestrators query the directory by capability rather than by name.
+
+The directory service entry is itself a contract. Treat it as part of the same contract-first discipline: review, version, and test the capabilities you publish.
+
+### OTel GenAI Semantic Conventions
+
+Telemetry is also a contract. The **OpenTelemetry GenAI semantic conventions** (stabilizing through 2026) define standard span and metric names for LLM calls, tool invocations, and agent steps:
+
+- `gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.usage.thinking_tokens`
+- Tool span: `gen_ai.tool.name`, `gen_ai.tool.call.id`
+- Agent span: `gen_ai.agent.id`, `gen_ai.agent.step`
+
+Adopting these conventions makes traces portable across tools (Langfuse, LangSmith, Arize, Helicone, Datadog) and across teams. Treat the OTel GenAI spec as an inbound contract — your telemetry conforms to it the same way your API conforms to OpenAPI.
+
 ### Contract Testing
 - Use contract testing frameworks (Pact, Specmatic) to verify implementations match contracts.
 - Validate LLM structured outputs against JSON Schema at runtime.
@@ -231,3 +305,8 @@ A2A and MCP are complementary:
 - [ ] Schema descriptions are written to be useful for both humans and AI models
 - [ ] Breaking changes go through a review process with migration plans
 - [ ] Cross-team interfaces have shared contract ownership and review processes
+- [ ] An MCP Gateway fronts production MCP servers (OAuth 2.1, rate limits, audit log, circuit breakers)
+- [ ] Skill manifests (Anthropic Skills format or equivalent) are versioned artifacts under contract review
+- [ ] Cross-org agents are discoverable via an Agent Directory Service (e.g., AGNTCY) rather than hardcoded URLs
+- [ ] Telemetry conforms to OpenTelemetry GenAI semantic conventions for portable traces and metrics
+- [ ] MCP authorization uses OAuth 2.1 with scoped tokens and short-lived credentials

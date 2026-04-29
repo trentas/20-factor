@@ -306,6 +306,71 @@ slos:
 
 SLOs turn metrics into actionable contracts. When an error budget burns down, the team prioritizes reliability work over features — the same discipline applied to traditional services, extended to AI quality and cost.
 
+### OpenTelemetry GenAI Semantic Conventions
+
+The **OpenTelemetry GenAI semantic conventions** stabilized through 2025–2026 as the canonical contract for AI telemetry. Adopt them. They make traces and metrics portable across observability stacks (Langfuse, LangSmith, Arize Phoenix, Helicone, W&B Weave, Datadog, Honeycomb) and across teams.
+
+Span attributes (subset):
+
+```text
+gen_ai.system                 = "anthropic" | "openai" | "google" | ...
+gen_ai.request.model          = "claude-sonnet-4-6"
+gen_ai.request.temperature    = 0.7
+gen_ai.usage.input_tokens     = 1250
+gen_ai.usage.output_tokens    = 340
+gen_ai.usage.cached_tokens    = 980
+gen_ai.usage.thinking_tokens  = 5800
+gen_ai.response.finish_reason = "end_turn"
+gen_ai.tool.name              = "search_knowledge_base"
+gen_ai.tool.call.id           = "tool_call_abc123"
+gen_ai.agent.id               = "research-agent-v3"
+gen_ai.agent.step             = 4
+```
+
+Metric names follow the same convention (e.g., `gen_ai.client.token.usage`). Treat the OTel GenAI spec as an inbound contract (cross-ref Factor 2) — your telemetry conforms to it.
+
+### Carbon and Energy as a Standard Metric
+
+Sustainability metrics moved from "nice to have" to dashboard-default in 2026. Google's disclosure benchmark of 0.10 Wh and 0.02 gCO₂e per median Gemini prompt set the public reference. EU procurement and several enterprise vendor reviews now require Wh-per-100-tokens and gCO₂e-per-request reporting. Stanford AI Index emphasizes tokens-per-second-per-watt and tokens-per-joule as serving efficiency metrics.
+
+```text
+ai_request_energy_wh           # Wh consumed per request
+ai_request_carbon_g_co2e       # gCO₂e estimated per request, regional grid factor applied
+ai_tokens_per_joule            # serving efficiency
+ai_water_l_per_request         # for hyperscaler workloads where reporting is available
+```
+
+Source the carbon factor from a regional grid intensity API (e.g., Electricity Maps, ClimateTRACE) rather than a static average — it varies 10× across regions and across hours. Cross-ref Factor 20 for cost-equivalent treatment.
+
+### New Signal Surfaces (2026)
+
+Beyond model calls, four signal classes need first-class observability now:
+
+- **Thinking-token ratio**: `thinking_tokens / output_tokens` per route. Sudden rise = harder task or prompt regression. Cross-ref Factor 14, Factor 17, Factor 20.
+- **Computer-use action traces**: per-session traces of the actions a browser/desktop agent took (click, type, navigate), with screenshot redaction. Required to debug bad agent behavior and to satisfy audit obligations under EU AI Act high-risk classifications. Cross-ref Factor 8, Factor 18.
+- **Voice / realtime latency** (when applicable): time-to-first-token, time-to-first-audio-byte, end-of-turn detection latency, barge-in latency, audio packet loss. Sub-300ms TTFT is the user-perceptible threshold for voice.
+- **Memory read/write events**: per-identity counts of memory writes, recall hits, recall above-threshold hits, forget operations, poisoning blocks. Cross-ref Factor 19.
+
+### Fallback-Drift Detection
+
+Multi-provider routing and fallback chains (cross-ref Factor 14, Factor 20) silently shift cost and quality when upstream providers degrade. A common production incident in 2025–2026: a primary provider intermittently fails and the fallback runs at 5–10× the cost without a visible alert. Detect this as a metric:
+
+```text
+ai_fallback_invocation_total{primary_model, fallback_model, reason}
+```
+
+Alert when fallback rate exceeds expected baseline (typically <1%). Most teams discover fallback drift only on the cost report.
+
+### Trace Sampling for High-Volume AI Traffic
+
+LLM-call traces are large (full prompts, full completions). At scale, full-fidelity tracing is unaffordable. Use stratified sampling:
+
+- **100% sample** for: all errors, all guardrail triggers, all human-approval gates, all sessions with negative user feedback
+- **Statistical sample** for: normal successful traffic (e.g., 1–5%, with rate adapting to volume)
+- **PII-aware redaction** before storage in any case
+
+Make the sampling rule explicit in code, not in the observability vendor's UI — it's part of the production contract.
+
 ### Observability Anti-Patterns
 - **Logging prompts and completions in plain text**: These may contain PII. Log hashes or redacted versions.
 - **No cost attribution**: If you can't attribute cost to features, teams, or tenants, you can't optimize.
@@ -324,3 +389,11 @@ SLOs turn metrics into actionable contracts. When an error budget burns down, th
 - [ ] Prompt and completion logging respects PII policies (redacted or hashed)
 - [ ] Business outcomes (adoption, task completion, revenue impact) are tracked per AI feature
 - [ ] Observability data is retained long enough to support trend analysis and incident investigation
+- [ ] Telemetry conforms to OpenTelemetry GenAI semantic conventions (`gen_ai.*` attributes and metrics)
+- [ ] Carbon-per-request and energy-per-request are tracked as standard metrics, with regional grid factors
+- [ ] Thinking-token ratio is monitored per route as a saturation signal
+- [ ] Computer-use action traces are captured (with screenshot redaction) when computer-use agents are deployed
+- [ ] Voice/realtime workloads track TTFT, end-of-turn latency, and barge-in latency
+- [ ] Agent memory read/write/forget operations are emitted as observable events (cross-ref Factor 19)
+- [ ] Fallback-drift detection alerts when multi-provider fallback rate exceeds baseline
+- [ ] Trace sampling is explicitly defined in code (100% on errors/guardrails/HITL; statistical sample on normal traffic)
