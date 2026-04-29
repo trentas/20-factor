@@ -48,7 +48,7 @@ AI_DEFAULT_MODEL=claude-sonnet-4-5-20250929
 AI_EMBEDDING_MODEL=text-embedding-3-small
 AI_MAX_TOKENS=4096
 AI_TEMPERATURE=0.3
-AI_COST_BUDGET_DAILY_USD=500          # see Factor 18 for full budget hierarchy
+AI_COST_BUDGET_DAILY_USD=500          # see Factor 20 for full budget hierarchy
 AI_RATE_LIMIT_RPM=1000
 ```
 
@@ -77,7 +77,7 @@ models:
     model: claude-sonnet-4-5-20250929
     temperature: 0.3
     max_tokens: 1024
-    cost_limit_per_request_usd: 0.05  # Factor 18 defines the full budget hierarchy
+    cost_limit_per_request_usd: 0.05  # Factor 20 defines the full budget hierarchy
     timeout_seconds: 30
     fallback:
       provider: anthropic

@@ -1,4 +1,4 @@
-# Factor 16: Prompt and Context Engineering
+# Factor 17: Prompt and Context Engineering
 
 > Treat prompts as versioned software artifacts and context as a managed resource — with intentional design for prompt structure, context window utilization, RAG pipelines, and token budgeting.
 
@@ -350,9 +350,9 @@ multimodal_policy:
 ```
 
 Key multimodal engineering decisions:
-- **Image tokens are expensive**: A single high-resolution image can consume thousands of tokens. Resize to the minimum resolution that preserves the information needed. Factor 18 cost models must account for image token pricing, which differs from text.
+- **Image tokens are expensive**: A single high-resolution image can consume thousands of tokens. Resize to the minimum resolution that preserves the information needed. Factor 20 cost models must account for image token pricing, which differs from text.
 - **Pre-process when possible**: Transcribe audio to text, extract text from PDFs, and sample frames from video *before* sending to the model. This gives you control over token budget and lets you cache intermediate results (Factor 12).
-- **Multimodal observability**: Log input modality types and token consumption per modality. Factor 14 metrics should distinguish between text and image token costs.
+- **Multimodal observability**: Log input modality types and token consumption per modality. Factor 15 metrics should distinguish between text and image token costs.
 
 ### Multimodal Output Generation
 Models now generate not just text but also images, audio, and structured visual content as outputs. This introduces new engineering concerns:
@@ -368,7 +368,7 @@ multimodal_outputs:
       - max_resolution: 2048x2048
     cost_tracking:
       unit: per_image                   # image generation is priced per image, not per token
-      note: "Factor 18 cost model must include image generation as separate line item"
+      note: "Factor 20 cost model must include image generation as separate line item"
 
   audio_generation:
     models: [tts-1, tts-1-hd]
@@ -388,7 +388,7 @@ multimodal_outputs:
 **Key engineering decisions for multimodal outputs:**
 - **Safety scanning is mandatory**: Generated images and audio must pass content safety checks before serving to users (Factor 7). A text response that passes safety filters can still generate an unsafe image.
 - **Disclosure**: AI-generated images and audio must be labeled as synthetic (Factor 7 transparency, EU AI Act requirements).
-- **Cost modeling differs**: Image generation is priced per image (not per token), audio per character. Factor 18 cost models must account for these different units.
+- **Cost modeling differs**: Image generation is priced per image (not per token), audio per character. Factor 20 cost models must account for these different units.
 - **Prefer spec-based rendering**: When possible, have the model generate a structured specification (SVG, Mermaid, chart config) and render it deterministically. This is cheaper, cacheable, and more controllable than direct image generation.
 
 ### Extended Thinking and Reasoning Models
@@ -425,11 +425,11 @@ reasoning_budget:
 ```
 
 **Key engineering decisions for reasoning models:**
-- **Thinking tokens are invisible but expensive**: A response with 500 output tokens may consume 10,000+ thinking tokens. Factor 18 cost models must account for this — thinking tokens are typically priced differently from output tokens.
-- **Not all tasks benefit from reasoning**: Classification, simple Q&A, and format conversion see little quality improvement from extended thinking. Use reasoning models selectively — route simple tasks to standard models (Factor 18 model routing).
+- **Thinking tokens are invisible but expensive**: A response with 500 output tokens may consume 10,000+ thinking tokens. Factor 20 cost models must account for this — thinking tokens are typically priced differently from output tokens.
+- **Not all tasks benefit from reasoning**: Classification, simple Q&A, and format conversion see little quality improvement from extended thinking. Use reasoning models selectively — route simple tasks to standard models (Factor 20 model routing).
 - **Thinking budget as a quality lever**: More thinking tokens generally improve quality for complex tasks, but with diminishing returns. Tune the thinking budget per task type based on evaluation results (Factor 6).
 - **Streaming considerations**: With reasoning models, the first visible token may take significantly longer to appear (the model is "thinking" first). Design UIs to handle this latency — show a "thinking" indicator rather than an empty response.
-- **Summarized thinking for observability**: Some providers return a summarized version of the thinking process. Log this for debugging and quality analysis (Factor 14), but be aware it's a summary, not the full chain.
+- **Summarized thinking for observability**: Some providers return a summarized version of the thinking process. Log this for debugging and quality analysis (Factor 15), but be aware it's a summary, not the full chain.
 
 ### Prompt Optimization Strategies
 
@@ -438,7 +438,7 @@ reasoning_budget:
 - **Conversation summarization**: Instead of passing full conversation history, summarize older turns.
 - **Structured output over prose**: JSON schemas for output reduce tokens and improve reliability.
 - **Chain-of-thought budgeting**: If using CoT, budget tokens for reasoning steps that won't be shown to the user.
-- **Reasoning model routing**: Not every request needs extended thinking. Route simple tasks to standard models and reserve reasoning models for tasks where quality measurably improves (see Factor 18 for cost-aware routing).
+- **Reasoning model routing**: Not every request needs extended thinking. Route simple tasks to standard models and reserve reasoning models for tasks where quality measurably improves (see Factor 20 for cost-aware routing).
 
 ## Compliance Checklist
 
@@ -450,6 +450,6 @@ reasoning_budget:
 - [ ] Few-shot examples are curated, versioned, and selected dynamically based on relevance
 - [ ] Prompt templates are validated at build time (variables defined, within budget)
 - [ ] Conversation history management has a defined strategy (truncation, summarization)
-- [ ] Prompt effectiveness is measured through evaluations (Factor 6) and production monitoring (Factor 14)
+- [ ] Prompt effectiveness is measured through evaluations (Factor 6) and production monitoring (Factor 15)
 - [ ] Context assembly strategies handle overflow gracefully (truncation, prioritization)
-- [ ] Extended thinking / reasoning token budgets are configured per task type with cost awareness (Factor 18)
+- [ ] Extended thinking / reasoning token budgets are configured per task type with cost awareness (Factor 20)

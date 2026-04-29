@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The 18-Factor App — Maturity Assessment</title>
+<title>The 20-Factor App — Maturity Assessment</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <style>
   :root {
@@ -211,7 +211,7 @@
 <body>
 <div class="container">
   <header>
-    <h1>The 18-Factor App — Maturity Assessment</h1>
+    <h1>The 20-Factor App — Maturity Assessment</h1>
     <p>Check off compliance items for each factor to see your application's maturity level on the radar chart. Progress is saved automatically.</p>
   </header>
 
@@ -237,7 +237,7 @@
   <input type="file" id="importInput" accept=".json">
 
   <footer>
-    <a href="https://github.com/trentas/18-factor">Back to The 18-Factor App Methodology</a>
+    <a href="https://github.com/trentas/18-factor">Back to The 20-Factor App Methodology</a>
   </footer>
 </div>
 
@@ -421,29 +421,44 @@ const FACTORS = [
       "Embedding caching avoids recomputation of embeddings for unchanged content",
       "Prompt structure maximizes provider-side prefix/context caching",
       "Cache invalidation strategies account for time, content changes, and model updates",
-      "Cache hit rates and cost savings are monitored (Factor 14)",
+      "Cache hit rates and cost savings are monitored (Factor 15)",
       "Any process instance can handle any request \u2014 no sticky sessions required",
       "KV cache management is configured for self-hosted model serving",
       "Cache storage itself is a backing service (Factor 10), not local process memory"
     ]
   },
   {
-    num: 13, name: "Adaptive Concurrency", tier: "operation",
+    num: 13, name: "Durable Agent Runtime", tier: "operation",
+    items: [
+      "Long-running agent execution state is persisted in a durable runtime (Temporal, Restate, Inngest, Dapr Workflows, or framework SDK)",
+      "Tool calls are idempotent or guarded by idempotency keys to make replay safe",
+      "Workflow definitions are versioned and replayable from the durable journal",
+      "Human-in-the-loop gates are implemented as durable interrupts (signals/events), not synchronous blocks",
+      "Recovery from worker preemption (spot GPU, OOM, deploy) is exercised in CI",
+      "Long-running workflow timeouts and heartbeats are configured per step",
+      "Step-by-step traces are emitted from the workflow engine and correlated with Factor 15 telemetry",
+      "Per-tool retry policies are bounded with exponential backoff and jitter",
+      "Workflow code is separated from non-deterministic tool code to preserve replay determinism",
+      "State migrations between workflow versions are tested when the SDK or workflow signature changes"
+    ]
+  },
+  {
+    num: 14, name: "Adaptive Concurrency", tier: "operation",
     items: [
       "Each process type is independently scalable with appropriate resource definitions",
       "GPU workloads scale on GPU-specific metrics (utilization, memory), not CPU",
       "AI provider rate limits are respected through client-side concurrency control",
-      "Cost budgets are enforced as scaling constraints — circuit breakers aligned with Factor 18 budget hierarchy",
+      "Cost budgets are enforced as scaling constraints — circuit breakers aligned with Factor 20 budget hierarchy",
       "Auto-scaling signals include AI-specific metrics (queue depth, token throughput, cost rate)",
       "Interactive and batch workloads use different scaling strategies",
       "Multi-provider routing balances load across providers based on capacity and cost",
       "Batch processing is used for throughput-oriented workloads",
       "Scale-down respects graceful shutdown (Factor 9) with drain timeouts",
-      "Scaling decisions and cost impact are observable (Factor 14)"
+      "Scaling decisions and cost impact are observable (Factor 15)"
     ]
   },
   {
-    num: 14, name: "Full-Spectrum Observability", tier: "operation",
+    num: 15, name: "Full-Spectrum Observability", tier: "operation",
     items: [
       "All AI operations emit structured log events with token counts, cost, latency, and model version",
       "Distributed traces span the full AI pipeline (retrieval \u2192 generation \u2192 safety check)",
@@ -458,7 +473,7 @@ const FACTORS = [
     ]
   },
   {
-    num: 15, name: "Model Lifecycle Management", tier: "intelligence",
+    num: 16, name: "Model Lifecycle Management", tier: "intelligence",
     items: [
       "A model registry documents all models in use (provider, version, purpose, status, owner)",
       "Production models are pinned to specific versions, not \u201clatest\u201d",
@@ -470,11 +485,11 @@ const FACTORS = [
       "Model distillation pipelines (teacher \u2192 student) are evaluated for quality gap vs. cost reduction",
       "Model changes are tracked in the same release process as code changes (Factor 5)",
       "Embedding model changes are planned as data migration events",
-      "Model performance is continuously monitored in production (Factor 14)"
+      "Model performance is continuously monitored in production (Factor 15)"
     ]
   },
   {
-    num: 16, name: "Prompt and Context Engineering", tier: "intelligence",
+    num: 17, name: "Prompt and Context Engineering", tier: "intelligence",
     items: [
       "All prompts are stored in version control as named, reviewable files",
       "Prompt changes go through pull request review and evaluation (Factor 6)",
@@ -484,20 +499,20 @@ const FACTORS = [
       "Few-shot examples are curated, versioned, and selected dynamically based on relevance",
       "Prompt templates are validated at build time (variables defined, within budget)",
       "Conversation history management has a defined strategy (truncation, summarization)",
-      "Prompt effectiveness is measured through evaluations (Factor 6) and production monitoring (Factor 14)",
+      "Prompt effectiveness is measured through evaluations (Factor 6) and production monitoring (Factor 15)",
       "Context assembly strategies handle overflow gracefully (truncation, prioritization)",
-      "Extended thinking / reasoning token budgets are configured per task type with cost awareness (Factor 18)",
+      "Extended thinking / reasoning token budgets are configured per task type with cost awareness (Factor 20)",
       "Multimodal output generation (images, audio) includes safety scanning and AI-generated content disclosure"
     ]
   },
   {
-    num: 17, name: "Agent Orchestration and Bounded Autonomy", tier: "intelligence",
+    num: 18, name: "Agent Orchestration and Bounded Autonomy", tier: "intelligence",
     items: [
       "Every agent has a defined purpose, tool set, and execution budget",
       "Tool permissions are enforced architecturally (code), not just through prompts",
       "Execution budgets (steps, tokens, cost, time) are enforced with hard limits",
       "Human-in-the-loop gates exist for high-risk actions",
-      "Agent actions are fully observable with distributed tracing (Factor 14)",
+      "Agent actions are fully observable with distributed tracing (Factor 15)",
       "Multi-agent orchestration uses defined patterns (router, pipeline, supervisor) — via Agent SDKs or custom implementation",
       "Agents checkpoint state periodically to enable resume after failures",
       "Failed agent actions can be rolled back where possible",
@@ -509,7 +524,22 @@ const FACTORS = [
     ]
   },
   {
-    num: 18, name: "AI Economics and Cost Architecture", tier: "intelligence",
+    num: 19, name: "Agent Memory Architecture", tier: "intelligence",
+    items: [
+      "Memory layers (vector, graph, episodic) are explicitly modeled and named for the agent",
+      "Memory writes are scoped by tenant and end-user identity to prevent cross-contamination",
+      "Memory recall is scored, filtered, and budgeted before injection into the prompt (cross-ref Factor 17)",
+      "Memory decay, summarization, or pruning policies are defined and enforced",
+      "Right-to-erasure (GDPR/LGPD) is implemented across every memory store, not just primary databases",
+      "Memory provenance is auditable — each record carries its origin, author, and timestamp",
+      "Cross-session persistent memory is clearly distinguished from ephemeral cache (Factor 12) and from RAG knowledge stores",
+      "Memory write paths defend against poisoning (validate, classify, or summarize before persist)",
+      "Memory access latency is monitored alongside generation latency (Factor 15)",
+      "A memory inspection / replay tool exists for debugging agent behavior post-incident"
+    ]
+  },
+  {
+    num: 20, name: "AI Economics and Cost Architecture", tier: "intelligence",
     items: [
       "A cost model documents expected per-request and per-feature costs",
       "Model routing directs requests to the most cost-effective model that meets quality needs",
@@ -529,8 +559,8 @@ const FACTORS = [
 const TIERS = {
   foundation:    { label: "Tier 1: Foundation",    color: "#2563eb", factors: [1,2,3,4] },
   construction:  { label: "Tier 2: Construction",  color: "#d97706", factors: [5,6,7,8] },
-  operation:     { label: "Tier 3: Operation",     color: "#059669", factors: [9,10,11,12,13,14] },
-  intelligence:  { label: "Tier 4: Intelligence",  color: "#7c3aed", factors: [15,16,17,18] }
+  operation:     { label: "Tier 3: Operation",     color: "#059669", factors: [9,10,11,12,13,14,15] },
+  intelligence:  { label: "Tier 4: Intelligence",  color: "#7c3aed", factors: [16,17,18,19,20] }
 };
 
 const MATURITY_LEVELS = [
@@ -547,8 +577,9 @@ const SHORT_NAMES = [
   "Config & Credentials", "Immutable Build", "Eval-Driven Dev",
   "Responsible AI", "Identity & Trust", "Disposability",
   "Backing Services", "Env Parity", "Stateless + Caching",
-  "Adaptive Concurrency", "Observability", "Model Lifecycle",
-  "Prompt & Context", "Agent Orchestration", "AI Economics"
+  "Durable Agent Runtime", "Adaptive Concurrency", "Observability",
+  "Model Lifecycle", "Prompt & Context", "Agent Orchestration",
+  "Agent Memory", "AI Economics"
 ];
 
 const COMPARE_COLORS = [

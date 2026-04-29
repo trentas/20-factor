@@ -1,4 +1,4 @@
-# Factor 15: Model Lifecycle Management
+# Factor 16: Model Lifecycle Management
 
 > Manage models as versioned, tested, and deployable artifacts with their own lifecycle — from selection through fine-tuning, deployment, monitoring, and deprecation.
 
@@ -294,4 +294,4 @@ fine_tuning:
 - [ ] Model distillation pipelines (teacher → student) are evaluated for quality gap vs. cost reduction
 - [ ] Model changes are tracked in the same release process as code changes (Factor 5)
 - [ ] Embedding model changes are planned as data migration events
-- [ ] Model performance is continuously monitored in production (Factor 14)
+- [ ] Model performance is continuously monitored in production (Factor 15)

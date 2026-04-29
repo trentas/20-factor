@@ -1,4 +1,4 @@
-# Factor 14: Full-Spectrum Observability
+# Factor 15: Full-Spectrum Observability
 
 > Emit structured logs, distributed traces, and metrics — augmented with token economics, AI quality scores, safety monitoring, and cost attribution.
 
@@ -258,12 +258,12 @@ metrics:
 - AI vs. manual fallback rate — when users reject AI output, why?
 - Time saved per task by feature — quantified productivity gain
 - Revenue influenced by AI features — ties AI cost to business value
-- ROI per feature — cost from Factor 18 vs. business value generated
+- ROI per feature — cost from Factor 20 vs. business value generated
 
-This closes the loop between Factor 14 (observability) and Factor 18 (AI Economics): cost without business context is just a number, and business value without cost context is just hope.
+This closes the loop between Factor 15 (observability) and Factor 20 (AI Economics): cost without business context is just a number, and business value without cost context is just hope.
 
 ### AI Service Level Objectives (SLOs)
-Traditional SLOs cover availability and latency. AI features need SLOs for quality, cost, and safety — bridging observability (this factor) with economics (Factor 18).
+Traditional SLOs cover availability and latency. AI features need SLOs for quality, cost, and safety — bridging observability (this factor) with economics (Factor 20).
 
 ```yaml
 # ai-slos.yaml

@@ -165,7 +165,7 @@ class BiasMonitor:
 ```
 
 ### Human-in-the-Loop Gates
-Define clear criteria for *when* human oversight is required. This factor owns the trigger conditions; Factor 8 defines *who* can approve, and Factor 17 defines *how* approval is executed at runtime.
+Define clear criteria for *when* human oversight is required. This factor owns the trigger conditions; Factor 8 defines *who* can approve, and Factor 18 defines *how* approval is executed at runtime.
 
 ```yaml
 human_review_triggers:
@@ -298,8 +298,8 @@ eu_ai_act:
 ```
 
 **Architectural implications:**
-- **Automatic logging** is not optional for high-risk systems — Factor 14 (Observability) must capture every decision input and output for traceability.
-- **Human oversight mechanisms** must be architectural, not advisory — Factor 17 (Agent Orchestration) human-in-the-loop gates satisfy this when properly implemented.
+- **Automatic logging** is not optional for high-risk systems — Factor 15 (Observability) must capture every decision input and output for traceability.
+- **Human oversight mechanisms** must be architectural, not advisory — Factor 18 (Agent Orchestration) human-in-the-loop gates satisfy this when properly implemented.
 - **Risk management** is continuous, not a one-time assessment — integrate AI Act risk reviews into your CI/CD pipeline (Factor 5) and evaluation suite (Factor 6).
 - **Conformity assessment** must be completed before deployment. For high-risk systems, this may require third-party audit.
 

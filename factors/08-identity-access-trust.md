@@ -8,7 +8,7 @@ The original security factor focused on HTTPS, identity management, and role-bas
 
 The principle of least privilege applies with even more urgency to AI agents. A model that can "do anything" is a model that can do harm. Bounded autonomy — giving agents exactly the permissions they need, with clear escalation paths for actions beyond their scope — is an architectural requirement, not a nice-to-have.
 
-> **Relationship with Factor 17 (Agent Orchestration)**: This factor defines *who* the agent is and *what* it's allowed to do — identity, permissions, and trust boundaries. Factor 17 defines *how* the agent operates within those boundaries — orchestration patterns, execution budgets, and runtime guardrails. Factor 8 is the authorization model; Factor 17 is the execution model.
+> **Relationship with Factor 18 (Agent Orchestration)**: This factor defines *who* the agent is and *what* it's allowed to do — identity, permissions, and trust boundaries. Factor 18 defines *how* the agent operates within those boundaries — orchestration patterns, execution budgets, and runtime guardrails. Factor 8 is the authorization model; Factor 18 is the execution model.
 
 ## What This Replaces
 
@@ -82,7 +82,7 @@ agents:
     autonomy:
       autonomous_actions: [respond_to_ticket, update_status, search_kb]
       approval_required: [issue_refund, escalate_to_manager, access_billing]
-      approval_timeout_seconds: 300    # consistent with Factor 7 triggers and Factor 17 execution
+      approval_timeout_seconds: 300    # consistent with Factor 7 triggers and Factor 18 execution
 ```
 
 ### Trust Boundaries

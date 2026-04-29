@@ -1,4 +1,4 @@
-# Factor 18: AI Economics and Cost Architecture
+# Factor 20: AI Economics and Cost Architecture
 
 > Treat AI cost as a first-class architectural concern — with per-token cost modeling, intelligent model routing, semantic caching ROI, budget circuit breakers, and cost attribution.
 
@@ -60,13 +60,13 @@ cost_model:
     cost_impact: "A 500-token response may consume 10,000-30,000 thinking tokens"
     pricing: "Thinking tokens are typically billed at output token rates"
     optimization: "Budget thinking tokens per task type — not all tasks benefit from extended reasoning"
-    note: "See Factor 16 for reasoning budget configuration per task profile"
+    note: "See Factor 17 for reasoning budget configuration per task profile"
 
   # Multimodal inputs have different token economics
   multimodal:
     image_tokens: "A 1024x1024 image ≈ 1,000 tokens; cost scales with resolution"
     audio: "Pre-transcription recommended — transcription cost + text tokens < raw audio tokens"
-    note: "See Factor 16 for multimodal context budget allocation"
+    note: "See Factor 17 for multimodal context budget allocation"
 
   # Estimate costs per feature
   features:

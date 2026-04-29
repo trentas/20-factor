@@ -1,4 +1,4 @@
-# Factor 17: Agent Orchestration and Bounded Autonomy
+# Factor 18: Agent Orchestration and Bounded Autonomy
 
 > Design AI agents with explicit capabilities, clear boundaries, execution budgets, and human-in-the-loop gates — orchestrated through well-defined patterns.
 
@@ -8,7 +8,7 @@ AI agents — systems that can plan, use tools, and take actions autonomously �
 
 The temptation is to give agents broad capabilities and rely on the model's judgment to use them wisely. This is the architectural equivalent of running everything as root. Bounded autonomy means agents have explicit, enforced limits on what they can do, how much they can spend, how long they can run, and when they must ask for human approval. These boundaries are architectural, not prompt-based — they're enforced by code, not by instructions the model might ignore.
 
-> **Relationship with Factor 8 (Identity, Access, and Trust)**: Factor 8 defines *who* the agent is and *what* it's allowed to do — identity, permissions, and trust boundaries. This factor defines *how* the agent operates within those boundaries — orchestration patterns, execution budgets, checkpointing, and runtime guardrails. Factor 8 is the authorization model; Factor 17 is the execution model.
+> **Relationship with Factor 8 (Identity, Access, and Trust)**: Factor 8 defines *who* the agent is and *what* it's allowed to do — identity, permissions, and trust boundaries. This factor defines *how* the agent operates within those boundaries — orchestration patterns, execution budgets, checkpointing, and runtime guardrails. Factor 8 is the authorization model; Factor 18 is the execution model.
 
 ## What This Replaces
 
@@ -88,7 +88,7 @@ agents:
     execution_budget:
       max_steps: 25                 # Maximum tool calls per invocation
       max_tokens: 50000             # Maximum total tokens (input + output)
-      max_cost_usd: 1.00            # Maximum cost per invocation (Factor 18 defines org-wide budget hierarchy)
+      max_cost_usd: 1.00            # Maximum cost per invocation (Factor 20 defines org-wide budget hierarchy)
       max_duration_seconds: 120     # Maximum wall-clock time
       max_retries: 3                # Maximum retries on failure
 
@@ -302,7 +302,7 @@ These SDKs share common architectural patterns:
 - **Agent loop with tool use**: The core loop (plan → tool call → observe → repeat) is built-in, with configurable termination conditions.
 - **Handoffs / delegation**: Agents can delegate to sub-agents, implementing the router and supervisor patterns natively.
 - **Guardrails integration**: Input/output validation, content filtering, and safety checks are first-class features (Factor 7).
-- **Tracing and observability**: Agent steps, tool calls, and token usage are automatically traced (Factor 14).
+- **Tracing and observability**: Agent steps, tool calls, and token usage are automatically traced (Factor 15).
 
 **When to use an SDK vs. custom orchestration:**
 - **Use an SDK** when your orchestration follows standard patterns (tool use loops, delegation, pipelines). SDKs handle the infrastructure correctly — retries, error handling, token counting, tracing — so you don't have to.
@@ -443,7 +443,7 @@ agents:
 - [ ] Tool permissions are enforced architecturally (code), not just through prompts
 - [ ] Execution budgets (steps, tokens, cost, time) are enforced with hard limits
 - [ ] Human-in-the-loop gates exist for high-risk actions
-- [ ] Agent actions are fully observable with distributed tracing (Factor 14)
+- [ ] Agent actions are fully observable with distributed tracing (Factor 15)
 - [ ] Multi-agent orchestration uses defined patterns (router, pipeline, supervisor) — via Agent SDKs or custom implementation
 - [ ] Agents checkpoint state periodically to enable resume after failures
 - [ ] Failed agent actions can be rolled back where possible

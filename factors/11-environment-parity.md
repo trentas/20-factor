@@ -174,7 +174,7 @@ ephemeral_environments:
       - integration_tests
       - eval_suite              # Factor 6 evaluation gates
       - safety_checks           # Factor 7 guardrails
-      - cost_estimation         # Factor 18 budget check
+      - cost_estimation         # Factor 20 budget check
     report_to: pull_request     # post results as PR comment
 
   cost_controls:
@@ -182,7 +182,7 @@ ephemeral_environments:
     shutdown_on_budget_exceeded: true
 ```
 
-This pattern is especially powerful when combined with Factor 17 (Agent Orchestration): an autonomous agent creates a branch, the ephemeral environment validates it, and the results feed back to the agent for iteration — or surface to a human reviewer when the solution passes all gates.
+This pattern is especially powerful when combined with Factor 18 (Agent Orchestration): an autonomous agent creates a branch, the ephemeral environment validates it, and the results feed back to the agent for iteration — or surface to a human reviewer when the solution passes all gates.
 
 ### Accepted Divergences
 Some differences are intentional and acceptable if documented:

@@ -1,6 +1,6 @@
 # Factor 12: Stateless Processes with Intelligent Caching
 
-> Execute the application as stateless processes that share nothing — and use semantic caching, embedding caching, and context caching to manage the cost and latency of AI operations.
+> Execute the application as stateless processes that share nothing — and use semantic caching, embedding caching, and context caching to manage the cost and latency of AI operations. Durable, long-running agent execution state lives in Factor 13 (Durable Agent Runtime), not here.
 
 ## Motivation
 
@@ -21,6 +21,8 @@ This update retains the stateless process requirement and adds intelligent cachi
 - Conversation state externalization
 
 ## How AI Changes This
+
+> **Scope vs. Factor 13**: This factor covers (a) **stateless workers** (no in-process state survives a restart) and (b) **caching** (semantic, embedding, prefix/prompt cache, KV cache). It does **not** cover long-running agent execution state — multi-step plans, journaled tool calls, human-approval pauses across hours/days. Those belong to Factor 13 (Durable Agent Runtime). The two factors are complementary: workers are stateless; agent workflows are durable.
 
 ### AI-Assisted Development
 - AI coding assistants maintain conversation context — but this state lives in the tool (or the AI provider's session), not in the application process. The principle of stateless processes still applies.
@@ -68,7 +70,7 @@ class AIRequestHandler:
 
 ### Semantic Caching
 
-> Semantic caching integrates naturally with RAG pipelines (Factor 16). Cache lookups happen before the retrieval stage — if a semantically similar query was recently answered with the same context, skip the full pipeline.
+> Semantic caching integrates naturally with RAG pipelines (Factor 17). Cache lookups happen before the retrieval stage — if a semantically similar query was recently answered with the same context, skip the full pipeline.
 
 ```python
 class SemanticCache:
@@ -285,7 +287,7 @@ AI caches need careful invalidation strategies:
 - [ ] Provider-level prompt caching is enabled and prompts are structured for maximum cache hit rates (stable prefix, variable suffix)
 - [ ] Prompt caching metrics (hit rate, cost savings) are monitored
 - [ ] Cache invalidation strategies account for time, content changes, and model updates
-- [ ] Cache hit rates and cost savings are monitored (Factor 14)
+- [ ] Cache hit rates and cost savings are monitored (Factor 15)
 - [ ] Any process instance can handle any request — no sticky sessions required
 - [ ] KV cache management is configured for self-hosted model serving
 - [ ] Cache storage itself is a backing service (Factor 10), not local process memory

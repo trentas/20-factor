@@ -1,31 +1,34 @@
-# The 18-Factor App
+# The 20-Factor App
 
 ## Cloud-Native Application Development in the AI Era
 
 The original [12-Factor App](https://12factor.net) (Heroku, 2011) and Kevin Hoffman's [Beyond the Twelve-Factor App](https://www.oreilly.com/library/view/beyond-the-twelve-factor/9781492042631/) (2016, 15 factors) defined the principles of cloud-native application development. Those principles were written before the AI revolution.
 
-**The 18-Factor App** reimagines cloud-native application principles for the AI era, covering both **AI-assisted development** (using AI tools to build software) and **AI-native applications** (software that incorporates AI as a core capability).
+**The 20-Factor App** reimagines cloud-native application principles for the AI era, covering both **AI-assisted development** (using AI tools to build software) and **AI-native applications** (software that incorporates AI as a core capability).
 
-This methodology extends the original 15 factors to **18 factors organized in 4 tiers**, updating existing principles for the AI era and introducing new factors for evaluation, responsible AI, model management, prompt engineering, agent orchestration, and AI economics.
+This methodology extends the original 15 factors to **20 factors organized in 4 tiers**, updating existing principles for the AI era and introducing new factors for evaluation, responsible AI, durable agent runtimes, model management, prompt engineering, agent orchestration, agent memory, and AI economics.
 
 ---
 
-## The 18 Factors
+## The 20 Factors
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
 │                            TIER 4: INTELLIGENCE                                  │
 │                                                                                  │
-│  15 Model Lifecycle   16 Prompt & Context  17 Agent Orch. &   18 AI Economics &  │
-│     Management           Engineering          Bounded Autonomy   Cost Arch.      │
+│  16 Model Lifecycle   17 Prompt & Context  18 Agent Orch. &   19 Agent Memory    │
+│     Management           Engineering          Bounded Autonomy   Architecture    │
+│                                                                                  │
+│  20 AI Economics &                                                               │
+│     Cost Arch.                                                                   │
 ├──────────────────────────────────────────────────────────────────────────────────┤
 │                             TIER 3: OPERATION                                    │
 │                                                                                  │
 │   9 Disposability &  10 Intelligent       11 Environment     12 Stateless Proc.  │
 │     Graceful Lifecycle   Backing Services    Parity             + Smart Cache    │
 │                                                                                  │
-│  13 Adaptive          14 Full-Spectrum                                           │
-│     Concurrency          Observability                                           │
+│  13 Durable Agent     14 Adaptive          15 Full-Spectrum                      │
+│     Runtime              Concurrency          Observability                      │
 ├──────────────────────────────────────────────────────────────────────────────────┤
 │                            TIER 2: CONSTRUCTION                                  │
 │                                                                                  │
@@ -73,9 +76,10 @@ How applications run, scale, and are monitored in production.
 | 9 | [**Disposability and Graceful Lifecycle**](factors/09-disposability-graceful-lifecycle.md) | Fast startup, graceful shutdown — with GPU release and LLM request draining | Updated from original #9 |
 | 10 | [**Intelligent Backing Services**](factors/10-intelligent-backing-services.md) | Treat LLM providers, vector DBs, and embedding services as attached resources | Updated from original #4 |
 | 11 | [**Environment Parity**](factors/11-environment-parity.md) | Keep dev, staging, and production similar — including model behavior and data representativeness | Updated from original #10 |
-| 12 | [**Stateless Processes with Intelligent Caching**](factors/12-stateless-processes-intelligent-caching.md) | Stateless processes with semantic, embedding, and context caching for AI operations | Updated from original #6 |
-| 13 | [**Adaptive Concurrency**](factors/13-adaptive-concurrency.md) | Scale independently across CPU, GPU, rate limits, and cost budgets | Updated from original #8 |
-| 14 | [**Full-Spectrum Observability**](factors/14-full-spectrum-observability.md) | Logs, traces, and metrics — plus token economics, quality scores, and safety monitoring | Merged from original #11 + 15-Factor #14 |
+| 12 | [**Stateless Processes with Intelligent Caching**](factors/12-stateless-processes-intelligent-caching.md) | Stateless workers with semantic, embedding, and provider prompt caching for AI operations | Updated from original #6 |
+| 13 | [**Durable Agent Runtime**](factors/13-durable-agent-runtime.md) | Persist long-running agent execution state with journaling, idempotent tool calls, and durable human-in-the-loop interrupts | **New** |
+| 14 | [**Adaptive Concurrency**](factors/14-adaptive-concurrency.md) | Scale independently across CPU, GPU, rate limits, and cost budgets | Updated from original #8 |
+| 15 | [**Full-Spectrum Observability**](factors/15-full-spectrum-observability.md) | Logs, traces, and metrics — plus token economics, quality scores, and safety monitoring | Merged from original #11 + 15-Factor #14 |
 
 ### Tier 4: INTELLIGENCE
 
@@ -83,10 +87,11 @@ Factors unique to AI-native applications — managing the AI-specific capabiliti
 
 | # | Factor | Summary | Origin |
 |---|--------|---------|--------|
-| 15 | [**Model Lifecycle Management**](factors/15-model-lifecycle-management.md) | Model registry, version pinning, A/B testing, deprecation planning, fine-tuning pipelines | **New** |
-| 16 | [**Prompt and Context Engineering**](factors/16-prompt-context-engineering.md) | Prompt versioning, context window management, RAG pipeline design, token budgeting | **New** |
-| 17 | [**Agent Orchestration and Bounded Autonomy**](factors/17-agent-orchestration-bounded-autonomy.md) | Agent architecture, tool permissions, execution budgets, human-in-the-loop gates | **New** |
-| 18 | [**AI Economics and Cost Architecture**](factors/18-ai-economics-cost-architecture.md) | Per-token cost modeling, model routing, semantic caching ROI, budget circuit breakers | **New** |
+| 16 | [**Model Lifecycle Management**](factors/16-model-lifecycle-management.md) | Model registry, version pinning, A/B testing, deprecation planning, fine-tuning pipelines | **New** |
+| 17 | [**Prompt and Context Engineering**](factors/17-prompt-context-engineering.md) | Prompt versioning, context window management, RAG pipeline design, token budgeting | **New** |
+| 18 | [**Agent Orchestration and Bounded Autonomy**](factors/18-agent-orchestration-bounded-autonomy.md) | Agent architecture, tool permissions, execution budgets, human-in-the-loop gates | **New** |
+| 19 | [**Agent Memory Architecture**](factors/19-agent-memory-architecture.md) | Vector, graph, and episodic memory layers with identity-bound lifecycle, decay, and right-to-erasure | **New** |
+| 20 | [**AI Economics and Cost Architecture**](factors/20-ai-economics-cost-architecture.md) | Per-token cost modeling, model routing, semantic caching ROI, budget circuit breakers | **New** |
 
 ---
 
@@ -98,13 +103,13 @@ See [MAPPING.md](MAPPING.md) for a detailed mapping of every original factor to 
 - **10 factors updated** for the AI era (new concerns layered on top of original principles)
 - **2 factors merged** (Logs + Telemetry → Full-Spectrum Observability)
 - **2 factors retired** (Port Binding, Admin Processes — now table-stakes)
-- **6 new factors** introduced (Evaluation-Driven Development, Responsible AI, Model Lifecycle, Prompt Engineering, Agent Orchestration, AI Economics)
+- **8 new factors** introduced (Evaluation-Driven Development, Responsible AI, Durable Agent Runtime, Model Lifecycle, Prompt Engineering, Agent Orchestration, Agent Memory, AI Economics)
 
 ---
 
 ## Maturity Assessment
 
-Use the interactive **[Maturity Assessment Tool](assessment.html)** to evaluate your applications against all 18 factors (191 checklist items). Features:
+Use the interactive **[Maturity Assessment Tool](assessment.html)** to evaluate your applications against all 20 factors (211 checklist items). Features:
 
 - **Radar chart** updates in real time as you check off compliance items
 - **Maturity scoring** (0–5 per factor) based on percentage of applicable items completed
@@ -117,9 +122,9 @@ Use the interactive **[Maturity Assessment Tool](assessment.html)** to evaluate 
 
 ## How to Use This Methodology
 
-**For teams building traditional cloud-native apps**: Tiers 1-3 (Factors 1-14) apply directly. Tier 4 factors become relevant when you add AI capabilities.
+**For teams building traditional cloud-native apps**: Tiers 1-3 (Factors 1-15) apply directly. Tier 4 factors become relevant when you add AI capabilities.
 
-**For teams building AI-native applications**: All 18 factors apply. Start with the Foundation tier and build upward.
+**For teams building AI-native applications**: All 20 factors apply. Start with the Foundation tier and build upward.
 
 **For each factor**, the document covers:
 - **Motivation**: Why this factor exists
@@ -143,6 +148,8 @@ Use the interactive **[Maturity Assessment Tool](assessment.html)** to evaluate 
 5. **Cost is a first-class concern.** Unlike traditional compute, AI costs scale with usage at the token level. Cost architecture is as important as system architecture.
 
 6. **Humans remain in the loop.** AI agents can take autonomous action, but the architecture must define clear boundaries, escalation paths, and human oversight mechanisms.
+
+7. **Agent state is durable, not stateless.** Workers stay stateless, but agent execution state — multi-step plans, tool-call journals, human approvals — is persisted and resumable. Long-running agents are workflows, not request handlers.
 
 ---
 

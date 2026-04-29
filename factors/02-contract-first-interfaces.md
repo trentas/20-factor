@@ -32,7 +32,7 @@ This update broadens the principle from HTTP APIs to all interface boundaries:
 - **Tool schemas as contracts**: When an LLM uses function calling, the JSON Schema defining each tool *is* the contract. Poorly defined schemas lead to hallucinated parameters, type mismatches, and security vulnerabilities. The **Model Context Protocol (MCP)** standardizes this contract, providing a universal protocol for tool discovery and invocation across any model or agent framework.
 - **Structured output contracts**: When an LLM is expected to produce JSON, the output schema is a contract. Use constrained decoding or schema validation to enforce it.
 - **Agent-to-agent communication**: Multi-agent systems need well-defined message formats. The **Agent-to-Agent (A2A) protocol** standardizes task delegation, status updates, and result exchange between agents. Agent Cards — machine-readable capability declarations — serve as the contract for what each agent can do.
-- **RAG pipeline contracts**: The interface between retrieval and generation — what context is passed, in what format, with what metadata — must be explicitly defined. Factor 16 covers the full RAG pipeline design (ingestion and query-time); Factor 12 covers semantic caching within RAG.
+- **RAG pipeline contracts**: The interface between retrieval and generation — what context is passed, in what format, with what metadata — must be explicitly defined. Factor 17 covers the full RAG pipeline design (ingestion and query-time); Factor 12 covers semantic caching within RAG.
 
 ## In Practice
 
@@ -174,7 +174,7 @@ When designing MCP servers, apply the same contract-first principles from this f
 
 ### A2A: The Standard Protocol for Agent-to-Agent Communication
 
-While MCP standardizes how agents interact with tools, the **Agent-to-Agent (A2A) protocol** standardizes how agents interact with each other. In multi-agent systems (Factor 17), agents need a common contract for task delegation, status updates, and result exchange.
+While MCP standardizes how agents interact with tools, the **Agent-to-Agent (A2A) protocol** standardizes how agents interact with each other. In multi-agent systems (Factor 18), agents need a common contract for task delegation, status updates, and result exchange.
 
 A2A defines:
 - **Agent Cards**: Machine-readable descriptions of an agent's capabilities, published at a well-known URL. These are the contract for what an agent can do.
