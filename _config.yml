@@ -5,13 +5,20 @@ theme: just-the-docs
 url: "https://trentas.github.io"
 baseurl: "/18-factor"
 
+# ── Default layout for all pages ─────────────────────────────────────────────
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: "default"
+
 # ── Navigation ──────────────────────────────────────────────────────────────
 heading_anchors: true
 permalink: pretty
 
 aux_links:
   "📊 Assessment":
-    - "/18-factor/assessment.html"
+    - "assessment.html"
   "GitHub ↗":
     - "https://github.com/trentas/18-factor"
 aux_links_new_tab: false
