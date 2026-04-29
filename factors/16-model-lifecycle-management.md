@@ -1,4 +1,11 @@
-# Factor 15: Model Lifecycle Management
+---
+title: "16. Model Lifecycle Management"
+parent: "Tier 4: Intelligence"
+nav_order: 1
+description: "Model registry, version pinning, A/B testing, deprecation planning, fine-tuning pipelines."
+---
+
+# Factor 16: Model Lifecycle Management
 
 > Manage models as versioned, tested, and deployable artifacts with their own lifecycle — from selection through fine-tuning, deployment, monitoring, and deprecation.
 
@@ -232,10 +239,45 @@ distillation:
       monitor: [quality_score, cost_per_request, latency_p95]
 ```
 
+**Teacher licensing in distillation**: Check the teacher model's terms of service before using its outputs as training data. Some providers have historically prohibited using model outputs to train competing models. Document the legal basis for distillation — the teacher model name, its license at the time of distillation, and the permitted use case — in the model registry entry alongside the distillation pipeline reference.
+
 **When to distill vs. fine-tune:**
 - **Distill** when you have a capable teacher model and want to reduce inference cost for a well-defined task. The teacher generates the training labels.
 - **Fine-tune** when you have human-labeled data for a task that off-the-shelf models don't handle well. Humans generate the training labels.
 - **Both** are part of the model lifecycle (this factor) and should follow the same versioning, evaluation, and deployment discipline.
+
+### Parameter-Efficient Fine-Tuning (LoRA, PEFT, Adapters)
+
+Full fine-tuning modifies all model weights — cost-prohibitive for models above ~7B parameters. Parameter-efficient fine-tuning (PEFT) techniques modify a small fraction of parameters:
+
+- **LoRA** (Low-Rank Adaptation): injects trainable low-rank matrices into attention layers. The adapter is ~100MB vs. 70GB for a full model copy — independently versionable and deployable.
+- **QLoRA**: quantizes the frozen base model to 4-bit and applies LoRA on top, cutting VRAM requirements ~4× vs. standard LoRA with minimal quality loss.
+- **Adapters**: small bottleneck layers inserted between transformer blocks; compatible with most architectures.
+
+Lifecycle implications:
+- The adapter *is* the fine-tuned model for registry and deployment purposes. Register adapters as first-class entries in `model-registry.yaml` with their base model reference, training data version, and eval scores.
+- Multiple adapters can target the same base model; adapter switching at inference time enables multi-task serving without loading multiple base model copies.
+- Adapter merging (via `mergekit` or `peft.merge_adapter`) produces a standalone model for export or deployment where runtime adapter swapping isn't supported.
+
+### Alignment Techniques: RLHF, DPO, and RLAIF
+
+Alignment fine-tuning — making a model follow instructions, be helpful, and avoid harm — uses techniques beyond supervised fine-tuning (SFT):
+
+- **RLHF** (Reinforcement Learning from Human Feedback): human preference labels train a reward model, which guides policy optimization via PPO. The gold standard for alignment but expensive in labeler time.
+- **DPO** (Direct Preference Optimization): optimizes directly on preference pairs without a separate reward model. Simpler, cheaper, and often competitive with RLHF.
+- **RLAIF** (RL from AI Feedback): replaces human labelers with a capable AI judge model (cross-ref distillation in this factor). Enables scale at a fraction of human-labeling cost.
+
+These techniques live fully in the model lifecycle: training data versioning, evaluation against alignment metrics (refusal rate, helpfulness, safety), and the same deployment discipline as SFT. Track which alignment technique and dataset version each model in the registry used.
+
+### Open-Weights Self-Hosted Lifecycle
+
+Open-weight models (Llama 4, Mistral, Qwen, Gemma, Phi-4) have community-driven rather than provider-driven release cycles:
+
+- New base model releases typically every 6–18 months; instruction-tuned variants appear within days on Hugging Face
+- Quantized variants (GGUF, AWQ, GPTQ) trade quality for VRAM/speed — evaluate each quantization method on your eval suite before adopting
+- Pin to a specific commit hash on Hugging Face Hub (not a floating branch alias), and store the hash in `model-registry.yaml`
+- VRAM requirements must be documented in the registry entry: a Llama 4 Scout requires different infrastructure than a Phi-4-mini
+- Monitor for community-discovered vulnerabilities or jailbreaks in open-weight models — the threat surface is different from hosted providers because model weights are publicly available
 
 ### Fine-Tuning Pipeline
 
@@ -294,4 +336,8 @@ fine_tuning:
 - [ ] Model distillation pipelines (teacher → student) are evaluated for quality gap vs. cost reduction
 - [ ] Model changes are tracked in the same release process as code changes (Factor 5)
 - [ ] Embedding model changes are planned as data migration events
-- [ ] Model performance is continuously monitored in production (Factor 14)
+- [ ] Model performance is continuously monitored in production (Factor 15)
+- [ ] LoRA/QLoRA adapters are registered as first-class model artifacts with base model reference, training data version, and eval scores
+- [ ] Alignment technique (RLHF/DPO/RLAIF) and training dataset version are recorded in the model registry for every fine-tuned model
+- [ ] Teacher model license is verified and documented before using its outputs as distillation training data
+- [ ] Open-weight models are pinned to a specific Hugging Face commit hash with VRAM requirements declared in the model registry

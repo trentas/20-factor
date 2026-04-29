@@ -1,0 +1,66 @@
+title: The 20-Factor App
+description: Cloud-Native Application Development in the AI Era
+theme: just-the-docs
+
+url: "https://trentas.github.io"
+baseurl: "/18-factor"
+
+# ── Navigation ──────────────────────────────────────────────────────────────
+heading_anchors: true
+permalink: pretty
+
+aux_links:
+  "📊 Assessment":
+    - "/18-factor/assessment.html"
+  "GitHub ↗":
+    - "https://github.com/trentas/18-factor"
+aux_links_new_tab: false
+
+nav_sort: order   # use nav_order front matter, not alphabetical
+
+# ── Appearance ───────────────────────────────────────────────────────────────
+color_scheme: dark
+
+# ── Search ───────────────────────────────────────────────────────────────────
+search_enabled: true
+search:
+  heading_level: 2
+  previews: 3
+  preview_words_before: 5
+  preview_words_after: 10
+  tokenizer_separator: /[\s/]+/
+  button: false
+
+# ── Footer ────────────────────────────────────────────────────────────────────
+footer_content: >
+  Licensed under
+  <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>.
+  Contributions welcome on
+  <a href="https://github.com/trentas/18-factor">GitHub</a>.
+
+back_to_top: true
+back_to_top_text: "Back to top"
+
+# ── GitHub Edit Links ─────────────────────────────────────────────────────────
+gh_edit_link: true
+gh_edit_link_text: "Edit this page on GitHub"
+gh_edit_repository: "https://github.com/trentas/18-factor"
+gh_edit_branch: "main"
+gh_edit_view_mode: "tree"
+
+last_edit_timestamp: true
+
+# ── Plugins (whitelist for GitHub Pages) ─────────────────────────────────────
+plugins:
+  - jekyll-seo-tag
+  - jekyll-github-metadata
+
+# ── Exclude from Jekyll processing ───────────────────────────────────────────
+exclude:
+  - README.md
+  - Gemfile
+  - Gemfile.lock
+  - vendor/
+  - .claude/
+  - node_modules/
+  - "*.gemspec"

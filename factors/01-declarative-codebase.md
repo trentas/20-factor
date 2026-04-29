@@ -1,3 +1,10 @@
+---
+title: "01. Declarative Codebase"
+parent: "Tier 1: Foundation"
+nav_order: 1
+description: "Every artifact — code, infrastructure, prompts — lives in version control as a declarative specification."
+---
+
 # Factor 1: Declarative Codebase
 
 > Every artifact — application code, infrastructure, configuration, and AI prompts — lives in version control as a declarative, reproducible specification.
@@ -129,6 +136,16 @@ feature_flags:
 
 Rollback is a `git revert`, not a manual infrastructure change.
 
+### AIBOM as a Build Output
+
+A Software Bill of Materials (SBOM) catalogs every software component in a release. For AI applications, this extends to an **AI Bill of Materials (AIBOM)** — also called an MLBOM — listing model identifiers, prompt versions, evaluation scores, and training data references. Generate AIBOMs in SPDX 3.0 (AI Profile) or CycloneDX 1.6 (ML Extension) format as part of the build pipeline (Factor 5).
+
+The AIBOM is a versioned artifact alongside application code, answering: "What model is in this release? What prompt? What eval score did it achieve?" It is required for supply-chain audits and increasingly expected by enterprise procurement.
+
+### Secrets in Git: SOPS and Sealed Secrets
+
+GitOps workflows often need encrypted values committed to the repository. [Mozilla SOPS](https://github.com/mozilla/sops) encrypts file values using AWS KMS, GCP KMS, or age keys — keeping structure visible in diffs while keeping values encrypted. [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets) for Kubernetes encrypts secrets with a cluster-side public key so only the cluster can decrypt them. Both patterns allow AI API keys, model registry tokens, and vector database credentials to be managed in Git without plaintext exposure.
+
 ### Monorepo vs. Multi-repo
 The original factor's "one codebase, many deploys" still applies. Whether using a monorepo or multi-repo strategy, each deployable unit has a single codebase. Shared libraries are dependencies (Factor 3), not copy-pasted code.
 
@@ -144,3 +161,5 @@ The original factor's "one codebase, many deploys" still applies. Whether using 
 - [ ] AI coding assistant context files are maintained and versioned
 - [ ] Model configuration (selection, parameters) is declared in config files
 - [ ] Every production deployment is traceable to a specific commit
+- [ ] An AIBOM/MLBOM is generated as a build output in SPDX 3.0 or CycloneDX 1.6 format
+- [ ] Encrypted secrets committed to Git use SOPS or Sealed Secrets — no plaintext secrets in any branch

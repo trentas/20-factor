@@ -1,6 +1,13 @@
+---
+title: "12. Stateless Processes + Smart Cache"
+parent: "Tier 3: Operation"
+nav_order: 4
+description: "Stateless workers with semantic, embedding, and provider prompt caching for AI operations."
+---
+
 # Factor 12: Stateless Processes with Intelligent Caching
 
-> Execute the application as stateless processes that share nothing — and use semantic caching, embedding caching, and context caching to manage the cost and latency of AI operations.
+> Execute the application as stateless processes that share nothing — and use semantic caching, embedding caching, and context caching to manage the cost and latency of AI operations. Durable, long-running agent execution state lives in Factor 13 (Durable Agent Runtime), not here.
 
 ## Motivation
 
@@ -21,6 +28,8 @@ This update retains the stateless process requirement and adds intelligent cachi
 - Conversation state externalization
 
 ## How AI Changes This
+
+> **Scope vs. Factor 13**: This factor covers (a) **stateless workers** (no in-process state survives a restart) and (b) **caching** (semantic, embedding, prefix/prompt cache, KV cache). It does **not** cover long-running agent execution state — multi-step plans, journaled tool calls, human-approval pauses across hours/days. Those belong to Factor 13 (Durable Agent Runtime). The two factors are complementary: workers are stateless; agent workflows are durable.
 
 ### AI-Assisted Development
 - AI coding assistants maintain conversation context — but this state lives in the tool (or the AI provider's session), not in the application process. The principle of stateless processes still applies.
@@ -68,7 +77,7 @@ class AIRequestHandler:
 
 ### Semantic Caching
 
-> Semantic caching integrates naturally with RAG pipelines (Factor 16). Cache lookups happen before the retrieval stage — if a semantically similar query was recently answered with the same context, skip the full pipeline.
+> Semantic caching integrates naturally with RAG pipelines (Factor 17). Cache lookups happen before the retrieval stage — if a semantically similar query was recently answered with the same context, skip the full pipeline.
 
 ```python
 class SemanticCache:
@@ -268,6 +277,42 @@ class ConversationStore:
         await self.save(conversation_id, conversation)
 ```
 
+### PagedAttention and Prefix Tree KV Cache (Self-Hosted Inference)
+
+For self-hosted model serving, the KV (key-value) cache is the primary performance and cost lever. vLLM's **PagedAttention** manages KV cache entries as fixed-size memory pages — eliminating fragmentation and dramatically improving GPU memory utilization compared to contiguous allocation. The **prefix tree** (radix tree / block prefix sharing) extends PagedAttention to share identical prefix blocks across concurrent requests, achieving de-facto provider-level prefix caching for self-hosted engines.
+
+```yaml
+# vLLM serving configuration for KV cache optimization
+gpu_memory_utilization: 0.90   # fraction of GPU VRAM for KV cache pages
+enable_prefix_caching: true    # share identical prefix blocks across requests
+max_num_seqs: 256              # max parallel sequences per GPU
+swap_space_gb: 4               # CPU RAM for overflowed KV pages (extends effective KV cache)
+block_size: 16                 # tokens per KV page (tune for workload)
+```
+
+When long system prompts or shared knowledge bases are prepended to every request, prefix caching can eliminate 80–90% of redundant prefill computation — the same economics as provider-side prompt caching but at the inference-engine level.
+
+### Speculative Decoding
+
+Speculative decoding uses a small "draft" model to propose token sequences that the larger "target" model verifies in parallel. Because verification is cheaper than generation, this yields 2–6× throughput improvement for output-heavy workloads at no quality cost. EAGLE-3 achieves ~6.5× speedup in benchmark conditions.
+
+Requirements:
+- Draft and target models must share the same vocabulary/tokenizer
+- Quality is identical to standard decoding (acceptance sampling guarantees this mathematically)
+- Most benefit on long-output tasks (code generation, document summarization); minimal benefit on short-output tasks (classification)
+
+Speculative decoding is built into vLLM, TGI, and TensorRT-LLM as a runtime toggle — evaluate it as an architecture optimization per task type (Factor 14), not a global configuration.
+
+### Multi-Region Cache Replication
+
+For globally distributed applications, caches that are region-local reduce cross-region latency but risk inconsistency when the same semantic query hits different regions:
+
+- **Write-through replication**: cache writes propagate to all regions immediately — consistent reads at higher write cost; suitable for infrequently written, globally shared caches (e.g., FAQ responses)
+- **Regional caches with cross-region fallback**: each region has its own cache; on a miss, the request falls through to the origin — acceptable for read-heavy workloads where staleness is tolerable
+- **Consistent hashing with regional preference**: route cache reads/writes to the same region by key, minimizing cross-region traffic while containing inconsistency to intra-key scope
+
+Cache replication strategy must align with the data residency requirements of the underlying content (Factor 11): cached LLM responses containing user-specific PII must not replicate across regions that violate data residency rules.
+
 ### Cache Invalidation
 AI caches need careful invalidation strategies:
 
@@ -285,7 +330,10 @@ AI caches need careful invalidation strategies:
 - [ ] Provider-level prompt caching is enabled and prompts are structured for maximum cache hit rates (stable prefix, variable suffix)
 - [ ] Prompt caching metrics (hit rate, cost savings) are monitored
 - [ ] Cache invalidation strategies account for time, content changes, and model updates
-- [ ] Cache hit rates and cost savings are monitored (Factor 14)
+- [ ] Cache hit rates and cost savings are monitored (Factor 15)
 - [ ] Any process instance can handle any request — no sticky sessions required
 - [ ] KV cache management is configured for self-hosted model serving
 - [ ] Cache storage itself is a backing service (Factor 10), not local process memory
+- [ ] Self-hosted inference engines have PagedAttention and prefix-tree KV caching configured; GPU memory utilization and prefix cache hit rate are monitored
+- [ ] Speculative decoding is evaluated for output-heavy task types and enabled where it improves throughput without quality loss
+- [ ] Multi-region cache replication strategy is defined (write-through vs. regional with fallback) and respects data residency constraints

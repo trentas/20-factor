@@ -1,4 +1,11 @@
-# Factor 18: AI Economics and Cost Architecture
+---
+title: "20. AI Economics & Cost Architecture"
+parent: "Tier 4: Intelligence"
+nav_order: 5
+description: "Per-token cost modeling, model routing, semantic caching ROI, budget circuit breakers."
+---
+
+# Factor 20: AI Economics and Cost Architecture
 
 > Treat AI cost as a first-class architectural concern — with per-token cost modeling, intelligent model routing, semantic caching ROI, budget circuit breakers, and cost attribution.
 
@@ -60,13 +67,13 @@ cost_model:
     cost_impact: "A 500-token response may consume 10,000-30,000 thinking tokens"
     pricing: "Thinking tokens are typically billed at output token rates"
     optimization: "Budget thinking tokens per task type — not all tasks benefit from extended reasoning"
-    note: "See Factor 16 for reasoning budget configuration per task profile"
+    note: "See Factor 17 for reasoning budget configuration per task profile"
 
   # Multimodal inputs have different token economics
   multimodal:
     image_tokens: "A 1024x1024 image ≈ 1,000 tokens; cost scales with resolution"
     audio: "Pre-transcription recommended — transcription cost + text tokens < raw audio tokens"
-    note: "See Factor 16 for multimodal context budget allocation"
+    note: "See Factor 17 for multimodal context budget allocation"
 
   # Estimate costs per feature
   features:
@@ -285,6 +292,111 @@ class CachingROI:
 | **Model distillation** (large model → small specialist) | 50-80% | High | Distillation cost, narrow task scope |
 | **Provider negotiation** (volume discounts) | 10-30% | Low | Vendor lock-in |
 
+### AI Gateway as the Cost Control Plane
+
+By 2026 putting an **AI Gateway** in front of every LLM call is the production default. Direct SDK-to-provider calls suffice for prototypes; production workloads route through a gateway because cost, routing, caching, and observability are cross-cutting concerns that don't belong scattered across application code.
+
+Production-grade options: **LiteLLM**, **Portkey**, **Kong AI Gateway**, **Cloudflare AI Gateway**, **TrueFoundry**, hyperscaler-native (Bedrock, Azure AI Gateway). Whether built or bought, the gateway centralizes:
+
+- **Multi-provider routing**: a single API surface for OpenAI, Anthropic, Google, Bedrock, Azure, self-hosted, and others — with per-route policies
+- **Semantic and prompt caching**: a unified cache layer across providers (cross-ref Factor 12)
+- **Budget circuit breakers**: per-tenant, per-feature, per-user (cross-ref this factor)
+- **Rate-limit shaping**: client-side rate limiting normalized across providers (cross-ref Factor 14)
+- **Guardrails**: input/output filtering before the model and before the user (cross-ref Factor 7)
+- **Audit and observability**: every call logged with the same correlation IDs as application traces (cross-ref Factor 15)
+
+The architectural rule: **no application code calls a model provider directly**. All traffic flows through the gateway, and policies are centralized.
+
+```yaml
+# ai-gateway-policy.yaml — minimal example
+gateway:
+  routes:
+    - name: customer-support
+      pin_model: anthropic/claude-sonnet-4-6   # mandatory model-pin
+      cache: { semantic: true, similarity_threshold: 0.95 }
+      budget:
+        per_tenant_daily_usd: 50
+        per_user_hourly_usd: 1
+        on_breach: block                       # circuit breaker
+      guardrails: [pii_redact_input, content_safety_output]
+
+    - name: research-assistant
+      pin_model: anthropic/claude-opus-4-7
+      thinking: { effort: high }
+      cache: { semantic: false }
+      budget:
+        per_request_usd: 5
+        on_breach: fallback                    # downgrade to sonnet
+      fallback_chain:
+        - anthropic/claude-sonnet-4-6
+        - openai/gpt-5.1                       # last resort
+```
+
+### Mandatory Model-Pinning per Job
+
+Every scheduled job, every production route, every batch process **must explicitly declare which model it uses**. Implicit "use the latest" or relying on provider aliases is a recipe for silent cost and quality drift.
+
+The 2026 pattern: a release manifest entry per job with model + version + thinking-effort + max-cost. The gateway refuses to dispatch a request that doesn't match the manifest.
+
+```yaml
+jobs:
+  - name: nightly-content-summarization
+    model: anthropic/claude-sonnet-4-6
+    thinking: { effort: low }
+    max_cost_per_run_usd: 25
+    expected_output_tokens_p99: 4000
+    fallback_policy: fail_loudly   # do NOT silently fall back to a more expensive model
+```
+
+### Reserved Capacity and Provisioned Throughput
+
+For predictable, high-volume workloads, **reserved/provisioned throughput** beats on-demand pricing significantly. Available shapes in 2026:
+
+- **AWS Bedrock Provisioned Throughput** — model units reserved per hour
+- **Azure OpenAI PTUs** (Provisioned Throughput Units) — sustained TPM commitments
+- **Anthropic, OpenAI, Google enterprise contracts** — committed-spend discounts and dedicated capacity
+- **Self-hosted reserved GPU** (managed K8s with Spot fallback for cost-tolerant traffic)
+
+Architectural pattern: **base load on provisioned, spikes on on-demand**. Forecast your steady-state TPM, reserve 70–80% of it, let elastic on-demand absorb the peak. Re-evaluate the reservation level monthly.
+
+### Carbon as a Cost Dimension
+
+Cost has two units now: dollars and gCO₂e. EU procurement and several enterprise vendor reviews require both. The architectural treatment is symmetric to dollar cost:
+
+- Track per-request `g_co2e` alongside `usd` (cross-ref Factor 15)
+- Set per-tenant or per-feature carbon budgets where customer contracts require
+- Region routing as a knob: route batch workloads to low-carbon-grid regions when latency permits (cross-ref Factor 14)
+- Report energy and carbon in the same dashboards as dollars
+
+This isn't replacing dollar cost as a concern — it's adding a parallel one. Modeling both prevents teams from being surprised when a procurement RFP asks for carbon disclosure.
+
+### Model Liability and Incident Reporting
+
+AI model liability is a financial and legal concern as of 2026, requiring architectural preparation:
+
+**EU AI Act serious-incident reporting (Art. 73)**: Operators of high-risk AI systems must notify competent authorities within 15 business days of a serious incident. This requires an **AI incident log** separate from general application logs, capturing: model version at time of incident, sanitized input/output (where permitted by data minimization rules), safety flag activations, and the timeline of detection and remediation.
+
+**Model insurance**: Insurance products from Munich Re, Lloyds, and others now cover financial loss from AI-related incidents — hallucinations causing contract errors, classification errors in insurance or lending decisions, IP infringement from training data. Review coverage options annually as model capabilities and legal precedents evolve.
+
+**Vendor liability clauses**: AI vendor MSAs now include explicit liability caps, indemnification for model behavior, and IP indemnification for training data. Review these annually and ensure your use case falls within the covered scope. Document the vendor's liability obligations alongside the model entry in the registry (Factor 16).
+
+Architectural implications:
+- Maintain an AI incident log at the application level, distinct from standard observability (Factor 15), to satisfy regulatory reporting cadences
+- Store model version, inference parameters, and sanitized I/O for a minimum retention period aligned with your jurisdiction's AI Act requirements
+- If your application falls in an EU AI Act high-risk category, complete a Conformity Assessment before the August 2, 2026 enforcement deadline
+
+### FinOps Maturity for AI
+
+The 2026 State of FinOps shows real-time AI cost visibility as the top tooling request. Practical maturity model:
+
+- **Level 1 (Visibility)**: cost is visible per feature/tenant in a daily/weekly cadence
+- **Level 2 (Attribution)**: showback in monthly reviews; teams see their own spend
+- **Level 3 (Chargeback)**: actual financial allocation; per-team budgets enforced
+- **Level 4 (Optimization)**: routing, caching, and reservation decisions are made on cost data, not gut feel
+- **Level 5 (Forecasting)**: cost is a forecasted line item in product business cases; new features carry a $/unit-economics model before launch
+
+Most production AI orgs in 2026 are at Level 2–3. Level 4 is the practical bar to aim for before the next major product expansion.
+
 ### Cost Dashboards
 
 Essential views:
@@ -310,3 +422,12 @@ Essential views:
 - [ ] Cost optimization strategies (routing, caching, batching) are actively used
 - [ ] Reasoning model thinking tokens are budgeted per task type and tracked separately from output tokens
 - [ ] AI cost is a line item in capacity planning and business case analysis
+- [ ] All production model traffic flows through an AI Gateway (LiteLLM, Portkey, Kong AI, Cloudflare AI Gateway, or equivalent), not via direct SDK calls
+- [ ] Every scheduled job and production route declares an explicit pinned model + version + thinking-effort; "latest" aliases are forbidden
+- [ ] Steady-state high-volume workloads run on reserved/provisioned throughput (Bedrock PT, Azure PTUs, enterprise commits, or reserved GPU)
+- [ ] Carbon-per-request (gCO₂e) is tracked alongside dollar cost, with regional grid factors
+- [ ] Fallback chains are explicitly defined per route, including a "fail loudly" option for cost-sensitive jobs
+- [ ] FinOps maturity is at least Level 3 (chargeback) before major product expansion involving new AI features
+- [ ] An AI incident log is maintained (separate from general observability) capturing model version, sanitized I/O, and safety activations for potential EU AI Act Art. 73 reporting
+- [ ] Vendor MSA liability terms (caps, indemnification, IP coverage) are reviewed annually and documented alongside model registry entries
+- [ ] Applications in EU AI Act high-risk categories have completed or scheduled a Conformity Assessment ahead of the August 2, 2026 enforcement deadline

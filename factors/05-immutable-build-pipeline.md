@@ -1,3 +1,10 @@
+---
+title: "05. Immutable Build Pipeline"
+parent: "Tier 2: Construction"
+nav_order: 1
+description: "Build once, deploy everywhere — with prompt compilation, model pinning, and eval gates."
+---
+
 # Factor 5: Immutable Build Pipeline
 
 > Build once, deploy everywhere — and extend the pipeline to compile prompts, pin model versions, and gate releases on evaluation results.
@@ -134,6 +141,53 @@ The release artifact is immutable and self-describing:
 }
 ```
 
+### AI Bill of Materials (AIBOM/MLBOM)
+
+By 2026 the build is expected to emit a machine-readable **AI Bill of Materials** — the equivalent of an SBOM, but for AI artifacts. The two consolidating standards:
+
+- **CycloneDX 1.6** with the ML/AI extension — describes models, datasets, evaluation suites, and guardrails as bill-of-materials components
+- **SPDX 3.0 AI profile** — alternative format with similar semantics
+
+A minimal AIBOM entry per model includes: model identifier and version, weights checksum, training dataset references with licenses, evaluation results, intended use, known limitations.
+
+```yaml
+# Example: emit AIBOM as part of the release manifest
+- name: Generate AIBOM
+  run: |
+    aibom-cli generate \
+      --models dist/model-manifest.json \
+      --evals dist/eval-results.json \
+      --datasets datasets.lock \
+      --guardrails guardrails.yaml \
+      --output dist/aibom.cdx.json \
+      --format cyclonedx-1.6
+
+- name: Sign AIBOM
+  run: cosign sign-blob dist/aibom.cdx.json --bundle dist/aibom.sig
+```
+
+The AIBOM travels with the release. Downstream consumers (compliance, procurement, customers) verify it before deployment. Regulators (EU AI Act, NIST profiles — see Factor 7) increasingly require it.
+
+### Provenance, Signing, and Reproducibility
+
+- **SLSA provenance**: emit SLSA Build Level 3 attestations for every release artifact, including model weights and prompt bundles. The attestation states what was built, by whom, from what source, on what builder.
+- **Sigstore / cosign signatures**: sign container images, prompt bundles, fine-tuned model weights, and the AIBOM. Verify signatures at deploy time — unsigned artifacts are refused.
+- **Reproducible builds for ML**: re-running the same build with the same inputs produces byte-identical artifacts (where the toolchain allows). For non-deterministic training, capture seeds and dataset hashes so the *result* — not the bits — is reproducible to within statistical tolerance.
+
+```yaml
+# Sign and attest the release artifact
+- name: Sign container image
+  run: cosign sign --yes registry.example.com/app:$SHA
+
+- name: Attach SLSA provenance
+  run: |
+    slsa-generator generate \
+      --artifact registry.example.com/app:$SHA \
+      --build-config ci-pipeline.yaml \
+      --source git+https://github.com/example/app@$SHA \
+      | cosign attest --predicate - registry.example.com/app:$SHA
+```
+
 ### Immutability Rules
 - **Never mutate a released artifact**. If a prompt needs changing, create a new release.
 - **Never change a model version** in a running deployment. Change the configuration and trigger a new release.
@@ -159,3 +213,7 @@ For AI applications, progressive delivery is essential because behavior changes 
 - [ ] Container images are scanned for vulnerabilities before release
 - [ ] Rollback is achieved by deploying a previous immutable release
 - [ ] Progressive delivery mechanisms (canary, shadow) are used for AI feature releases
+- [ ] An AI Bill of Materials (CycloneDX 1.6 ML or SPDX 3.0 AI) is emitted as a release artifact and signed
+- [ ] SLSA provenance attestations are generated for container images, prompt bundles, and fine-tuned model weights
+- [ ] Release artifacts are signed (sigstore/cosign) and signatures are verified at deploy time
+- [ ] Builds are reproducible — same inputs produce byte-identical outputs (with documented exceptions for non-deterministic training, where seeds and dataset hashes are captured)

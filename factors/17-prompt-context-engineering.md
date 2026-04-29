@@ -1,4 +1,11 @@
-# Factor 16: Prompt and Context Engineering
+---
+title: "17. Prompt & Context Engineering"
+parent: "Tier 4: Intelligence"
+nav_order: 2
+description: "Prompt versioning, context window management, RAG pipeline design, token budgeting."
+---
+
+# Factor 17: Prompt and Context Engineering
 
 > Treat prompts as versioned software artifacts and context as a managed resource — with intentional design for prompt structure, context window utilization, RAG pipelines, and token budgeting.
 
@@ -350,9 +357,9 @@ multimodal_policy:
 ```
 
 Key multimodal engineering decisions:
-- **Image tokens are expensive**: A single high-resolution image can consume thousands of tokens. Resize to the minimum resolution that preserves the information needed. Factor 18 cost models must account for image token pricing, which differs from text.
+- **Image tokens are expensive**: A single high-resolution image can consume thousands of tokens. Resize to the minimum resolution that preserves the information needed. Factor 20 cost models must account for image token pricing, which differs from text.
 - **Pre-process when possible**: Transcribe audio to text, extract text from PDFs, and sample frames from video *before* sending to the model. This gives you control over token budget and lets you cache intermediate results (Factor 12).
-- **Multimodal observability**: Log input modality types and token consumption per modality. Factor 14 metrics should distinguish between text and image token costs.
+- **Multimodal observability**: Log input modality types and token consumption per modality. Factor 15 metrics should distinguish between text and image token costs.
 
 ### Multimodal Output Generation
 Models now generate not just text but also images, audio, and structured visual content as outputs. This introduces new engineering concerns:
@@ -368,7 +375,7 @@ multimodal_outputs:
       - max_resolution: 2048x2048
     cost_tracking:
       unit: per_image                   # image generation is priced per image, not per token
-      note: "Factor 18 cost model must include image generation as separate line item"
+      note: "Factor 20 cost model must include image generation as separate line item"
 
   audio_generation:
     models: [tts-1, tts-1-hd]
@@ -388,7 +395,7 @@ multimodal_outputs:
 **Key engineering decisions for multimodal outputs:**
 - **Safety scanning is mandatory**: Generated images and audio must pass content safety checks before serving to users (Factor 7). A text response that passes safety filters can still generate an unsafe image.
 - **Disclosure**: AI-generated images and audio must be labeled as synthetic (Factor 7 transparency, EU AI Act requirements).
-- **Cost modeling differs**: Image generation is priced per image (not per token), audio per character. Factor 18 cost models must account for these different units.
+- **Cost modeling differs**: Image generation is priced per image (not per token), audio per character. Factor 20 cost models must account for these different units.
 - **Prefer spec-based rendering**: When possible, have the model generate a structured specification (SVG, Mermaid, chart config) and render it deterministically. This is cheaper, cacheable, and more controllable than direct image generation.
 
 ### Extended Thinking and Reasoning Models
@@ -425,11 +432,42 @@ reasoning_budget:
 ```
 
 **Key engineering decisions for reasoning models:**
-- **Thinking tokens are invisible but expensive**: A response with 500 output tokens may consume 10,000+ thinking tokens. Factor 18 cost models must account for this — thinking tokens are typically priced differently from output tokens.
-- **Not all tasks benefit from reasoning**: Classification, simple Q&A, and format conversion see little quality improvement from extended thinking. Use reasoning models selectively — route simple tasks to standard models (Factor 18 model routing).
+- **Thinking tokens are invisible but expensive**: A response with 500 output tokens may consume 10,000+ thinking tokens. Factor 20 cost models must account for this — thinking tokens are typically priced differently from output tokens.
+- **Not all tasks benefit from reasoning**: Classification, simple Q&A, and format conversion see little quality improvement from extended thinking. Use reasoning models selectively — route simple tasks to standard models (Factor 20 model routing).
 - **Thinking budget as a quality lever**: More thinking tokens generally improve quality for complex tasks, but with diminishing returns. Tune the thinking budget per task type based on evaluation results (Factor 6).
 - **Streaming considerations**: With reasoning models, the first visible token may take significantly longer to appear (the model is "thinking" first). Design UIs to handle this latency — show a "thinking" indicator rather than an empty response.
-- **Summarized thinking for observability**: Some providers return a summarized version of the thinking process. Log this for debugging and quality analysis (Factor 14), but be aware it's a summary, not the full chain.
+- **Summarized thinking for observability**: Some providers return a summarized version of the thinking process. Log this for debugging and quality analysis (Factor 15), but be aware it's a summary, not the full chain.
+
+### GraphRAG for Knowledge Graph Retrieval
+
+GraphRAG (Microsoft Research, 2024) extends RAG by indexing documents as a knowledge graph — extracting entities, relationships, and community summaries — enabling queries requiring multi-hop reasoning or global document-collection summarization. Standard vector RAG excels at local, point-in-time retrieval; GraphRAG excels at "what patterns span this entire corpus?"
+
+The query pipeline splits into local (vector search for precise factual lookup) and global (graph community summaries for broad synthesis) modes based on query type. This requires dedicated ingestion: entity extraction, relationship graph construction, and community detection — significantly more compute than standard embedding ingestion. Use GraphRAG when your retrieval tasks require connecting entities across documents; use standard vector RAG when point retrieval suffices (Factor 10 covers the knowledge graph as a backing service).
+
+### ColBERT and Late-Interaction Retrieval
+
+ColBERT's late-interaction approach stores **token-level embeddings** for each document — not a single document-level embedding — and computes relevance as the sum of maximum cosine similarities between each query token and its closest document token. This provides higher retrieval precision than single-vector dense retrieval for queries where specific terms matter.
+
+Use when: retrieval precision on domain-specific terminology is critical and you can afford ~10× storage vs. single-vector retrieval. Implementations: ColBERT v2, RAGatouille, Vespa. Late interaction can be layered on top of a standard ANN index as a re-ranking stage, limiting storage cost to the top-K candidates.
+
+### Automatic Prompt Optimization (DSPy, TextGrad, APE)
+
+Manual prompt engineering is iterative and doesn't optimize globally across diverse inputs. Automatic prompt optimization frameworks treat prompt design as an optimization problem grounded in your evaluation suite:
+
+- **DSPy** (Stanford): programs are written as module signatures; optimizers (BootstrapFewShot, MIPROv2) automatically tune prompts and few-shot examples using your labeled eval set. The optimized prompt is compiled to a concrete string committed back to version control.
+- **TextGrad**: uses LLM-generated "textual gradients" — critique and improvement suggestions — to iteratively refine prompts without labeled data.
+- **APE** (Automatic Prompt Engineer): searches a candidate instruction space and selects by eval score; useful when you have labeled examples and want to discover better instruction phrasings.
+
+These tools connect directly to Factor 6 (eval suites provide the optimization signal) and Factor 1 (optimized prompts are committed as versioned artifacts). The risk: auto-optimized prompts can overfit to the eval set — always validate on a held-out test partition and production shadow traffic (Factor 11).
+
+### Long-Context Degradation
+
+Models with large context windows (200K–1M+ tokens) can still degrade when relevant information is buried in the middle of a long context — the "lost in the middle" effect. Mitigations:
+
+- **Position-aware context assembly**: place the most relevant retrieved passages immediately before or after the query, not buried mid-context
+- **Reranking before context assembly**: use a reranker (Factor 10) to ensure the top-K passages by relevance are positioned where the model attends best
+- **Summary hierarchies for large corpora**: for breadth-oriented queries, summarize document groups at multiple granularities rather than injecting full documents
+- **Monitor retrieval recall vs. context position**: measure whether the model correctly uses passages at different positions in your eval suite; degrade gracefully by shortening context if recall drops below threshold
 
 ### Prompt Optimization Strategies
 
@@ -438,7 +476,7 @@ reasoning_budget:
 - **Conversation summarization**: Instead of passing full conversation history, summarize older turns.
 - **Structured output over prose**: JSON schemas for output reduce tokens and improve reliability.
 - **Chain-of-thought budgeting**: If using CoT, budget tokens for reasoning steps that won't be shown to the user.
-- **Reasoning model routing**: Not every request needs extended thinking. Route simple tasks to standard models and reserve reasoning models for tasks where quality measurably improves (see Factor 18 for cost-aware routing).
+- **Reasoning model routing**: Not every request needs extended thinking. Route simple tasks to standard models and reserve reasoning models for tasks where quality measurably improves (see Factor 20 for cost-aware routing).
 
 ## Compliance Checklist
 
@@ -450,6 +488,9 @@ reasoning_budget:
 - [ ] Few-shot examples are curated, versioned, and selected dynamically based on relevance
 - [ ] Prompt templates are validated at build time (variables defined, within budget)
 - [ ] Conversation history management has a defined strategy (truncation, summarization)
-- [ ] Prompt effectiveness is measured through evaluations (Factor 6) and production monitoring (Factor 14)
+- [ ] Prompt effectiveness is measured through evaluations (Factor 6) and production monitoring (Factor 15)
 - [ ] Context assembly strategies handle overflow gracefully (truncation, prioritization)
-- [ ] Extended thinking / reasoning token budgets are configured per task type with cost awareness (Factor 18)
+- [ ] Extended thinking / reasoning token budgets are configured per task type with cost awareness (Factor 20)
+- [ ] GraphRAG is used for queries requiring multi-hop entity reasoning; standard vector RAG is used for point-in-time retrieval
+- [ ] Retrieval recall vs. context position is monitored in the eval suite; context assembly places highest-relevance passages in positions the model attends best
+- [ ] Automatic prompt optimization (DSPy, TextGrad, or equivalent) is evaluated for high-traffic prompts; optimized prompts are committed as versioned artifacts validated on held-out test data

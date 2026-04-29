@@ -1,3 +1,10 @@
+---
+title: "06. Evaluation-Driven Development"
+parent: "Tier 2: Construction"
+nav_order: 2
+description: "Use evaluations, statistical quality gates, and LLM-as-judge for non-deterministic systems."
+---
+
 # Factor 6: Evaluation-Driven Development
 
 > Non-deterministic systems demand a new testing paradigm — use evaluations, statistical quality gates, and LLM-as-judge to maintain confidence in AI outputs.
@@ -147,6 +154,63 @@ Human-driven workflow:                  Agent-driven workflow:
 
 Autonomous coding agents (Claude Code, Devin, Codex) make evaluation gates *more* critical, not less. When an agent can generate dozens of PRs per day, the eval suite is the primary quality gate — the human reviews what passed, not what was generated. Without robust evaluations, agent-generated code bypasses the quality bar that human intuition would otherwise provide.
 
+### Synthetic Evaluation Data Generation
+
+Golden datasets are bottlenecked by the availability of human-labeled examples. Synthetic data generation unlocks scale: use a capable model to generate adversarial examples, edge cases, and realistic inputs, then filter for quality before adding to the eval set.
+
+```python
+generator = LLM("claude-opus-4-7")
+for category in ["edge_cases", "adversarial_inputs", "rare_language_patterns"]:
+    candidates = generator.generate_eval_examples(
+        task_description=task.description,
+        seed_examples=golden_set[:20],  # seed with real examples
+        count=500,
+        category=category,
+    )
+    verified = [ex for ex in candidates if quality_check(ex) >= 0.85]
+    eval_dataset.add(verified)
+```
+
+Key practices:
+- Always seed synthetic generation with real examples to preserve domain characteristics
+- Apply quality filtering — reject synthetic examples the judge model itself rates as low-quality
+- Document the generation model and prompt in the dataset card (Factor 3)
+- Periodically validate that synthetic examples predict real production failure modes
+
+### LLM-as-Judge Calibration Drift
+
+LLM judges degrade over time as the underlying judge model is updated by the provider. Detect calibration drift by maintaining a "human anchor" set:
+
+1. Collect 100–200 examples with locked human scores (scored once and never re-scored)
+2. Run the judge against this set on a cadence (weekly for high-stakes features)
+3. Track judge-vs-human agreement using Cohen's kappa or Spearman correlation
+4. Alert when agreement drops below the calibration threshold (typically 0.75–0.85)
+5. When drift is detected: either re-calibrate by updating the judge prompt, or switch to a more stable judge model version
+
+```yaml
+judge_calibration:
+  anchor_set: evals/human-anchor-set.jsonl  # 200 locked human-scored examples
+  metrics: [cohens_kappa, spearman_rho]
+  alert_threshold: 0.75
+  check_cadence: weekly
+  on_drift: alert_and_open_ticket
+```
+
+### Public Benchmarks as Reference Points
+
+Public benchmarks provide a shared vocabulary for capability comparisons when evaluating models or tracking regression:
+
+| Benchmark | What it measures | Use case |
+|-----------|-----------------|----------|
+| **MMLU** | Broad knowledge across 57 subjects | General capability baseline |
+| **SWE-bench** | Software engineering (issue → patch) | Coding agent capability |
+| **HellaSwag** | Commonsense reasoning | Language understanding |
+| **HumanEval** | Code generation (Python) | Code quality |
+| **TruthfulQA** | Truthfulness vs. plausible hallucination | Hallucination tendency |
+| **MT-Bench** | Multi-turn instruction following | Chat quality |
+
+Use these as calibration points when selecting models (Factor 16), not as the primary evaluation signal. Application-specific evaluations always take precedence over generic benchmarks — a model that scores highest on MMLU may still perform worse than a cheaper model on your specific task.
+
 ### Continuous Evaluation
 Evaluations don't stop at deployment:
 
@@ -187,3 +251,6 @@ The methodology is tool-agnostic — what matters is that evaluations exist, run
 - [ ] New failure modes discovered in production are added to evaluation datasets
 - [ ] Model upgrades and prompt changes are evaluated before deployment
 - [ ] Online evaluation continuously monitors production output quality
+- [ ] Synthetic eval data generation pipelines exist to scale coverage beyond human-labeled examples
+- [ ] LLM-as-judge calibration is tracked against a locked human anchor set, with alerts for calibration drift
+- [ ] Public benchmarks (MMLU, SWE-bench, HumanEval, etc.) are used as reference points during model selection, not as primary eval gates

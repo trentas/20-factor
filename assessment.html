@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The 18-Factor App — Maturity Assessment</title>
+<title>The 20-Factor App — Maturity Assessment</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <style>
   :root {
@@ -211,7 +211,7 @@
 <body>
 <div class="container">
   <header>
-    <h1>The 18-Factor App — Maturity Assessment</h1>
+    <h1>The 20-Factor App — Maturity Assessment</h1>
     <p>Check off compliance items for each factor to see your application's maturity level on the radar chart. Progress is saved automatically.</p>
   </header>
 
@@ -237,7 +237,7 @@
   <input type="file" id="importInput" accept=".json">
 
   <footer>
-    <a href="https://github.com/trentas/18-factor">Back to The 18-Factor App Methodology</a>
+    <a href="https://github.com/trentas/18-factor">Back to The 20-Factor App Methodology</a>
   </footer>
 </div>
 
@@ -255,7 +255,9 @@ const FACTORS = [
       "Evaluation datasets and benchmarks are versioned artifacts",
       "AI coding assistant context files are maintained and versioned",
       "Model configuration (selection, parameters) is declared in config files",
-      "Every production deployment is traceable to a specific commit"
+      "Every production deployment is traceable to a specific commit",
+      "An AIBOM/MLBOM is generated as a build output in SPDX 3.0 or CycloneDX 1.6 format",
+      "Encrypted secrets committed to Git use SOPS or Sealed Secrets — no plaintext secrets in any branch"
     ]
   },
   {
@@ -271,7 +273,10 @@ const FACTORS = [
       "Contracts are versioned with clear compatibility and deprecation policies",
       "Schema descriptions are written to be useful for both humans and AI models",
       "Breaking changes go through a review process with migration plans",
-      "Cross-team interfaces have shared contract ownership and review processes"
+      "Cross-team interfaces have shared contract ownership and review processes",
+      "Production MCP servers sit behind an MCP Gateway with OAuth 2.1, rate limits, audit logging, and circuit breakers",
+      "Skill manifests (Anthropic Skills format or equivalent) are versioned artifacts under contract review",
+      "Telemetry conforms to OpenTelemetry GenAI semantic conventions for portable traces and metrics"
     ]
   },
   {
@@ -286,7 +291,10 @@ const FACTORS = [
       "Dependency trees are audited for vulnerabilities, including AI-specific supply chain risks",
       "Container images use multi-stage builds to minimize runtime attack surface",
       "Hardware requirements (GPU type, memory, drivers) are documented as system dependencies",
-      "A process exists to test and roll out AI SDK upgrades safely"
+      "A process exists to test and roll out AI SDK upgrades safely",
+      "SLSA provenance attestations are generated for model artifacts; cosign signatures block unsigned weights at deploy time",
+      "Model cards and dataset cards (with license and intended-use records) are versioned alongside model-dependency manifests",
+      "AI accelerator dependencies (CUDA, ROCm, Neuron SDK, TPU runtimes) are declared per container variant with fallback paths documented"
     ]
   },
   {
@@ -301,7 +309,10 @@ const FACTORS = [
       "AI configuration files are validated at application startup",
       "Configuration changes are auditable (who changed what, when)",
       "Local development uses .env or equivalent files that are gitignored",
-      "Sensitive configuration values are never logged or exposed in error messages"
+      "Sensitive configuration values are never logged or exposed in error messages",
+      "AI service credentials use Workload Identity Federation (OIDC/IRSA/SPIFFE) rather than static API keys wherever the provider supports it",
+      "Feature flags for model selection and routing use an OpenFeature-compatible provider, not bespoke flag systems",
+      "Sensitive AI context (PII-containing RAG documents) is encrypted with HSM/KMS-backed keys; encryption keys are never co-located with the encrypted data"
     ]
   },
   {
@@ -316,7 +327,10 @@ const FACTORS = [
       "Evaluation results (quality, safety, cost) are recorded as part of the release metadata",
       "Container images are scanned for vulnerabilities before release",
       "Rollback is achieved by deploying a previous immutable release",
-      "Progressive delivery mechanisms (canary, shadow) are used for AI feature releases"
+      "Progressive delivery mechanisms (canary, shadow) are used for AI feature releases",
+      "An AI Bill of Materials (CycloneDX 1.6 ML or SPDX 3.0 AI) is emitted as a release artifact and signed",
+      "SLSA provenance attestations are generated for container images, prompt bundles, and fine-tuned model weights",
+      "Release artifacts are signed (sigstore/cosign) and signatures are verified at deploy time"
     ]
   },
   {
@@ -331,7 +345,10 @@ const FACTORS = [
       "Evaluation results are tracked over time to detect trends and regressions",
       "New failure modes discovered in production are added to evaluation datasets",
       "Model upgrades and prompt changes are evaluated before deployment",
-      "Online evaluation continuously monitors production output quality"
+      "Online evaluation continuously monitors production output quality",
+      "Synthetic eval data generation pipelines scale coverage beyond human-labeled examples with quality filtering",
+      "LLM-as-judge calibration is tracked against a locked human anchor set; alerts fire when judge-human agreement drops below threshold",
+      "Public benchmarks (MMLU, SWE-bench, HumanEval, etc.) are used as reference points during model selection, not as primary eval gates"
     ]
   },
   {
@@ -348,7 +365,11 @@ const FACTORS = [
       "EU AI Act risk classification is determined and documented for each AI system",
       "High-risk AI systems implement mandatory requirements: risk management, data governance, technical documentation, record-keeping, transparency, human oversight, and accuracy/robustness testing",
       "An AI incident response playbook exists and is practiced",
-      "Red teaming exercises run on a defined cadence with adversarial eval datasets maintained in CI"
+      "Red teaming exercises run on a defined cadence with adversarial eval datasets maintained in CI",
+      "AI-generated content carries C2PA Content Credentials and/or SynthID-class watermarks (EU AI Act Article 50, applied 2 Aug 2026)",
+      "ISO/IEC 42001 AIMS or equivalent management system is in place, cross-mapped to NIST AI RMF and EU AI Act controls",
+      "Training, fine-tuning, and RAG datasets carry license declarations captured in the AIBOM (Factor 5)",
+      "Crawlers and ingestion pipelines respect AI opt-out signals (robots.txt, noai/noimageai, C2PA training_mining)"
     ]
   },
   {
@@ -363,7 +384,10 @@ const FACTORS = [
       "Agent credentials use short-lived, scoped tokens with automatic rotation",
       "Trust boundaries are enforced between users, agents, and tools",
       "Rate limits and cost budgets are enforced per agent",
-      "Agent permission policies are reviewed regularly and follow least-privilege principles"
+      "Agent permission policies are reviewed regularly and follow least-privilege principles",
+      "Computer-use / browser-agent sessions run in per-session sandboxes with scoped action policy and out-of-band confirmation for irreversible actions",
+      "GPU TEE attestation (H100/H200/Blackwell Confidential Computing) is required for inference on regulated/sensitive data",
+      "MCP authorization uses OAuth 2.1 with scoped, short-lived tokens"
     ]
   },
   {
@@ -378,7 +402,10 @@ const FACTORS = [
       "Streaming responses send proper completion signals during shutdown",
       "Model loading is optimized through caching, preloading, or quantization",
       "Request handling is idempotent to support crash recovery",
-      "SIGTERM handlers are registered and tested"
+      "SIGTERM handlers are registered and tested",
+      "Kubernetes PodDisruptionBudgets protect inference pods during node drain; GPU memory is explicitly released on shutdown",
+      "Spot/preemptible GPU instance handling is tested: SIGTERM mid-inference triggers graceful drain and checkpoint before exit",
+      "CRIU checkpoint-restore is evaluated for model-serving pods with startup times exceeding readiness SLO targets"
     ]
   },
   {
@@ -393,7 +420,11 @@ const FACTORS = [
       "Rate limiting is implemented client-side for all AI backing services",
       "Credentials for AI services are managed through secrets management (Factor 4)",
       "Cost, latency, and availability are monitored per backing service",
-      "Backing service dependencies are documented with their operational characteristics"
+      "Backing service dependencies are documented with their operational characteristics",
+      "GraphRAG / knowledge graph services are treated as attached resources when multi-hop entity reasoning is required",
+      "Hybrid search (BM25 + vector + reranker) uses three independently swappable backing services",
+      "Feature stores are declared as backing services with latency SLOs for online serving",
+      "Object stores are used for multimodal binary content; applications reference assets by URI, not embedded binary"
     ]
   },
   {
@@ -408,7 +439,10 @@ const FACTORS = [
       "Automated parity checks compare configurations across environments",
       "Ephemeral environments spin up per branch to validate AI-generated code with production parity",
       "Staging data is refreshed on a regular cadence",
-      "The evaluation suite (Factor 6) runs against the same model configuration used in production"
+      "The evaluation suite (Factor 6) runs against the same model configuration used in production",
+      "Dev container specs are versioned in the repository and include AI-specific dependencies (CUDA, model files, environment variables)",
+      "Data-residency parity is validated: staging AI provider calls and data stores use the same region/geography as production",
+      "Traffic mirroring (shadow mode) is available via the AI Gateway for validating new models or prompts against production traffic distributions"
     ]
   },
   {
@@ -421,29 +455,50 @@ const FACTORS = [
       "Embedding caching avoids recomputation of embeddings for unchanged content",
       "Prompt structure maximizes provider-side prefix/context caching",
       "Cache invalidation strategies account for time, content changes, and model updates",
-      "Cache hit rates and cost savings are monitored (Factor 14)",
+      "Cache hit rates and cost savings are monitored (Factor 15)",
       "Any process instance can handle any request \u2014 no sticky sessions required",
       "KV cache management is configured for self-hosted model serving",
-      "Cache storage itself is a backing service (Factor 10), not local process memory"
+      "Cache storage itself is a backing service (Factor 10), not local process memory",
+      "Self-hosted inference engines have PagedAttention and prefix-tree KV caching configured; GPU memory utilization and prefix cache hit rate are monitored",
+      "Speculative decoding is evaluated for output-heavy task types and enabled where it improves throughput without quality loss",
+      "Multi-region cache replication strategy is defined and respects data residency constraints"
     ]
   },
   {
-    num: 13, name: "Adaptive Concurrency", tier: "operation",
+    num: 13, name: "Durable Agent Runtime", tier: "operation",
+    items: [
+      "Long-running agent execution state is persisted in a durable runtime (Temporal, Restate, Inngest, Dapr Workflows, or framework SDK)",
+      "Tool calls are idempotent or guarded by idempotency keys to make replay safe",
+      "Workflow definitions are versioned and replayable from the durable journal",
+      "Human-in-the-loop gates are implemented as durable interrupts (signals/events), not synchronous blocks",
+      "Recovery from worker preemption (spot GPU, OOM, deploy) is exercised in CI",
+      "Long-running workflow timeouts and heartbeats are configured per step",
+      "Step-by-step traces are emitted from the workflow engine and correlated with Factor 15 telemetry",
+      "Per-tool retry policies are bounded with exponential backoff and jitter",
+      "Workflow code is separated from non-deterministic tool code to preserve replay determinism",
+      "State migrations between workflow versions are tested when the SDK or workflow signature changes"
+    ]
+  },
+  {
+    num: 14, name: "Adaptive Concurrency", tier: "operation",
     items: [
       "Each process type is independently scalable with appropriate resource definitions",
       "GPU workloads scale on GPU-specific metrics (utilization, memory), not CPU",
       "AI provider rate limits are respected through client-side concurrency control",
-      "Cost budgets are enforced as scaling constraints — circuit breakers aligned with Factor 18 budget hierarchy",
+      "Cost budgets are enforced as scaling constraints — circuit breakers aligned with Factor 20 budget hierarchy",
       "Auto-scaling signals include AI-specific metrics (queue depth, token throughput, cost rate)",
       "Interactive and batch workloads use different scaling strategies",
       "Multi-provider routing balances load across providers based on capacity and cost",
       "Batch processing is used for throughput-oriented workloads",
       "Scale-down respects graceful shutdown (Factor 9) with drain timeouts",
-      "Scaling decisions and cost impact are observable (Factor 14)"
+      "Scaling decisions and cost impact are observable (Factor 15)",
+      "Thinking-token budgets are configured per route (effort low/medium/high/auto) and rate-limited separately from output tokens",
+      "Inference placement (edge/NPU vs GPU vs cloud) is a routing decision, not hardcoded",
+      "Inference-engine choice (vLLM / TensorRT-LLM / TGI / SGLang) is pinned per release and measured in tokens/sec/dollar"
     ]
   },
   {
-    num: 14, name: "Full-Spectrum Observability", tier: "operation",
+    num: 15, name: "Full-Spectrum Observability", tier: "operation",
     items: [
       "All AI operations emit structured log events with token counts, cost, latency, and model version",
       "Distributed traces span the full AI pipeline (retrieval \u2192 generation \u2192 safety check)",
@@ -454,11 +509,15 @@ const FACTORS = [
       "Alert rules cover cost anomalies, quality regressions, safety spikes, and provider degradation",
       "Prompt and completion logging respects PII policies (redacted or hashed)",
       "Business outcomes (adoption, task completion, revenue impact) are tracked per AI feature",
-      "Observability data is retained long enough to support trend analysis and incident investigation"
+      "Observability data is retained long enough to support trend analysis and incident investigation",
+      "Telemetry conforms to OpenTelemetry GenAI semantic conventions (gen_ai.* attributes and metrics)",
+      "Carbon-per-request and energy-per-request are tracked as standard metrics, with regional grid factors",
+      "Thinking-token ratio is monitored per route as a saturation signal",
+      "Fallback-drift detection alerts when multi-provider fallback rate exceeds baseline"
     ]
   },
   {
-    num: 15, name: "Model Lifecycle Management", tier: "intelligence",
+    num: 16, name: "Model Lifecycle Management", tier: "intelligence",
     items: [
       "A model registry documents all models in use (provider, version, purpose, status, owner)",
       "Production models are pinned to specific versions, not \u201clatest\u201d",
@@ -470,11 +529,15 @@ const FACTORS = [
       "Model distillation pipelines (teacher \u2192 student) are evaluated for quality gap vs. cost reduction",
       "Model changes are tracked in the same release process as code changes (Factor 5)",
       "Embedding model changes are planned as data migration events",
-      "Model performance is continuously monitored in production (Factor 14)"
+      "Model performance is continuously monitored in production (Factor 15)",
+      "LoRA/QLoRA adapters are registered as first-class model artifacts with base model reference, training data version, and eval scores",
+      "Alignment technique (RLHF/DPO/RLAIF) and training dataset version are recorded in the registry for every fine-tuned model",
+      "Teacher model license is verified and documented before using its outputs as distillation training data",
+      "Open-weight models are pinned to a specific Hugging Face commit hash with VRAM requirements declared in the registry"
     ]
   },
   {
-    num: 16, name: "Prompt and Context Engineering", tier: "intelligence",
+    num: 17, name: "Prompt and Context Engineering", tier: "intelligence",
     items: [
       "All prompts are stored in version control as named, reviewable files",
       "Prompt changes go through pull request review and evaluation (Factor 6)",
@@ -484,20 +547,22 @@ const FACTORS = [
       "Few-shot examples are curated, versioned, and selected dynamically based on relevance",
       "Prompt templates are validated at build time (variables defined, within budget)",
       "Conversation history management has a defined strategy (truncation, summarization)",
-      "Prompt effectiveness is measured through evaluations (Factor 6) and production monitoring (Factor 14)",
+      "Prompt effectiveness is measured through evaluations (Factor 6) and production monitoring (Factor 15)",
       "Context assembly strategies handle overflow gracefully (truncation, prioritization)",
-      "Extended thinking / reasoning token budgets are configured per task type with cost awareness (Factor 18)",
-      "Multimodal output generation (images, audio) includes safety scanning and AI-generated content disclosure"
+      "Extended thinking / reasoning token budgets are configured per task type with cost awareness (Factor 20)",
+      "Multimodal output generation (images, audio) includes safety scanning and AI-generated content disclosure",
+      "GraphRAG is used for multi-hop entity queries; standard vector RAG for point-in-time retrieval; retrieval recall vs. context position is monitored",
+      "Automatic prompt optimization (DSPy, TextGrad, or equivalent) is evaluated for high-traffic prompts; optimized prompts are committed as versioned artifacts"
     ]
   },
   {
-    num: 17, name: "Agent Orchestration and Bounded Autonomy", tier: "intelligence",
+    num: 18, name: "Agent Orchestration and Bounded Autonomy", tier: "intelligence",
     items: [
       "Every agent has a defined purpose, tool set, and execution budget",
       "Tool permissions are enforced architecturally (code), not just through prompts",
       "Execution budgets (steps, tokens, cost, time) are enforced with hard limits",
       "Human-in-the-loop gates exist for high-risk actions",
-      "Agent actions are fully observable with distributed tracing (Factor 14)",
+      "Agent actions are fully observable with distributed tracing (Factor 15)",
       "Multi-agent orchestration uses defined patterns (router, pipeline, supervisor) — via Agent SDKs or custom implementation",
       "Agents checkpoint state periodically to enable resume after failures",
       "Failed agent actions can be rolled back where possible",
@@ -505,11 +570,30 @@ const FACTORS = [
       "Agent tools are provided via MCP servers where possible, enabling dynamic discovery and swappability (Factor 10)",
       "Multi-agent communication uses standardized protocols (A2A) for cross-team and cross-framework interoperability",
       "Computer use agents run in sandboxed environments with tighter budgets and confirmation gates",
-      "Agent execution patterns and budget usage are monitored for optimization"
+      "Agent execution patterns and budget usage are monitored for optimization",
+      "Skills are versioned, registered artifacts — agents declare capabilities as skill-name + version, not inline tool definitions",
+      "Voice/realtime agents have TTFA SLOs configured, VAD barge-in handling implemented, and session state persisted (Factor 13)",
+      "Reflexion / self-critique loops are gated on task complexity with token budget tracked separately; quality improvement is validated in the eval suite",
+      "Agent swarms (CrewAI, AutoGen, MetaGPT, etc.) have aggregate swarm-level budgets and circuit breakers in addition to per-agent limits"
     ]
   },
   {
-    num: 18, name: "AI Economics and Cost Architecture", tier: "intelligence",
+    num: 19, name: "Agent Memory Architecture", tier: "intelligence",
+    items: [
+      "Memory layers (vector, graph, episodic) are explicitly modeled and named for the agent",
+      "Memory writes are scoped by tenant and end-user identity to prevent cross-contamination",
+      "Memory recall is scored, filtered, and budgeted before injection into the prompt (cross-ref Factor 17)",
+      "Memory decay, summarization, or pruning policies are defined and enforced",
+      "Right-to-erasure (GDPR/LGPD) is implemented across every memory store, not just primary databases",
+      "Memory provenance is auditable — each record carries its origin, author, and timestamp",
+      "Cross-session persistent memory is clearly distinguished from ephemeral cache (Factor 12) and from RAG knowledge stores",
+      "Memory write paths defend against poisoning (validate, classify, or summarize before persist)",
+      "Memory access latency is monitored alongside generation latency (Factor 15)",
+      "A memory inspection / replay tool exists for debugging agent behavior post-incident"
+    ]
+  },
+  {
+    num: 20, name: "AI Economics and Cost Architecture", tier: "intelligence",
     items: [
       "A cost model documents expected per-request and per-feature costs",
       "Model routing directs requests to the most cost-effective model that meets quality needs",
@@ -521,7 +605,14 @@ const FACTORS = [
       "Prompt and output token budgets are configured to prevent waste",
       "Cost optimization strategies (routing, caching, batching) are actively used",
       "Reasoning model thinking tokens are budgeted per task type and tracked separately from output tokens",
-      "AI cost is a line item in capacity planning and business case analysis"
+      "AI cost is a line item in capacity planning and business case analysis",
+      "All production model traffic flows through an AI Gateway (LiteLLM, Portkey, Kong AI, Cloudflare AI Gateway, or equivalent) — never via direct SDK calls",
+      "Every scheduled job and production route declares an explicit pinned model + version + thinking-effort; \"latest\" aliases are forbidden",
+      "Steady-state high-volume workloads run on reserved/provisioned throughput (Bedrock PT, Azure PTUs, or reserved GPU)",
+      "Carbon-per-request (gCO₂e) is tracked alongside dollar cost",
+      "An AI incident log is maintained (separate from general observability) capturing model version, sanitized I/O, and safety activations for regulatory reporting",
+      "Vendor MSA liability terms (caps, indemnification, IP coverage) are reviewed annually and documented alongside model registry entries",
+      "Applications in EU AI Act high-risk categories have completed or scheduled a Conformity Assessment ahead of the August 2, 2026 enforcement deadline"
     ]
   }
 ];
@@ -529,8 +620,8 @@ const FACTORS = [
 const TIERS = {
   foundation:    { label: "Tier 1: Foundation",    color: "#2563eb", factors: [1,2,3,4] },
   construction:  { label: "Tier 2: Construction",  color: "#d97706", factors: [5,6,7,8] },
-  operation:     { label: "Tier 3: Operation",     color: "#059669", factors: [9,10,11,12,13,14] },
-  intelligence:  { label: "Tier 4: Intelligence",  color: "#7c3aed", factors: [15,16,17,18] }
+  operation:     { label: "Tier 3: Operation",     color: "#059669", factors: [9,10,11,12,13,14,15] },
+  intelligence:  { label: "Tier 4: Intelligence",  color: "#7c3aed", factors: [16,17,18,19,20] }
 };
 
 const MATURITY_LEVELS = [
@@ -547,8 +638,9 @@ const SHORT_NAMES = [
   "Config & Credentials", "Immutable Build", "Eval-Driven Dev",
   "Responsible AI", "Identity & Trust", "Disposability",
   "Backing Services", "Env Parity", "Stateless + Caching",
-  "Adaptive Concurrency", "Observability", "Model Lifecycle",
-  "Prompt & Context", "Agent Orchestration", "AI Economics"
+  "Durable Agent Runtime", "Adaptive Concurrency", "Observability",
+  "Model Lifecycle", "Prompt & Context", "Agent Orchestration",
+  "Agent Memory", "AI Economics"
 ];
 
 const COMPARE_COLORS = [

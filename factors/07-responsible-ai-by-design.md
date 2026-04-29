@@ -1,3 +1,10 @@
+---
+title: "07. Responsible AI by Design"
+parent: "Tier 2: Construction"
+nav_order: 3
+description: "Build safety, fairness, and accountability into the architecture from the start."
+---
+
 # Factor 7: Responsible AI by Design
 
 > Build safety, fairness, and accountability into the architecture from the start — not as an afterthought or a compliance checkbox.
@@ -165,7 +172,7 @@ class BiasMonitor:
 ```
 
 ### Human-in-the-Loop Gates
-Define clear criteria for *when* human oversight is required. This factor owns the trigger conditions; Factor 8 defines *who* can approve, and Factor 17 defines *how* approval is executed at runtime.
+Define clear criteria for *when* human oversight is required. This factor owns the trigger conditions; Factor 8 defines *who* can approve, and Factor 18 defines *how* approval is executed at runtime.
 
 ```yaml
 human_review_triggers:
@@ -298,12 +305,104 @@ eu_ai_act:
 ```
 
 **Architectural implications:**
-- **Automatic logging** is not optional for high-risk systems — Factor 14 (Observability) must capture every decision input and output for traceability.
-- **Human oversight mechanisms** must be architectural, not advisory — Factor 17 (Agent Orchestration) human-in-the-loop gates satisfy this when properly implemented.
+- **Automatic logging** is not optional for high-risk systems — Factor 15 (Observability) must capture every decision input and output for traceability.
+- **Human oversight mechanisms** must be architectural, not advisory — Factor 18 (Agent Orchestration) human-in-the-loop gates satisfy this when properly implemented.
 - **Risk management** is continuous, not a one-time assessment — integrate AI Act risk reviews into your CI/CD pipeline (Factor 5) and evaluation suite (Factor 6).
 - **Conformity assessment** must be completed before deployment. For high-risk systems, this may require third-party audit.
 
 The AI Act also prohibits certain AI practices outright (social scoring, real-time biometric identification in public spaces with exceptions, manipulation of vulnerable groups). Ensure your system does not fall into the "unacceptable risk" category.
+
+**Enforcement timeline (as of 2026):**
+
+| Date | Milestone |
+|------|-----------|
+| 2 Feb 2025 | Prohibited AI practices became illegal |
+| 2 Aug 2025 | GPAI obligations applied; pre-existing GPAI models must comply by 2 Aug 2027 |
+| **2 Aug 2026** | **EU Commission's enforcement powers activate (fines, recalls, mitigations); Article 50 transparency obligations apply** |
+| 2 Aug 2027 | Pre-2025 GPAI models must reach full compliance |
+
+Treat 2 Aug 2026 as a hard deadline for any system serving EU users.
+
+### Article 50: Content Provenance and Watermarking
+
+EU AI Act Article 50 imposes **transparency obligations on AI-generated and AI-manipulated content**. By 2 Aug 2026, providers and deployers of generative AI systems must ensure:
+
+- AI-generated images, audio, video, and text are **detectable as AI-generated** through machine-readable signals (watermarks, metadata, cryptographic provenance, or other techniques)
+- Deepfakes are clearly disclosed
+- AI-generated text published to inform the public on matters of public interest is disclosed (with limited exceptions for editorial review)
+
+The two consolidating technical layers:
+
+- **C2PA Content Credentials** (Content Authenticity Initiative): cryptographically signed metadata attached to media — describes who/what/when/how the content was created, including AI involvement. Adopted by Adobe, Microsoft, Google, OpenAI. Verify-on-display.
+- **SynthID-class watermarks** (Google SynthID for text/image/video/audio, Meta Video Seal): signal-in-content watermarks that survive lossy compression and minor edits. Detect-by-tool.
+
+These are complementary, not alternatives. Production AI systems generating user-visible content should:
+
+```yaml
+content_provenance:
+  c2pa:
+    enabled: true
+    sign_with: cosign-key-prod         # cryptographic signing key
+    metadata:
+      assertions:
+        - c2pa.created_by: "ExampleApp v2.3"
+        - c2pa.actions:
+            - action: c2pa.created
+              softwareAgent: "claude-sonnet-4-6"
+        - c2pa.training_mining: notAllowed   # opt-out signal for crawlers
+
+  watermark:
+    enabled: true
+    method: synthid                    # or equivalent
+    apply_to: [image, audio, text_long_form]
+    minimum_detection_confidence: 0.95
+
+  monitoring:
+    detection_test_corpus: weekly       # verify watermark survives normal handling
+    c2pa_signature_verification: required_at_publish
+```
+
+Open problem: C2PA-vs-watermark contradictions can arise when content is re-edited. Define your handling policy explicitly (re-sign, drop, flag).
+
+### ISO/IEC 42001 and NIST AI RMF Alignment
+
+EU AI Act is the legal layer. The de-facto compliance stack pairs it with two methodological frameworks:
+
+- **ISO/IEC 42001** (AI Management System, AIMS) — certifiable AI management standard, analogous to ISO 27001 for security. Required by an increasing share of enterprise procurement RFPs.
+- **NIST AI RMF** + **NIST GenAI Profile** + **Critical Infrastructure Profile** (Apr 2026 concept note, SP 800-53 AI Control Overlays through 2026) — methodology and controls catalog used by US federal procurement and many regulated industries.
+
+The mapping isn't 1:1, but the controls overlap heavily. Build a single internal control set that satisfies all three. Keep evidence in one place; cross-map at audit time.
+
+```yaml
+compliance_evidence_map:
+  control_set: internal_v3
+  source_frameworks:
+    - eu_ai_act_high_risk
+    - iso_42001_aims_clauses
+    - nist_ai_rmf_govern_map_measure_manage
+    - nist_genai_profile
+  evidence_store: s3://compliance-evidence/
+  controls:
+    risk_management:
+      eu_ai_act: art.9
+      iso_42001: clause_6.1
+      nist_ai_rmf: GOVERN-3.1, MAP-1.1
+      evidence: risk-register.yaml
+    automatic_logging:
+      eu_ai_act: art.12
+      iso_42001: clause_8.4
+      nist_ai_rmf: MEASURE-2.4
+      evidence: factor-15-observability/
+```
+
+### Training Data Licensing and Copyright
+
+Generative AI raised unsettled but high-stakes questions about training data licensing and the IP status of model outputs. Treat these as architectural concerns, not legal afterthoughts:
+
+- **Training data provenance**: every dataset used (pre-training, fine-tuning, RAG corpus) carries a license declaration. Refuse to ingest data without one. Capture in the AIBOM (Factor 5).
+- **Output IP risk**: for code-generation features, document the model provider's indemnification posture. Some providers offer customer indemnification for output IP claims (Microsoft, Google, Anthropic for specific tiers); others don't.
+- **Opt-out signals**: respect `robots.txt`, `noai`/`noimageai` meta tags, C2PA `training_mining: notAllowed` assertions when crawling for RAG.
+- **PII in training data**: training/fine-tuning datasets are subject to GDPR/LGPD just like operational data. Right-to-erasure may require re-training or differential-privacy mitigation.
 
 ### Non-Production Data Anonymization
 Non-production environments (dev, staging, QA) must never contain real personal data. This is one of the most common — and most preventable — regulatory violations.
@@ -406,3 +505,8 @@ ai_incident_playbook:
 - [ ] High-risk AI systems implement mandatory requirements: risk management, data governance, technical documentation, record-keeping, transparency, human oversight, and accuracy/robustness testing
 - [ ] An AI incident response playbook exists and is practiced
 - [ ] Red teaming exercises run on a defined cadence with adversarial eval datasets maintained in CI
+- [ ] AI-generated content carries C2PA Content Credentials and/or SynthID-class watermarks (EU AI Act Article 50, applied 2 Aug 2026)
+- [ ] An ISO/IEC 42001 AIMS or equivalent management system is in place, with cross-mapping to NIST AI RMF and EU AI Act controls
+- [ ] Training data, fine-tuning data, and RAG corpora carry license declarations captured in the AIBOM (Factor 5)
+- [ ] Crawlers and ingestion pipelines respect AI opt-out signals (robots.txt, noai/noimageai, C2PA training_mining)
+- [ ] EU AI Act Article 50 transparency disclosures (deepfakes, AI-generated public-interest text, system disclosure) are implemented at content-publish boundaries
