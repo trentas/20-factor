@@ -8,14 +8,14 @@ description: >
   extending the original 12-Factor App for LLMs, agents, and AI-native systems.
 footer_text: >
   Licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>.
-  Contributions welcome on <a href="https://github.com/trentas/18-factor">GitHub</a>.
+  Contributions welcome on <a href="https://github.com/trentas/20-factor">GitHub</a>.
 
 keywords: ai, llm, agents, cloud-native, 12-factor, methodology, software-architecture
 lang: en
 icon: 🤖
 
 url: https://trentas.github.io
-baseurl: /18-factor
+baseurl: /20-factor
 
 last_updated: false
 back_to_top: true
