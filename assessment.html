@@ -1,244 +1,410 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The 20-Factor App — Maturity Assessment</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<style>
-  :root {
-    --bg: #ffffff;
-    --bg-card: #f8f9fa;
-    --bg-hover: #f0f1f3;
-    --text: #1a1a2e;
-    --text-muted: #6c757d;
-    --border: #dee2e6;
-    --accent: #4361ee;
-    --foundation: #2563eb;
-    --construction: #d97706;
-    --operation: #059669;
-    --intelligence: #7c3aed;
-    --shadow: 0 1px 3px rgba(0,0,0,0.08);
-    --shadow-lg: 0 4px 12px rgba(0,0,0,0.1);
-    --radius: 8px;
-  }
+---
+layout: page
+title: Maturity Assessment
+permalink: /assessment.html
+description: Score your application against the 20 factors and chart its maturity.
+nav: false
+---
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+
+<style>
+  .tfa {
+    font-feature-settings: "kern", "liga", "ss01";
+    --tfa-fill: rgba(20, 20, 30, 0.06);
+    --tfa-stroke: rgba(20, 20, 30, 0.7);
+  }
   @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #0f172a;
-      --bg-card: #1e293b;
-      --bg-hover: #334155;
-      --text: #e2e8f0;
-      --text-muted: #94a3b8;
-      --border: #334155;
-      --shadow: 0 1px 3px rgba(0,0,0,0.3);
-      --shadow-lg: 0 4px 12px rgba(0,0,0,0.4);
+    .tfa {
+      --tfa-fill: rgba(226, 232, 240, 0.07);
+      --tfa-stroke: rgba(226, 232, 240, 0.75);
     }
   }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    line-height: 1.6;
-    padding: 0 1rem;
+  html[data-theme="dark"] .tfa,
+  body[data-theme="dark"] .tfa,
+  .theme-dark .tfa {
+    --tfa-fill: rgba(226, 232, 240, 0.07);
+    --tfa-stroke: rgba(226, 232, 240, 0.75);
   }
 
-  .container { max-width: 1100px; margin: 0 auto; }
+  .tfa p { font-size: 1rem; line-height: 1.65; }
 
-  header { text-align: center; padding: 2rem 0 1rem; }
-  header h1 { font-size: 1.75rem; margin-bottom: 0.25rem; }
-  header p { color: var(--text-muted); font-size: 0.95rem; max-width: 600px; margin: 0 auto; }
+  .tfa-eyebrow,
+  .tfa-section-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--global-text-color-light);
+    font-weight: 500;
+    margin: 0 0 0.5rem;
+  }
+  .tfa-section-intro {
+    color: var(--global-text-color);
+    margin: 0 0 1.5rem;
+    max-width: 44rem;
+  }
 
-  /* Profile Bar */
-  .profile-bar {
+  .tfa-rule {
+    border: none;
+    border-top: 1px solid var(--global-divider-color);
+    margin: 3rem 0 2.25rem;
+  }
+
+  /* Profile bar */
+  .tfa-profile {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
+    gap: 1.25rem;
     flex-wrap: wrap;
-    padding: 0.75rem 0;
+    padding: 1rem 0;
+    border-top: 1px solid var(--global-divider-color);
+    border-bottom: 1px solid var(--global-divider-color);
   }
-  .profile-bar select {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 0.4rem 0.75rem;
-    border-radius: var(--radius);
-    font-size: 0.85rem;
+  .tfa-profile-group {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    flex-wrap: wrap;
+  }
+  .tfa-profile-group + .tfa-profile-group {
+    border-left: 1px solid var(--global-divider-color);
+    padding-left: 1.25rem;
+  }
+  .tfa-select {
+    background: transparent;
+    border: 1px solid var(--global-divider-color);
+    color: var(--global-text-color);
+    padding: 0.4rem 0.7rem;
+    border-radius: 0;
+    font-size: 0.92rem;
+    font-family: inherit;
     cursor: pointer;
-    min-width: 180px;
+    min-width: 14rem;
+    line-height: 1.3;
   }
-  .btn {
+  .tfa-select:focus { outline: none; border-color: var(--global-text-color); }
+
+  .tfa-link {
     background: none;
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-    padding: 0.4rem 0.75rem;
-    border-radius: var(--radius);
+    border: none;
+    color: var(--global-text-color);
+    border-bottom: 1px solid var(--global-divider-color);
+    padding: 0.18rem 0;
     cursor: pointer;
-    font-size: 0.85rem;
-    transition: all 0.15s;
-    white-space: nowrap;
+    font-size: 0.9rem;
+    font-family: inherit;
+    transition: border-color 0.15s, color 0.15s;
   }
-  .btn:hover { border-color: var(--accent); color: var(--accent); }
-  .btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-  .btn.danger:hover { border-color: #dc3545; color: #dc3545; }
+  .tfa-link:hover {
+    border-bottom-color: var(--global-text-color);
+    color: var(--global-text-color);
+  }
+  .tfa-link.is-active {
+    border-bottom-color: var(--global-text-color);
+    font-weight: 600;
+  }
+  .tfa-link.is-danger { color: var(--global-text-color-light); }
+  .tfa-link.is-danger:hover { color: #c0392b; border-bottom-color: #c0392b; }
 
-  /* Compare Panel */
-  .compare-panel {
+  /* Compare panel */
+  .tfa-compare {
     display: none;
-    justify-content: center;
-    gap: 1rem;
+    gap: 1.4rem;
     flex-wrap: wrap;
-    padding: 0.5rem 0;
+    padding: 0.85rem 0;
+    border-bottom: 1px solid var(--global-divider-color);
+    font-size: 0.9rem;
+    color: var(--global-text-color);
   }
-  .compare-panel.open { display: flex; }
-  .compare-item {
-    display: flex;
+  .tfa-compare.is-open { display: flex; }
+  .tfa-compare-item {
+    display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
-    font-size: 0.85rem;
+    gap: 0.45rem;
+    cursor: pointer;
   }
-  .compare-dot {
-    width: 10px;
-    height: 10px;
+  .tfa-compare-item input { accent-color: var(--global-text-color); }
+  .tfa-compare-dot {
+    width: 0.65rem;
+    height: 0.65rem;
     border-radius: 50%;
     display: inline-block;
     flex-shrink: 0;
   }
 
-  /* Chart Section */
-  .chart-section { display: flex; justify-content: center; padding: 1rem 0; }
-  .chart-wrap { width: 100%; max-width: 900px; height: 700px; position: relative; }
-  @media (max-width: 900px) { .chart-wrap { height: 500px; } }
+  /* Chart */
+  .tfa-chart-wrap {
+    width: 100%;
+    max-width: 880px;
+    height: 620px;
+    position: relative;
+    margin: 1.5rem auto 0.5rem;
+  }
+  @media (max-width: 720px) {
+    .tfa-chart-wrap { height: 460px; }
+  }
 
-  /* Summary Bar */
-  .summary-bar {
+  /* Summary grid */
+  .tfa-summary {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 0.75rem;
-    margin: 1rem 0 1.5rem;
+    grid-template-columns: repeat(5, 1fr);
+    border-top: 1px solid var(--global-divider-color);
+    border-bottom: 1px solid var(--global-divider-color);
+    margin: 0;
   }
-  .summary-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 0.75rem 1rem;
-    text-align: center;
-    box-shadow: var(--shadow);
+  .tfa-summary-cell {
+    padding: 1.05rem 1rem;
+    border-right: 1px solid var(--global-divider-color);
   }
-  .summary-card .label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
-  .summary-card .value { font-size: 1.5rem; font-weight: 700; margin-top: 0.15rem; }
-  .summary-card .sub { font-size: 0.8rem; color: var(--text-muted); }
-  .tier-foundation .value { color: var(--foundation); }
-  .tier-construction .value { color: var(--construction); }
-  .tier-operation .value { color: var(--operation); }
-  .tier-intelligence .value { color: var(--intelligence); }
+  .tfa-summary-cell:last-child { border-right: none; }
+  .tfa-summary-key {
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--global-text-color-light);
+    margin: 0 0 0.35rem;
+    font-weight: 500;
+  }
+  .tfa-summary-value {
+    font-size: 1.4rem;
+    font-weight: 600;
+    line-height: 1.05;
+    color: var(--global-text-color);
+    font-variant-numeric: tabular-nums;
+  }
+  .tfa-summary-sub {
+    font-size: 0.78rem;
+    color: var(--global-text-color-light);
+    margin-top: 0.3rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .tfa-summary-cell[data-tier="foundation"] .tfa-summary-value { color: #2563eb; }
+  .tfa-summary-cell[data-tier="construction"] .tfa-summary-value { color: #d97706; }
+  .tfa-summary-cell[data-tier="operation"] .tfa-summary-value { color: #059669; }
+  .tfa-summary-cell[data-tier="intelligence"] .tfa-summary-value { color: #7c3aed; }
 
-  /* Actions */
-  .actions { text-align: center; margin-bottom: 1.5rem; display: flex; justify-content: center; gap: 0.5rem; flex-wrap: wrap; }
-
-  /* Tier Group */
-  .tier-group { margin-bottom: 1.5rem; }
-  .tier-heading {
-    font-size: 0.85rem; font-weight: 600; text-transform: uppercase;
-    letter-spacing: 0.08em; padding: 0.5rem 0; margin-bottom: 0.5rem;
-    border-bottom: 2px solid var(--border);
-  }
-  .tier-heading.foundation { color: var(--foundation); border-color: var(--foundation); }
-  .tier-heading.construction { color: var(--construction); border-color: var(--construction); }
-  .tier-heading.operation { color: var(--operation); border-color: var(--operation); }
-  .tier-heading.intelligence { color: var(--intelligence); border-color: var(--intelligence); }
-
-  /* Factor Card */
-  .factor-card {
-    background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: var(--radius); margin-bottom: 0.5rem;
-    box-shadow: var(--shadow); overflow: hidden;
-  }
-  .factor-header {
-    display: flex; align-items: center; padding: 0.75rem 1rem;
-    cursor: pointer; user-select: none; gap: 0.75rem; transition: background 0.15s;
-  }
-  .factor-header:hover { background: var(--bg-hover); }
-  .factor-header .arrow { font-size: 0.7rem; transition: transform 0.2s; color: var(--text-muted); flex-shrink: 0; }
-  .factor-card.open .factor-header .arrow { transform: rotate(90deg); }
-  .factor-num { font-weight: 700; font-size: 0.85rem; color: var(--text-muted); min-width: 1.5rem; }
-  .factor-name { font-weight: 600; font-size: 0.95rem; flex: 1; }
-  .factor-score { font-size: 0.75rem; color: var(--text-muted); margin-right: 0.5rem; }
-  .maturity-badge {
-    font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem;
-    border-radius: 10px; color: #fff; white-space: nowrap; flex-shrink: 0;
+  @media (max-width: 720px) {
+    .tfa-summary { grid-template-columns: repeat(2, 1fr); }
+    .tfa-summary-cell { border-right: 1px solid var(--global-divider-color); border-bottom: 1px solid var(--global-divider-color); }
+    .tfa-summary-cell:nth-child(2n) { border-right: none; }
+    .tfa-summary-cell:nth-last-child(-n+2) { border-bottom: none; }
   }
 
-  .factor-body { display: none; padding: 0 1rem 0.75rem; border-top: 1px solid var(--border); }
-  .factor-card.open .factor-body { display: block; }
-
-  .checklist { list-style: none; padding: 0.5rem 0 0; }
-  .checklist li { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.35rem 0; font-size: 0.9rem; line-height: 1.45; }
-  .checklist li label { cursor: pointer; flex: 1; }
-  .checklist li input[type="checkbox"] {
-    margin-top: 0.25rem; flex-shrink: 0; width: 16px; height: 16px;
-    accent-color: var(--accent); cursor: pointer;
+  /* Action links */
+  .tfa-actions {
+    display: flex;
+    gap: 1.75rem;
+    flex-wrap: wrap;
+    margin: 1.5rem 0 1.75rem;
+    font-size: 0.92rem;
   }
-  .checklist li.is-na label { text-decoration: line-through; opacity: 0.45; }
-  .checklist li.is-na input[type="checkbox"] { opacity: 0.3; pointer-events: none; }
-  .na-btn {
-    flex-shrink: 0; font-size: 0.65rem; font-weight: 600;
-    padding: 0.1rem 0.35rem; border-radius: 4px;
-    border: 1px solid var(--border); background: none; color: var(--text-muted);
-    cursor: pointer; margin-top: 0.2rem; line-height: 1.2; transition: all 0.15s;
+
+  /* Tier groups + factor rows */
+  .tfa-tier-group { margin-bottom: 2.25rem; }
+  .tfa-tier-heading {
+    display: flex;
+    align-items: baseline;
+    gap: 0.85rem;
+    padding-bottom: 0.55rem;
+    margin-bottom: 0;
+    border-bottom: 1px solid var(--global-text-color);
   }
-  .na-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .na-btn.active { background: var(--text-muted); color: var(--bg); border-color: var(--text-muted); }
+  .tfa-tier-heading-num {
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    color: var(--global-text-color-light);
+    font-variant-numeric: tabular-nums;
+  }
+  .tfa-tier-heading-name {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--global-text-color);
+  }
+  .tfa-tier-heading-range {
+    font-size: 0.78rem;
+    color: var(--global-text-color-light);
+    letter-spacing: 0.04em;
+    margin-left: auto;
+  }
+  .tfa-tier-heading[data-tier="foundation"] { border-bottom-color: #2563eb; }
+  .tfa-tier-heading[data-tier="foundation"] .tfa-tier-heading-name { color: #2563eb; }
+  .tfa-tier-heading[data-tier="construction"] { border-bottom-color: #d97706; }
+  .tfa-tier-heading[data-tier="construction"] .tfa-tier-heading-name { color: #d97706; }
+  .tfa-tier-heading[data-tier="operation"] { border-bottom-color: #059669; }
+  .tfa-tier-heading[data-tier="operation"] .tfa-tier-heading-name { color: #059669; }
+  .tfa-tier-heading[data-tier="intelligence"] { border-bottom-color: #7c3aed; }
+  .tfa-tier-heading[data-tier="intelligence"] .tfa-tier-heading-name { color: #7c3aed; }
 
-  footer { text-align: center; padding: 2rem 0; color: var(--text-muted); font-size: 0.85rem; }
-  footer a { color: var(--accent); text-decoration: none; }
-  footer a:hover { text-decoration: underline; }
+  .tfa-factor { border-bottom: 1px solid var(--global-divider-color); }
+  .tfa-factor-head {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    padding: 1rem 0.25rem;
+    cursor: pointer;
+    user-select: none;
+  }
+  .tfa-factor-head:hover .tfa-factor-name { text-decoration: underline; text-underline-offset: 3px; }
+  .tfa-factor-arrow {
+    font-size: 0.65rem;
+    color: var(--global-text-color-light);
+    transition: transform 0.2s;
+    width: 0.85rem;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+  .tfa-factor.is-open .tfa-factor-arrow { transform: rotate(90deg); }
+  .tfa-factor-num {
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    color: var(--global-text-color-light);
+    font-variant-numeric: tabular-nums;
+    width: 1.6rem;
+    flex-shrink: 0;
+  }
+  .tfa-factor-name {
+    font-size: 1.02rem;
+    font-weight: 600;
+    color: var(--global-text-color);
+    flex: 1;
+    line-height: 1.35;
+  }
+  .tfa-factor-score {
+    font-size: 0.85rem;
+    color: var(--global-text-color-light);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .tfa-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.2rem 0.55rem;
+    border: 1px solid var(--global-divider-color);
+    color: var(--global-text-color-light);
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .tfa-badge-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
 
-  /* Hidden file input */
+  .tfa-factor-body {
+    display: none;
+    padding: 0 0.25rem 1rem 3.5rem;
+  }
+  .tfa-factor.is-open .tfa-factor-body { display: block; }
+
+  .tfa-checklist { list-style: none; padding: 0; margin: 0; }
+  .tfa-checklist li {
+    display: grid;
+    grid-template-columns: 1.2rem 1fr auto;
+    column-gap: 0.65rem;
+    align-items: flex-start;
+    padding: 0.55rem 0;
+    font-size: 0.94rem;
+    line-height: 1.5;
+    border-bottom: 1px dashed var(--global-divider-color);
+  }
+  .tfa-checklist li:last-child { border-bottom: none; }
+  .tfa-checklist input[type="checkbox"] {
+    margin-top: 0.2rem;
+    width: 0.95rem;
+    height: 0.95rem;
+    accent-color: var(--global-text-color);
+    cursor: pointer;
+  }
+  .tfa-checklist label {
+    cursor: pointer;
+    color: var(--global-text-color);
+    margin: 0;
+  }
+  .tfa-checklist li.is-na label { text-decoration: line-through; opacity: 0.45; }
+  .tfa-checklist li.is-na input[type="checkbox"] { opacity: 0.3; pointer-events: none; }
+  .tfa-na {
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.15rem 0.4rem;
+    background: transparent;
+    border: 1px solid var(--global-divider-color);
+    color: var(--global-text-color-light);
+    cursor: pointer;
+    margin-top: 0.05rem;
+    line-height: 1.2;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .tfa-na:hover { border-color: var(--global-text-color); color: var(--global-text-color); }
+  .tfa-na.is-active {
+    background: var(--global-text-color-light);
+    color: var(--global-bg-color);
+    border-color: var(--global-text-color-light);
+  }
+
+  @media (max-width: 720px) {
+    .tfa-factor-head { flex-wrap: wrap; gap: 0.6rem; }
+    .tfa-factor-name { flex-basis: 100%; order: 5; padding-left: 2.5rem; }
+    .tfa-factor-body { padding-left: 1.5rem; }
+  }
+
   #importInput { display: none; }
-
-  @media (max-width: 600px) {
-    header h1 { font-size: 1.35rem; }
-    .chart-wrap { max-width: 100%; }
-    .summary-bar { grid-template-columns: repeat(2, 1fr); }
-  }
 </style>
-</head>
-<body>
-<div class="container">
-  <header>
-    <h1>The 20-Factor App — Maturity Assessment</h1>
-    <p>Check off compliance items for each factor to see your application's maturity level on the radar chart. Progress is saved automatically.</p>
-  </header>
 
-  <div class="profile-bar" id="profileBar"></div>
-  <div class="compare-panel" id="comparePanel"></div>
+<div class="tfa" markdown="0">
 
-  <section class="chart-section">
-    <div class="chart-wrap">
-      <canvas id="radarChart"></canvas>
-    </div>
-  </section>
+<p class="tfa-eyebrow">How to use</p>
+<p class="tfa-section-intro">
+  Tick the items you have in place. Each factor scores from <em>None</em> to <em>Optimized</em>
+  based on the share of applicable items checked, and the radar shows where your application stands across all twenty.
+  Mark items as <strong>N/A</strong> when they don't apply. Progress is saved to your browser; export the JSON to share or back up.
+</p>
 
-  <section class="summary-bar" id="summaryBar"></section>
+<hr class="tfa-rule">
 
-  <div class="actions">
-    <button class="btn" onclick="resetAll()">Reset All</button>
-    <button class="btn" onclick="expandAll()">Expand All</button>
-    <button class="btn" onclick="collapseAll()">Collapse All</button>
-  </div>
+<p class="tfa-section-label">Profile</p>
+<div class="tfa-profile" id="profileBar"></div>
+<div class="tfa-compare" id="comparePanel"></div>
 
-  <main id="factorList"></main>
+<hr class="tfa-rule">
 
-  <input type="file" id="importInput" accept=".json">
+<p class="tfa-section-label">Maturity radar</p>
+<div class="tfa-chart-wrap">
+  <canvas id="radarChart"></canvas>
+</div>
 
-  <footer>
-    <a href="https://github.com/trentas/20-factor">Back to The 20-Factor App Methodology</a>
-  </footer>
+<hr class="tfa-rule">
+
+<p class="tfa-section-label">Score by tier</p>
+<section class="tfa-summary" id="summaryBar"></section>
+
+<hr class="tfa-rule">
+
+<p class="tfa-section-label">Checklist</p>
+<p class="tfa-section-intro">
+  Twenty factors grouped by tier. Expand a row to score its compliance items.
+</p>
+
+<nav class="tfa-actions" aria-label="Checklist actions">
+  <button class="tfa-link" type="button" onclick="resetAll()">Reset all &rarr;</button>
+  <button class="tfa-link" type="button" onclick="expandAll()">Expand all &rarr;</button>
+  <button class="tfa-link" type="button" onclick="collapseAll()">Collapse all &rarr;</button>
+</nav>
+
+<main id="factorList"></main>
+
+<input type="file" id="importInput" accept=".json">
+
 </div>
 
 <script>
@@ -319,11 +485,11 @@ const FACTORS = [
     num: 5, name: "Immutable Build Pipeline", tier: "construction",
     items: [
       "Build, evaluation, release, and run stages are strictly separated",
-      "Build artifacts are immutable \u2014 never patched in place",
+      "Build artifacts are immutable — never patched in place",
       "Each release has a unique, traceable version identifier",
       "Prompt templates are compiled and validated during the build stage",
       "Model versions are resolved and pinned at build time, recorded in the release manifest",
-      "Automated evaluations gate the pipeline \u2014 failed evals block the release",
+      "Automated evaluations gate the pipeline — failed evals block the release",
       "Evaluation results (quality, safety, cost) are recorded as part of the release metadata",
       "Container images are scanned for vulnerabilities before release",
       "Rollback is achieved by deploying a previous immutable release",
@@ -377,7 +543,7 @@ const FACTORS = [
     items: [
       "Every AI agent has a unique, verifiable identity distinct from users and other services",
       "Agent permissions are explicitly declared and enforced architecturally (not just via prompts)",
-      "Agent permissions are a strict subset of the delegating user\u2019s permissions",
+      "Agent permissions are a strict subset of the delegating user’s permissions",
       "Bounded autonomy defines what agents can do without human approval",
       "Human approval workflows exist for high-risk agent actions",
       "All agent actions are audit-logged with agent ID, user ID, action, and result",
@@ -448,7 +614,7 @@ const FACTORS = [
   {
     num: 12, name: "Stateless Processes with Intelligent Caching", tier: "operation",
     items: [
-      "Application processes are stateless \u2014 no in-process state survives a restart",
+      "Application processes are stateless — no in-process state survives a restart",
       "Conversation history and session data are stored in backing services",
       "Semantic caching reduces redundant LLM calls for similar queries",
       "Provider-level prompt caching is enabled with prompts structured for maximum cache hit rates",
@@ -456,7 +622,7 @@ const FACTORS = [
       "Prompt structure maximizes provider-side prefix/context caching",
       "Cache invalidation strategies account for time, content changes, and model updates",
       "Cache hit rates and cost savings are monitored (Factor 15)",
-      "Any process instance can handle any request \u2014 no sticky sessions required",
+      "Any process instance can handle any request — no sticky sessions required",
       "KV cache management is configured for self-hosted model serving",
       "Cache storage itself is a backing service (Factor 10), not local process memory",
       "Self-hosted inference engines have PagedAttention and prefix-tree KV caching configured; GPU memory utilization and prefix cache hit rate are monitored",
@@ -501,7 +667,7 @@ const FACTORS = [
     num: 15, name: "Full-Spectrum Observability", tier: "operation",
     items: [
       "All AI operations emit structured log events with token counts, cost, latency, and model version",
-      "Distributed traces span the full AI pipeline (retrieval \u2192 generation \u2192 safety check)",
+      "Distributed traces span the full AI pipeline (retrieval → generation → safety check)",
       "Token economics metrics are tracked by model, provider, feature, and tenant",
       "Quality metrics from online evaluation are tracked and visualized",
       "Safety monitoring tracks guardrail triggers, PII detections, and content filter activations",
@@ -520,13 +686,13 @@ const FACTORS = [
     num: 16, name: "Model Lifecycle Management", tier: "intelligence",
     items: [
       "A model registry documents all models in use (provider, version, purpose, status, owner)",
-      "Production models are pinned to specific versions, not \u201clatest\u201d",
+      "Production models are pinned to specific versions, not “latest”",
       "A structured evaluation process exists for evaluating model candidates",
       "Model A/B testing infrastructure enables controlled rollout of model changes",
       "Deprecation plans exist for every model in use, with migration timelines",
       "Provider model deprecation notices are tracked and acted on proactively",
-      "Fine-tuned models follow a versioned pipeline (data \u2192 train \u2192 eval \u2192 deploy)",
-      "Model distillation pipelines (teacher \u2192 student) are evaluated for quality gap vs. cost reduction",
+      "Fine-tuned models follow a versioned pipeline (data → train → eval → deploy)",
+      "Model distillation pipelines (teacher → student) are evaluated for quality gap vs. cost reduction",
       "Model changes are tracked in the same release process as code changes (Factor 5)",
       "Embedding model changes are planned as data migration events",
       "Model performance is continuously monitored in production (Factor 15)",
@@ -618,14 +784,14 @@ const FACTORS = [
 ];
 
 const TIERS = {
-  foundation:    { label: "Tier 1: Foundation",    color: "#2563eb", factors: [1,2,3,4] },
-  construction:  { label: "Tier 2: Construction",  color: "#d97706", factors: [5,6,7,8] },
-  operation:     { label: "Tier 3: Operation",     color: "#059669", factors: [9,10,11,12,13,14,15] },
-  intelligence:  { label: "Tier 4: Intelligence",  color: "#7c3aed", factors: [16,17,18,19,20] }
+  foundation:   { label: "Tier 1 — Foundation",   color: "#2563eb", factors: [1,2,3,4],          range: "Factors 1 – 4"  },
+  construction: { label: "Tier 2 — Construction", color: "#d97706", factors: [5,6,7,8],          range: "Factors 5 – 8"  },
+  operation:    { label: "Tier 3 — Operation",    color: "#059669", factors: [9,10,11,12,13,14,15], range: "Factors 9 – 15" },
+  intelligence: { label: "Tier 4 — Intelligence", color: "#7c3aed", factors: [16,17,18,19,20],   range: "Factors 16 – 20" }
 };
 
 const MATURITY_LEVELS = [
-  { label: "None",       bg: "#6c757d" },
+  { label: "None",       bg: "#9ca3af" },
   { label: "Initial",    bg: "#dc3545" },
   { label: "Developing", bg: "#fd7e14" },
   { label: "Defined",    bg: "#ffc107" },
@@ -644,16 +810,16 @@ const SHORT_NAMES = [
 ];
 
 const COMPARE_COLORS = [
-  "#4361ee", "#e63946", "#2a9d8f", "#e9c46a",
-  "#f4a261", "#264653", "#d62828", "#7209b7"
+  "#1a1a2e", "#dc3545", "#198754", "#d97706",
+  "#7c3aed", "#0ea5e9", "#be185d", "#475569"
 ];
 
 const STORAGE_KEY = "18factor-assessment";
 
-// --- Profiles State ---
 let db = loadDB();
 let compareMode = false;
 let compareSelected = new Set();
+let radarChart = null;
 
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
@@ -662,7 +828,6 @@ function loadDB() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return createFreshDB();
     const parsed = JSON.parse(raw);
-    // Migration: old flat state (no profiles key)
     if (!parsed.profiles) {
       const id = genId();
       return { profiles: { [id]: { name: "Default", state: parsed } }, activeProfile: id };
@@ -679,12 +844,10 @@ function createFreshDB() {
 }
 
 function saveDB() { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); }
-
 function activeState() { return db.profiles[db.activeProfile].state; }
 function activeProfileName() { return db.profiles[db.activeProfile].name; }
 function profileIds() { return Object.keys(db.profiles); }
 
-// --- State accessors (operate on active profile) ---
 function getChecked(factorNum, idx) {
   const s = activeState();
   return !!(s[factorNum] && s[factorNum][idx]);
@@ -713,10 +876,15 @@ function toggleNA(factorNum, idx) {
   }
   saveDB();
   const openCards = new Set();
-  document.querySelectorAll(".factor-card.open").forEach(c => openCards.add(c.id));
+  document.querySelectorAll(".tfa-factor.is-open").forEach(c => openCards.add(c.id));
   renderFactors();
-  openCards.forEach(id => { const el = document.getElementById(id); if (el) el.classList.add("open"); });
+  openCards.forEach(id => { const el = document.getElementById(id); if (el) el.classList.add("is-open"); });
   update();
+}
+
+function totalItems(factorNum) {
+  const f = FACTORS.find(x => x.num === factorNum);
+  return f ? f.items.length : 0;
 }
 
 function countChecked(factorNum, st) {
@@ -724,8 +892,9 @@ function countChecked(factorNum, st) {
   const f = s[factorNum];
   if (!f) return 0;
   let count = 0;
-  for (let i = 0; i < 10; i++) {
-    const naKey = `${factorNum}_na`;
+  const naKey = `${factorNum}_na`;
+  const total = totalItems(factorNum);
+  for (let i = 0; i < total; i++) {
     const isItemNA = s[naKey] && s[naKey][i];
     if (f[i] && !isItemNA) count++;
   }
@@ -740,7 +909,7 @@ function countNA(factorNum, st) {
   return Object.values(f).filter(Boolean).length;
 }
 
-function countApplicable(factorNum, st) { return 10 - countNA(factorNum, st); }
+function countApplicable(factorNum, st) { return totalItems(factorNum) - countNA(factorNum, st); }
 
 function maturityScore(factorNum, st) {
   const applicable = countApplicable(factorNum, st);
@@ -807,13 +976,13 @@ function exportJSON() {
   const data = {
     name: activeProfileName(),
     exportedAt: new Date().toISOString(),
-    version: "18factor-v1",
+    version: "20factor-v1",
     factors: {}
   };
   for (const f of FACTORS) {
     const checked = [];
     const na = [];
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < f.items.length; i++) {
       if (s[f.num] && s[f.num][i]) checked.push(i);
       if (s[`${f.num}_na`] && s[`${f.num}_na`][i]) na.push(i);
     }
@@ -823,7 +992,7 @@ function exportJSON() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `18factor-${activeProfileName().replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}.json`;
+  a.download = `20factor-${activeProfileName().replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -883,34 +1052,38 @@ function toggleCompareProfile(id) {
 function renderProfileBar() {
   const bar = document.getElementById("profileBar");
   const ids = profileIds();
-  let opts = ids.map(id =>
-    `<option value="${id}" ${id === db.activeProfile ? "selected" : ""}>${db.profiles[id].name}</option>`
+  const opts = ids.map(id =>
+    `<option value="${id}" ${id === db.activeProfile ? "selected" : ""}>${escapeHtml(db.profiles[id].name)}</option>`
   ).join("");
   bar.innerHTML = `
-    <select onchange="switchProfile(this.value)">${opts}</select>
-    <button class="btn" onclick="promptNewProfile()">+ New</button>
-    <button class="btn" onclick="renameProfile()">Rename</button>
-    <button class="btn danger" onclick="deleteProfile()">Delete</button>
-    <span style="border-left:1px solid var(--border);height:1.5rem;margin:0 0.25rem"></span>
-    <button class="btn" onclick="exportJSON()">Export JSON</button>
-    <button class="btn" onclick="importJSON()">Import JSON</button>
-    <span style="border-left:1px solid var(--border);height:1.5rem;margin:0 0.25rem"></span>
-    <button class="btn ${compareMode ? "active" : ""}" onclick="toggleCompare()">Compare</button>
+    <div class="tfa-profile-group">
+      <select class="tfa-select" onchange="switchProfile(this.value)">${opts}</select>
+      <button class="tfa-link" type="button" onclick="promptNewProfile()">+ New</button>
+      <button class="tfa-link" type="button" onclick="renameProfile()">Rename</button>
+      <button class="tfa-link is-danger" type="button" onclick="deleteProfile()">Delete</button>
+    </div>
+    <div class="tfa-profile-group">
+      <button class="tfa-link" type="button" onclick="exportJSON()">Export JSON</button>
+      <button class="tfa-link" type="button" onclick="importJSON()">Import JSON</button>
+    </div>
+    <div class="tfa-profile-group">
+      <button class="tfa-link ${compareMode ? "is-active" : ""}" type="button" onclick="toggleCompare()">Compare profiles</button>
+    </div>
   `;
 }
 
 function renderComparePanel() {
   const panel = document.getElementById("comparePanel");
-  if (!compareMode) { panel.classList.remove("open"); return; }
-  panel.classList.add("open");
+  if (!compareMode) { panel.classList.remove("is-open"); return; }
+  panel.classList.add("is-open");
   const ids = profileIds();
   panel.innerHTML = ids.map((id, i) => {
     const color = COMPARE_COLORS[i % COMPARE_COLORS.length];
     const checked = compareSelected.has(id) ? "checked" : "";
-    return `<label class="compare-item">
+    return `<label class="tfa-compare-item">
       <input type="checkbox" ${checked} onchange="toggleCompareProfile('${id}')">
-      <span class="compare-dot" style="background:${color}"></span>
-      ${db.profiles[id].name}
+      <span class="tfa-compare-dot" style="background:${color}"></span>
+      ${escapeHtml(db.profiles[id].name)}
     </label>`;
   }).join("");
 }
@@ -919,42 +1092,53 @@ function renderFactors() {
   const list = document.getElementById("factorList");
   list.innerHTML = "";
 
+  let tierIdx = 0;
   for (const [tierKey, tier] of Object.entries(TIERS)) {
+    tierIdx++;
     const group = document.createElement("div");
-    group.className = "tier-group";
+    group.className = "tfa-tier-group";
 
     const heading = document.createElement("div");
-    heading.className = `tier-heading ${tierKey}`;
-    heading.textContent = tier.label;
+    heading.className = `tfa-tier-heading`;
+    heading.setAttribute("data-tier", tierKey);
+    heading.innerHTML = `
+      <span class="tfa-tier-heading-num">0${tierIdx}</span>
+      <span class="tfa-tier-heading-name">${escapeHtml(tier.label.replace(/^Tier \d+ — /, ""))}</span>
+      <span class="tfa-tier-heading-range">${tier.range}</span>
+    `;
     group.appendChild(heading);
 
     for (const factor of FACTORS.filter(f => tier.factors.includes(f.num))) {
-      const card = document.createElement("div");
-      card.className = "factor-card";
+      const card = document.createElement("article");
+      card.className = "tfa-factor";
       card.id = `factor-${factor.num}`;
 
       const checked = countChecked(factor.num);
       const applicable = countApplicable(factor.num);
       const mi = maturityInfo(factor.num);
       const ms = maturityScore(factor.num);
+      const numStr = String(factor.num).padStart(2, "0");
 
       card.innerHTML = `
-        <div class="factor-header" onclick="toggleCard(${factor.num})">
-          <span class="arrow">\u25B6</span>
-          <span class="factor-num">${factor.num}</span>
-          <span class="factor-name">${factor.name}</span>
-          <span class="factor-score" id="score-${factor.num}">${checked}/${applicable}</span>
-          <span class="maturity-badge" id="badge-${factor.num}" style="background:${mi.bg}">${ms} ${mi.label}</span>
+        <div class="tfa-factor-head" onclick="toggleCard(${factor.num})">
+          <span class="tfa-factor-arrow">▶</span>
+          <span class="tfa-factor-num">${numStr}</span>
+          <span class="tfa-factor-name">${escapeHtml(factor.name)}</span>
+          <span class="tfa-factor-score" id="score-${factor.num}">${checked}/${applicable}</span>
+          <span class="tfa-badge" id="badge-${factor.num}">
+            <span class="tfa-badge-dot" style="background:${mi.bg}"></span>
+            L${ms} · ${mi.label}
+          </span>
         </div>
-        <div class="factor-body">
-          <ul class="checklist">
+        <div class="tfa-factor-body">
+          <ul class="tfa-checklist">
             ${factor.items.map((item, i) => {
               const na = isNA(factor.num, i);
               return `
               <li class="${na ? "is-na" : ""}">
                 <input type="checkbox" id="cb-${factor.num}-${i}" ${getChecked(factor.num, i) ? "checked" : ""} onchange="setChecked(${factor.num},${i},this.checked)">
-                <label for="cb-${factor.num}-${i}">${item}</label>
-                <button class="na-btn ${na ? "active" : ""}" onclick="toggleNA(${factor.num},${i})" title="Mark as not applicable">N/A</button>
+                <label for="cb-${factor.num}-${i}">${escapeHtml(item)}</label>
+                <button class="tfa-na ${na ? "is-active" : ""}" type="button" onclick="toggleNA(${factor.num},${i})" title="Mark as not applicable">N/A</button>
               </li>`;
             }).join("")}
           </ul>
@@ -967,15 +1151,15 @@ function renderFactors() {
 }
 
 function toggleCard(num) {
-  document.getElementById(`factor-${num}`).classList.toggle("open");
+  document.getElementById(`factor-${num}`).classList.toggle("is-open");
 }
 
 function expandAll() {
-  document.querySelectorAll(".factor-card").forEach(c => c.classList.add("open"));
+  document.querySelectorAll(".tfa-factor").forEach(c => c.classList.add("is-open"));
 }
 
 function collapseAll() {
-  document.querySelectorAll(".factor-card").forEach(c => c.classList.remove("open"));
+  document.querySelectorAll(".tfa-factor").forEach(c => c.classList.remove("is-open"));
 }
 
 function resetAll() {
@@ -991,13 +1175,13 @@ function renderSummary() {
   const bar = document.getElementById("summaryBar");
   const totalChecked = FACTORS.reduce((s, f) => s + countChecked(f.num), 0);
   const totalApplicable = FACTORS.reduce((s, f) => s + countApplicable(f.num), 0);
-  const avgMaturity = (FACTORS.reduce((s, f) => s + maturityScore(f.num), 0) / 18).toFixed(1);
+  const avgMaturity = (FACTORS.reduce((s, f) => s + maturityScore(f.num), 0) / FACTORS.length).toFixed(1);
 
   let html = `
-    <div class="summary-card">
-      <div class="label">Overall Score</div>
-      <div class="value">${totalChecked}/${totalApplicable}</div>
-      <div class="sub">Avg maturity: ${avgMaturity}</div>
+    <div class="tfa-summary-cell">
+      <p class="tfa-summary-key">Overall</p>
+      <div class="tfa-summary-value">${totalChecked}/${totalApplicable}</div>
+      <div class="tfa-summary-sub">Avg maturity ${avgMaturity}</div>
     </div>
   `;
 
@@ -1006,11 +1190,12 @@ function renderSummary() {
     const tierChecked = tierFactors.reduce((s, f) => s + countChecked(f.num), 0);
     const tierApplicable = tierFactors.reduce((s, f) => s + countApplicable(f.num), 0);
     const tierAvg = (tierFactors.reduce((s, f) => s + maturityScore(f.num), 0) / tierFactors.length).toFixed(1);
+    const shortLabel = tier.label.replace(/^Tier \d+ — /, "");
     html += `
-      <div class="summary-card tier-${tierKey}">
-        <div class="label">${tier.label.replace("Tier ", "T")}</div>
-        <div class="value">${tierChecked}/${tierApplicable}</div>
-        <div class="sub">Avg: ${tierAvg}</div>
+      <div class="tfa-summary-cell" data-tier="${tierKey}">
+        <p class="tfa-summary-key">${shortLabel}</p>
+        <div class="tfa-summary-value">${tierChecked}/${tierApplicable}</div>
+        <div class="tfa-summary-sub">Avg ${tierAvg}</div>
       </div>
     `;
   }
@@ -1018,48 +1203,63 @@ function renderSummary() {
 }
 
 // --- Chart ---
-let radarChart;
+function readThemeColors() {
+  const cs = getComputedStyle(document.documentElement);
+  const tfaEl = document.querySelector(".tfa");
+  const tfaCs = tfaEl ? getComputedStyle(tfaEl) : null;
+  return {
+    text: (cs.getPropertyValue("--global-text-color") || "#1a1a2e").trim(),
+    muted: (cs.getPropertyValue("--global-text-color-light") || "#6c757d").trim(),
+    divider: (cs.getPropertyValue("--global-divider-color") || "#dee2e6").trim(),
+    fill: tfaCs ? (tfaCs.getPropertyValue("--tfa-fill") || "rgba(20,20,30,0.06)").trim() : "rgba(20,20,30,0.06)",
+    stroke: tfaCs ? (tfaCs.getPropertyValue("--tfa-stroke") || "rgba(20,20,30,0.7)").trim() : "rgba(20,20,30,0.7)"
+  };
+}
 
-function buildDataset(profileId, colorIndex) {
+function buildDataset(profileId, colorIndex, theme) {
   const profile = db.profiles[profileId];
   if (!profile) return null;
   const st = profile.state;
   const color = COMPARE_COLORS[colorIndex % COMPARE_COLORS.length];
-  const borderColors = FACTORS.map(f => TIERS[f.tier].color);
+  const tierColors = FACTORS.map(f => TIERS[f.tier].color);
   const isSingle = !compareMode || compareSelected.size === 0;
 
   return {
     label: profile.name,
     data: FACTORS.map(f => maturityScore(f.num, st)),
-    backgroundColor: isSingle ? "rgba(67, 97, 238, 0.15)" : color + "14",
-    borderColor: isSingle ? "rgba(67, 97, 238, 0.8)" : color,
-    borderWidth: 2,
-    pointBackgroundColor: isSingle ? borderColors : color,
-    pointBorderColor: isSingle ? borderColors : color,
-    pointRadius: isSingle ? 4 : 3,
+    backgroundColor: isSingle ? theme.fill : color + "22",
+    borderColor: isSingle ? theme.stroke : color,
+    borderWidth: 1.5,
+    pointBackgroundColor: isSingle ? tierColors : color,
+    pointBorderColor: isSingle ? tierColors : color,
+    pointRadius: isSingle ? 3.5 : 3,
     pointHoverRadius: 6
   };
 }
 
 function initChart() {
-  const ctx = document.getElementById("radarChart").getContext("2d");
-  const labels = FACTORS.map((f, i) => `${f.num}. ${SHORT_NAMES[i]}`);
+  const canvas = document.getElementById("radarChart");
+  if (!canvas) return;
+  if (radarChart) { radarChart.destroy(); radarChart = null; }
 
-  const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const gridColor = isDark ? "rgba(148,163,184,0.15)" : "rgba(0,0,0,0.08)";
-  const tickColor = isDark ? "#94a3b8" : "#6c757d";
+  const ctx = canvas.getContext("2d");
+  const labels = FACTORS.map((f, i) => `${f.num}. ${SHORT_NAMES[i]}`);
+  const theme = readThemeColors();
 
   radarChart = new Chart(ctx, {
     type: "radar",
     data: {
       labels,
-      datasets: [buildDataset(db.activeProfile, 0)]
+      datasets: [buildDataset(db.activeProfile, 0, theme)]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { display: false },
+        legend: {
+          display: false,
+          labels: { color: theme.text, font: { size: 11 } }
+        },
         tooltip: {
           callbacks: {
             title: (items) => FACTORS[items[0].dataIndex].num + ". " + FACTORS[items[0].dataIndex].name,
@@ -1074,7 +1274,7 @@ function initChart() {
               const ms = maturityScore(f.num, st);
               const mi = MATURITY_LEVELS[ms];
               const prefix = compareMode && compareSelected.size > 0 ? item.dataset.label + ": " : "";
-              return `${prefix}Level ${ms} (${mi.label}) \u2014 ${c}/${a} items`;
+              return `${prefix}Level ${ms} (${mi.label}) — ${c}/${a} items`;
             }
           }
         }
@@ -1085,7 +1285,7 @@ function initChart() {
           max: 5,
           ticks: {
             stepSize: 1,
-            color: tickColor,
+            color: theme.muted,
             backdropColor: "transparent",
             font: { size: 10 },
             callback: (v) => ["None","Initial","Developing","Defined","Managed","Optimized"][v] || ""
@@ -1093,10 +1293,10 @@ function initChart() {
           pointLabels: {
             color: (ctx) => TIERS[FACTORS[ctx.index].tier].color,
             font: { size: 11, weight: "500" },
-            padding: 16
+            padding: 14
           },
-          grid: { color: gridColor },
-          angleLines: { color: gridColor }
+          grid: { color: theme.divider },
+          angleLines: { color: theme.divider }
         }
       }
     }
@@ -1105,19 +1305,23 @@ function initChart() {
 
 function updateChart() {
   if (!radarChart) return;
+  const theme = readThemeColors();
 
   if (compareMode && compareSelected.size > 0) {
     const ids = [...compareSelected];
-    radarChart.data.datasets = ids.map((id, i) => buildDataset(id, i)).filter(Boolean);
+    radarChart.data.datasets = ids.map((id, i) => buildDataset(id, i, theme)).filter(Boolean);
     radarChart.options.plugins.legend.display = true;
+    radarChart.options.plugins.legend.labels.color = theme.text;
   } else {
-    radarChart.data.datasets = [buildDataset(db.activeProfile, 0)];
+    radarChart.data.datasets = [buildDataset(db.activeProfile, 0, theme)];
     radarChart.options.plugins.legend.display = false;
   }
+  radarChart.options.scales.r.ticks.color = theme.muted;
+  radarChart.options.scales.r.grid.color = theme.divider;
+  radarChart.options.scales.r.angleLines.color = theme.divider;
   radarChart.update("none");
 }
 
-// --- Update all ---
 function update() {
   updateChart();
   renderSummary();
@@ -1131,8 +1335,7 @@ function update() {
     const badgeEl = document.getElementById(`badge-${factor.num}`);
     if (scoreEl) scoreEl.textContent = `${checked}/${applicable}`;
     if (badgeEl) {
-      badgeEl.style.background = mi.bg;
-      badgeEl.textContent = `${ms} ${mi.label}`;
+      badgeEl.innerHTML = `<span class="tfa-badge-dot" style="background:${mi.bg}"></span>L${ms} · ${mi.label}`;
     }
   }
 }
@@ -1144,9 +1347,20 @@ function fullRender() {
   update();
 }
 
-// --- Init ---
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+// Re-render chart on theme change (al-folio toggles data-theme on html/body)
+const themeObserver = new MutationObserver(() => initChart());
+themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class"] });
+themeObserver.observe(document.body, { attributes: true, attributeFilter: ["data-theme", "class"] });
+if (window.matchMedia) {
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => initChart());
+}
+
 fullRender();
 initChart();
 </script>
-</body>
-</html>
