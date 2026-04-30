@@ -69,11 +69,38 @@ The methodology is organized in **4 tiers** that build on each other, from found
 
 ### What Changed from 12-Factor?
 
-| | Original 12-Factor | The 20-Factor App |
-|---|---|---|
-| **Era** | 2011 — Heroku era | 2026 — LLM/agent era |
-| **Artifacts** | Code + config | Code + config + **models + prompts** |
-| **Scale** | Stateless web apps | Stateless apps + **durable agent workflows** |
-| **New factors** | — | F6 Evaluation-Driven Dev, F7 Responsible AI, F13 Durable Runtime, F16 Model Lifecycle, F17 Prompts, F18 Agents, F19 Memory, F20 Economics |
+<div class="table-responsive">
+<table class="table table-bordered table-striped align-middle">
+  <thead>
+    <tr>
+      <th scope="col" style="width: 18%;"></th>
+      <th scope="col">Original 12-Factor</th>
+      <th scope="col">The 20-Factor App</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th scope="row">Era</th>
+      <td>2011 — Heroku era</td>
+      <td>2026 — LLM/agent era</td>
+    </tr>
+    <tr>
+      <th scope="row">Artifacts</th>
+      <td>Code + config</td>
+      <td>Code + config + <strong>models + prompts</strong></td>
+    </tr>
+    <tr>
+      <th scope="row">Scale</th>
+      <td>Stateless web apps</td>
+      <td>Stateless apps + <strong>durable agent workflows</strong></td>
+    </tr>
+    <tr>
+      <th scope="row">New factors</th>
+      <td>—</td>
+      <td>F6 Evaluation-Driven Dev, F7 Responsible AI, F13 Durable Runtime, F16 Model Lifecycle, F17 Prompts, F18 Agents, F19 Memory, F20 Economics</td>
+    </tr>
+  </tbody>
+</table>
+</div>
 
 The 8 new factors cover concerns that didn't exist in 2011: LLM inference cost, model versioning, prompt engineering, agent orchestration, long-term memory, and AI safety.
