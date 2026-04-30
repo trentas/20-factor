@@ -2,7 +2,7 @@
 layout: page
 importance: 12
 category: "Tier 3: Operation"
-title: "12. Stateless Processes + Smart Cache"
+title: "12. Stateless Processes with Intelligent Caching"
 nav_order: 4
 description: "Stateless workers with semantic, embedding, and provider prompt caching for AI operations."
 ---

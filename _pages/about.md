@@ -44,7 +44,7 @@ The methodology is organized in **4 tiers** that build on each other, from found
     <div class="card h-100" style="border-left: 4px solid #059669;">
       <div class="card-body">
         <h5 class="card-title fw-bold" style="color:#059669;">Tier 3 — Operation</h5>
-        <p class="card-text small">Factors 9–14. Lifecycle, backing services, parity, caching, durable execution.</p>
+        <p class="card-text small">Factors 9–15. Lifecycle, backing services, parity, caching, durable execution, concurrency, observability.</p>
       </div>
     </div>
   </div>
@@ -52,7 +52,7 @@ The methodology is organized in **4 tiers** that build on each other, from found
     <div class="card h-100" style="border-left: 4px solid #7c3aed;">
       <div class="card-body">
         <h5 class="card-title fw-bold" style="color:#7c3aed;">Tier 4 — Intelligence</h5>
-        <p class="card-text small">Factors 15–20. Observability, models, prompts, agents, memory, economics.</p>
+        <p class="card-text small">Factors 16–20. Models, prompts, agents, memory, economics.</p>
       </div>
     </div>
   </div>
@@ -74,6 +74,6 @@ The methodology is organized in **4 tiers** that build on each other, from found
 | **Era** | 2011 — Heroku era | 2026 — LLM/agent era |
 | **Artifacts** | Code + config | Code + config + **models + prompts** |
 | **Scale** | Stateless web apps | Stateless apps + **durable agent workflows** |
-| **New factors** | — | F7 Responsible AI, F13 Durable Runtime, F16 Model Lifecycle, F17 Prompts, F18 Agents, F19 Memory, F20 Economics |
+| **New factors** | — | F6 Evaluation-Driven Dev, F7 Responsible AI, F13 Durable Runtime, F16 Model Lifecycle, F17 Prompts, F18 Agents, F19 Memory, F20 Economics |
 
 The 8 new factors cover concerns that didn't exist in 2011: LLM inference cost, model versioning, prompt engineering, agent orchestration, long-term memory, and AI safety.

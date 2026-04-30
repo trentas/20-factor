@@ -9,7 +9,6 @@ display_categories: ["Tier 1: Foundation", "Tier 2: Construction", "Tier 3: Oper
 horizontal: false
 ---
 
-<!-- pages/factors.md -->
 <div class="projects">
 {% if site.enable_project_categories and page.display_categories %}
   {% for category in page.display_categories %}

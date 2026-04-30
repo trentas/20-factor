@@ -2,7 +2,7 @@
 layout: page
 importance: 18
 category: "Tier 4: Intelligence"
-title: "18. Agent Orchestration & Bounded Autonomy"
+title: "18. Agent Orchestration and Bounded Autonomy"
 nav_order: 3
 description: "Agent architecture, tool permissions, execution budgets, human-in-the-loop gates."
 ---

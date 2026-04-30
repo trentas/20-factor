@@ -2,7 +2,7 @@
 layout: page
 importance: 8
 category: "Tier 2: Construction"
-title: "08. Identity, Access & Trust"
+title: "08. Identity, Access, and Trust"
 nav_order: 4
 description: "Every actor — human, service, and AI agent — has verifiable identity and scoped permissions."
 ---

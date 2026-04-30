@@ -2,7 +2,7 @@
 layout: page
 importance: 17
 category: "Tier 4: Intelligence"
-title: "17. Prompt & Context Engineering"
+title: "17. Prompt and Context Engineering"
 nav_order: 2
 description: "Prompt versioning, context window management, RAG pipeline design, token budgeting."
 ---

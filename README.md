@@ -51,10 +51,10 @@ The bedrock principles — how code, interfaces, dependencies, and configuration
 
 | # | Factor | Summary | Origin |
 |---|--------|---------|--------|
-| 1 | [**Declarative Codebase**](factors/01-declarative-codebase.md) | Every artifact — code, infrastructure, prompts — lives in version control as a declarative specification | Updated from original #1 |
-| 2 | [**Contract-First Interfaces**](factors/02-contract-first-interfaces.md) | Define interfaces before implementation — for APIs, events, and agent tool schemas | Updated from 15-Factor #2 |
-| 3 | [**Dependency Management**](factors/03-dependency-management.md) | Explicitly declare and isolate all dependencies, including AI SDKs and model weights | Updated from original #2 |
-| 4 | [**Configuration, Credentials, and Context**](factors/04-configuration-credentials-context.md) | Store config in the environment, credentials in secrets management, AI context in versioned files | Updated from 15-Factor #5 |
+| 1 | [**Declarative Codebase**](_projects/01-declarative-codebase.md) | Every artifact — code, infrastructure, prompts — lives in version control as a declarative specification | Updated from original #1 |
+| 2 | [**Contract-First Interfaces**](_projects/02-contract-first-interfaces.md) | Define interfaces before implementation — for APIs, events, and agent tool schemas | Updated from 15-Factor #2 |
+| 3 | [**Dependency Management**](_projects/03-dependency-management.md) | Explicitly declare and isolate all dependencies, including AI SDKs and model weights | Updated from original #2 |
+| 4 | [**Configuration, Credentials, and Context**](_projects/04-configuration-credentials-context.md) | Store config in the environment, credentials in secrets management, AI context in versioned files | Updated from 15-Factor #5 |
 
 ### Tier 2: CONSTRUCTION
 
@@ -62,10 +62,10 @@ How software is built, tested, and secured for deployment.
 
 | # | Factor | Summary | Origin |
 |---|--------|---------|--------|
-| 5 | [**Immutable Build Pipeline**](factors/05-immutable-build-pipeline.md) | Build once, deploy everywhere — with prompt compilation, model pinning, and eval gates | Updated from original #5 |
-| 6 | [**Evaluation-Driven Development**](factors/06-evaluation-driven-development.md) | Use evaluations, statistical quality gates, and LLM-as-judge for non-deterministic systems | **New** |
-| 7 | [**Responsible AI by Design**](factors/07-responsible-ai-by-design.md) | Build safety, fairness, and accountability into the architecture from the start | **New** |
-| 8 | [**Identity, Access, and Trust**](factors/08-identity-access-trust.md) | Every actor — human, service, and AI agent — has verifiable identity and scoped permissions | Updated from 15-Factor #15 |
+| 5 | [**Immutable Build Pipeline**](_projects/05-immutable-build-pipeline.md) | Build once, deploy everywhere — with prompt compilation, model pinning, and eval gates | Updated from original #5 |
+| 6 | [**Evaluation-Driven Development**](_projects/06-evaluation-driven-development.md) | Use evaluations, statistical quality gates, and LLM-as-judge for non-deterministic systems | **New** |
+| 7 | [**Responsible AI by Design**](_projects/07-responsible-ai-by-design.md) | Build safety, fairness, and accountability into the architecture from the start | **New** |
+| 8 | [**Identity, Access, and Trust**](_projects/08-identity-access-trust.md) | Every actor — human, service, and AI agent — has verifiable identity and scoped permissions | Updated from 15-Factor #15 |
 
 ### Tier 3: OPERATION
 
@@ -73,13 +73,13 @@ How applications run, scale, and are monitored in production.
 
 | # | Factor | Summary | Origin |
 |---|--------|---------|--------|
-| 9 | [**Disposability and Graceful Lifecycle**](factors/09-disposability-graceful-lifecycle.md) | Fast startup, graceful shutdown — with GPU release and LLM request draining | Updated from original #9 |
-| 10 | [**Intelligent Backing Services**](factors/10-intelligent-backing-services.md) | Treat LLM providers, vector DBs, and embedding services as attached resources | Updated from original #4 |
-| 11 | [**Environment Parity**](factors/11-environment-parity.md) | Keep dev, staging, and production similar — including model behavior and data representativeness | Updated from original #10 |
-| 12 | [**Stateless Processes with Intelligent Caching**](factors/12-stateless-processes-intelligent-caching.md) | Stateless workers with semantic, embedding, and provider prompt caching for AI operations | Updated from original #6 |
-| 13 | [**Durable Agent Runtime**](factors/13-durable-agent-runtime.md) | Persist long-running agent execution state with journaling, idempotent tool calls, and durable human-in-the-loop interrupts | **New** |
-| 14 | [**Adaptive Concurrency**](factors/14-adaptive-concurrency.md) | Scale independently across CPU, GPU, rate limits, and cost budgets | Updated from original #8 |
-| 15 | [**Full-Spectrum Observability**](factors/15-full-spectrum-observability.md) | Logs, traces, and metrics — plus token economics, quality scores, and safety monitoring | Merged from original #11 + 15-Factor #14 |
+| 9 | [**Disposability and Graceful Lifecycle**](_projects/09-disposability-graceful-lifecycle.md) | Fast startup, graceful shutdown — with GPU release and LLM request draining | Updated from original #9 |
+| 10 | [**Intelligent Backing Services**](_projects/10-intelligent-backing-services.md) | Treat LLM providers, vector DBs, and embedding services as attached resources | Updated from original #4 |
+| 11 | [**Environment Parity**](_projects/11-environment-parity.md) | Keep dev, staging, and production similar — including model behavior and data representativeness | Updated from original #10 |
+| 12 | [**Stateless Processes with Intelligent Caching**](_projects/12-stateless-processes-intelligent-caching.md) | Stateless workers with semantic, embedding, and provider prompt caching for AI operations | Updated from original #6 |
+| 13 | [**Durable Agent Runtime**](_projects/13-durable-agent-runtime.md) | Persist long-running agent execution state with journaling, idempotent tool calls, and durable human-in-the-loop interrupts | **New** |
+| 14 | [**Adaptive Concurrency**](_projects/14-adaptive-concurrency.md) | Scale independently across CPU, GPU, rate limits, and cost budgets | Updated from original #8 |
+| 15 | [**Full-Spectrum Observability**](_projects/15-full-spectrum-observability.md) | Logs, traces, and metrics — plus token economics, quality scores, and safety monitoring | Merged from original #11 + 15-Factor #14 |
 
 ### Tier 4: INTELLIGENCE
 
@@ -87,11 +87,11 @@ Factors unique to AI-native applications — managing the AI-specific capabiliti
 
 | # | Factor | Summary | Origin |
 |---|--------|---------|--------|
-| 16 | [**Model Lifecycle Management**](factors/16-model-lifecycle-management.md) | Model registry, version pinning, A/B testing, deprecation planning, fine-tuning pipelines | **New** |
-| 17 | [**Prompt and Context Engineering**](factors/17-prompt-context-engineering.md) | Prompt versioning, context window management, RAG pipeline design, token budgeting | **New** |
-| 18 | [**Agent Orchestration and Bounded Autonomy**](factors/18-agent-orchestration-bounded-autonomy.md) | Agent architecture, tool permissions, execution budgets, human-in-the-loop gates | **New** |
-| 19 | [**Agent Memory Architecture**](factors/19-agent-memory-architecture.md) | Vector, graph, and episodic memory layers with identity-bound lifecycle, decay, and right-to-erasure | **New** |
-| 20 | [**AI Economics and Cost Architecture**](factors/20-ai-economics-cost-architecture.md) | Per-token cost modeling, model routing, semantic caching ROI, budget circuit breakers | **New** |
+| 16 | [**Model Lifecycle Management**](_projects/16-model-lifecycle-management.md) | Model registry, version pinning, A/B testing, deprecation planning, fine-tuning pipelines | **New** |
+| 17 | [**Prompt and Context Engineering**](_projects/17-prompt-context-engineering.md) | Prompt versioning, context window management, RAG pipeline design, token budgeting | **New** |
+| 18 | [**Agent Orchestration and Bounded Autonomy**](_projects/18-agent-orchestration-bounded-autonomy.md) | Agent architecture, tool permissions, execution budgets, human-in-the-loop gates | **New** |
+| 19 | [**Agent Memory Architecture**](_projects/19-agent-memory-architecture.md) | Vector, graph, and episodic memory layers with identity-bound lifecycle, decay, and right-to-erasure | **New** |
+| 20 | [**AI Economics and Cost Architecture**](_projects/20-ai-economics-cost-architecture.md) | Per-token cost modeling, model routing, semantic caching ROI, budget circuit breakers | **New** |
 
 ---
 
@@ -109,7 +109,7 @@ See [MAPPING.md](MAPPING.md) for a detailed mapping of every original factor to 
 
 ## Maturity Assessment
 
-Use the interactive **[Maturity Assessment Tool](assessment.html)** to evaluate your applications against all 20 factors (235 checklist items). Features:
+Use the interactive **[Maturity Assessment Tool](assessment.html)** to evaluate your applications against all 20 factors (270+ checklist items). Features:
 
 - **Radar chart** updates in real time as you check off compliance items
 - **Maturity scoring** (0–5 per factor) based on percentage of applicable items completed
