@@ -40,6 +40,24 @@ This update splits the original concept into three distinct categories with diff
 - **Safety thresholds**: Content filtering sensitivity, PII detection thresholds, and human-in-the-loop triggers are policy decisions expressed as configuration.
 - **Provider routing**: Rules for routing requests to different model providers (primary, fallback, cost-optimized) are config, not code.
 
+## Runtime vs. Init-Time Configuration
+
+This factor sits in the Foundation tier because it defines the **contract** between code and configuration — where values live, how they're classified, how they're validated. That contract is foundational; build, identity, and every operational concern downstream assume it holds. But configuration is consumed at two distinct moments, and conflating them leads to design mistakes.
+
+**Init-time configuration** is read once when the process starts: database URLs, default model selection, max token limits, the schema of `ai-config.yaml`. It's validated at startup (fail-fast — see "Configuration Validation" below) and treated as immutable for the lifetime of that process. Changing it requires a redeploy or a process restart. This is the territory the original 12-Factor Config rule was written for.
+
+**Runtime configuration** changes while the process is live: feature flags toggling a new model, cost budgets tightened mid-incident, safety thresholds raised in response to a regression, provider routing flipping during a provider outage. Operators must be able to adjust these *without a deploy*. The mechanism is different (flag provider, dynamic config service, hot-reloaded file) but the contract is the same: the value is still externalized, classified, audited, and never in code.
+
+The same value can be either, depending on the system: `AI_DEFAULT_MODEL` as an env var is init-time; the same decision expressed as an OpenFeature flag is runtime. Choosing between them is a deliberate tradeoff between simplicity (init-time, restart to change) and operational agility (runtime, change without deploy, but adds a runtime dependency on the flag provider — see Factor 10).
+
+**Why both belong in this factor**: the *contract* is foundational. The *enforcement and observability* of runtime changes belongs to the Operation tier:
+
+- **Factor 15 (Observability)** — runtime config changes must be auditable: who flipped which flag, when, with what blast radius.
+- **Factor 18 (Agent Orchestration)** — bounded autonomy is partially expressed as runtime config (autonomy levels, tool allowlists) that operators tune live.
+- **Factor 20 (AI Economics)** — cost budgets and per-tenant limits are runtime knobs operators must adjust as usage shifts.
+
+Treat init-time config as the default. Promote a value to runtime config only when there's a concrete operational need to change it without a deploy — every runtime knob is a surface that can be misconfigured in production.
+
 ## In Practice
 
 ### The Three Categories
