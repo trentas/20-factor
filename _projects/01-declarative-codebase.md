@@ -26,21 +26,22 @@ The original factor focused on the relationship between a codebase and its deplo
 - Infrastructure definitions (Terraform, Pulumi, CloudFormation)
 - GitOps manifests (Kubernetes YAML, Helm charts, Kustomize overlays)
 - AI prompts, system instructions, and agent tool definitions
-- Evaluation datasets and quality benchmarks
+- Evaluation datasets and quality benchmarks (or, for large corpora, the manifests and content hashes that pin them to a specific version in object storage)
 - Pipeline definitions (CI/CD as code)
 
 ## How AI Changes This
 
 ### AI-Assisted Development
 - AI coding assistants (Copilot, Claude Code, Cursor) generate code that must still pass the same review, lint, and test gates as human-written code. The codebase is the arbiter, not the generation method.
-- AI-generated code should be indistinguishable from human-written code in the repository — no special markers or second-class treatment.
+- AI-generated code is held to the same review, testing, and CI bar as human-written code — once it lands, it gets no second-class treatment in the codebase. Quality is judged by the gates it passed, not by its origin.
+- **Track AI authorship in metadata, not in source.** Commit trailers (`Assisted-by: claude-code`, `Co-authored-by:`), PR labels, or an audit log are the right surface for provenance — they enable measurement (AI contribution rate, review cycle deltas, defect rates by authorship class, ramp-up impact) without polluting the source with markers that rot. Inline comments like `// AI-generated` are an anti-pattern: they degrade as code is edited, create review bias, and make refactoring noisier. The codebase stays clean; the metadata layer carries the signal.
 - Context files (`.cursorrules`, `CLAUDE.md`, `.github/copilot-instructions.md`) that guide AI coding assistants are themselves part of the codebase and should be versioned.
 - **Autonomous coding agents** (Claude Code, Devin, Codex) can create branches, write code, run tests, and open pull requests autonomously. The codebase must be prepared for this: CI gates, evaluation suites (Factor 6), and ephemeral environments (Factor 11) must validate agent-generated changes without human intervention in the loop. The human reviews the output, not the process.
 
 ### AI-Native Applications
 - **Prompt-as-code**: System prompts, few-shot examples, and chain-of-thought templates are versioned alongside application code. They go through pull requests, code review, and CI checks.
 - **Agent tool schemas**: Tool definitions (JSON Schema, OpenAPI specs) that define what an AI agent can do are declarative specifications that belong in the codebase.
-- **Evaluation datasets**: The golden datasets used to evaluate AI output quality are versioned artifacts, analogous to test fixtures.
+- **Evaluation datasets**: The golden datasets used to evaluate AI output quality are versioned artifacts. Small datasets can live in the repo like test fixtures; large ML eval corpora (gigabytes to terabytes) live in object storage with the repo holding an immutable, content-addressed pointer (Git LFS, DVC manifest, lakeFS commit, Hugging Face dataset revision, or a versioned S3 URI). The repository is still the source of truth for *which version* of the dataset a given commit was evaluated against.
 - **Model configuration**: Model selection, temperature, token limits, and other inference parameters are declared in config files, not buried in application code.
 
 ## In Practice
@@ -161,6 +162,7 @@ The original factor's "one codebase, many deploys" still applies. Whether using 
 - [ ] Agent tool definitions and schemas are in the repository
 - [ ] Evaluation datasets and benchmarks are versioned artifacts
 - [ ] AI coding assistant context files are maintained and versioned
+- [ ] AI authorship is tracked in commit metadata or PR labels (not in source comments) so contribution metrics — AI contribution rate, review cycle deltas, defect rates by authorship class — can be measured
 - [ ] Model configuration (selection, parameters) is declared in config files
 - [ ] Every production deployment is traceable to a specific commit
 - [ ] An AIBOM/MLBOM is generated as a build output in SPDX 3.0 or CycloneDX 1.6 format
