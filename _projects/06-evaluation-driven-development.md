@@ -112,10 +112,27 @@ Maintain curated evaluation datasets:
 ```
 
 Golden datasets should:
-- Be versioned alongside code (Factor 1)
+- Be versioned with the same rigor as code (Factor 1) — small datasets in-repo, large datasets pinned by manifest/hash to object storage, never an unversioned blob in a shared bucket
 - Cover edge cases and adversarial inputs
 - Include diverse examples across all supported use cases
 - Be updated when new failure modes are discovered
+
+### Versioning Eval Datasets at Scale
+
+Eval datasets are not test fixtures — ML eval corpora often run gigabytes to terabytes, far past what Git handles directly. But "too big for Git" is not a license to skip versioning: an unversioned eval dataset means evaluation scores cannot be reproduced or compared across model versions, which dissolves the whole point of EDD.
+
+The pattern is the same across tools: **the repo holds an immutable pointer; the storage holds the bytes.**
+
+| Tool | Pointer location | Storage | Best for |
+|------|------------------|---------|----------|
+| **Git LFS** | LFS pointer file in repo | Git LFS server / S3 backend | Datasets up to ~hundreds of GB; transparent to developers |
+| **DVC** | `dvc.lock` + `.dvc` files | Any object store (S3/GCS/Azure) | Pipelines mixing data + models; reproducible workflows |
+| **lakeFS** | Commit SHA referenced in repo | S3-compatible storage | Git semantics over very large data lakes |
+| **Hugging Face Datasets** | Revision SHA in code | HF Hub | Public or shared eval sets; community datasets |
+| **MLflow / W&B artifacts** | Run ID + artifact version in repo | Object store + tracking server | Tying eval datasets to specific training runs |
+| **S3 Object Versioning + manifest** | `dataset.manifest.json` (URIs + SHA256) | Versioned S3 bucket | Minimal tooling; full control |
+
+The non-negotiable: every eval result must be traceable to (model version, prompt version, **dataset version**, eval code version). A score of "87% accuracy" without all four is a number, not a measurement.
 
 ### Statistical Quality Gates
 Evaluations produce distributions, not single pass/fail results:
@@ -244,7 +261,8 @@ The methodology is tool-agnostic — what matters is that evaluations exist, run
 ## Compliance Checklist
 
 - [ ] Every AI feature has an evaluation suite with defined quality dimensions
-- [ ] Golden datasets exist, are versioned, and cover core use cases and edge cases
+- [ ] Golden datasets exist, are immutably versioned (in-repo for small sets; manifest/hash pointing to object storage for large corpora), and cover core use cases and edge cases
+- [ ] Every recorded eval result is traceable to a specific (model version, prompt version, dataset version, eval code version) tuple
 - [ ] Evaluation suites run in CI and gate releases (Factor 5)
 - [ ] Statistical thresholds are defined for each quality dimension with confidence intervals
 - [ ] LLM-as-judge evaluations are calibrated against human judgments
