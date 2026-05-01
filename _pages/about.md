@@ -13,6 +13,28 @@ profile:
 news: false
 selected_papers: false
 social: false
+
+tiers:
+  - num: "01"
+    name: "Foundation"
+    range: "Factors 1 – 4"
+    desc: "Codebase, contracts, dependencies, and configuration."
+    category: "Tier 1: Foundation"
+  - num: "02"
+    name: "Construction"
+    range: "Factors 5 – 8"
+    desc: "Build pipeline, evaluation, responsible AI, and identity."
+    category: "Tier 2: Construction"
+  - num: "03"
+    name: "Operation"
+    range: "Factors 9 – 15"
+    desc: "Lifecycle, backing services, parity, caching, durable execution, concurrency, and observability."
+    category: "Tier 3: Operation"
+  - num: "04"
+    name: "Intelligence"
+    range: "Factors 16 – 20"
+    desc: "Models, prompts, agents, memory, and economics."
+    category: "Tier 4: Intelligence"
 ---
 
 <style>
@@ -212,28 +234,20 @@ social: false
   to AI-specific intelligence layers. Click a tier to reveal its factors.
 </p>
 
-{% assign tier_data = "01|Foundation|Factors 1 – 4|Codebase, contracts, dependencies, and configuration.|Tier 1: Foundation,02|Construction|Factors 5 – 8|Build pipeline, evaluation, responsible AI, and identity.|Tier 2: Construction,03|Operation|Factors 9 – 15|Lifecycle, backing services, parity, caching, durable execution, concurrency, and observability.|Tier 3: Operation,04|Intelligence|Factors 16 – 20|Models, prompts, agents, memory, and economics.|Tier 4: Intelligence" | split: "," %}
-
 <div class="tf-tiers projects">
-  {% for entry in tier_data %}
-    {% assign parts = entry | split: "|" %}
-    {% assign t_num = parts[0] %}
-    {% assign t_name = parts[1] %}
-    {% assign t_range = parts[2] %}
-    {% assign t_desc = parts[3] %}
-    {% assign t_category = parts[4] %}
-    {% assign anchor = t_category | replace: " ", "-" | replace: ":", "" %}
+  {% for tier in page.tiers %}
+    {% assign anchor = tier.category | replace: " ", "-" | replace: ":", "" %}
     <details class="tf-tier-details" id="{{ anchor }}">
       <summary class="tf-tier">
-        <span class="tf-tier-num">{{ t_num }}</span>
+        <span class="tf-tier-num">{{ tier.num }}</span>
         <div class="tf-tier-meta">
-          <span class="tf-tier-name">{{ t_name }}</span>
-          <span class="tf-tier-range">{{ t_range }}</span>
+          <span class="tf-tier-name">{{ tier.name }}</span>
+          <span class="tf-tier-range">{{ tier.range }}</span>
         </div>
-        <p class="tf-tier-desc">{{ t_desc }}</p>
+        <p class="tf-tier-desc">{{ tier.desc }}</p>
         <span class="tf-tier-chevron" aria-hidden="true">+</span>
       </summary>
-      {% assign categorized_projects = site.projects | where: "category", t_category %}
+      {% assign categorized_projects = site.projects | where: "category", tier.category %}
       {% assign sorted_projects = categorized_projects | sort: "importance" %}
       <div class="row row-cols-1 row-cols-md-3 tf-tier-projects">
         {% for project in sorted_projects %}
