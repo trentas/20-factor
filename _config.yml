@@ -99,6 +99,13 @@ plugins:
   - jekyll-sitemap
   - jekyll-seo-tag
 
+# jekyll-minifier was stripping function declarations from the assessment
+# script when FACTORS is generated via Liquid. Exclude the file from
+# minification so the inline JS is preserved verbatim.
+jekyll-minifier:
+  exclude:
+    - "assessment.html"
+
 # -----------------------------------------------------------------------------
 # Exclude from Jekyll processing
 # -----------------------------------------------------------------------------
