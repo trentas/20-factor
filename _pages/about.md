@@ -72,13 +72,41 @@ social: false
     border-top: 1px solid var(--global-divider-color);
     margin: 0;
   }
+  .tf-tier-details {
+    border-bottom: 1px solid var(--global-divider-color);
+  }
+  .tf-tier-details > summary {
+    list-style: none;
+    cursor: pointer;
+  }
+  .tf-tier-details > summary::-webkit-details-marker { display: none; }
   .tf-tier {
     display: grid;
-    grid-template-columns: 3.25rem 11rem 1fr;
+    grid-template-columns: 3.25rem 11rem 1fr 2rem;
     column-gap: 2rem;
     padding: 1.4rem 0.25rem;
-    border-bottom: 1px solid var(--global-divider-color);
     align-items: baseline;
+    transition: background-color 0.15s ease;
+  }
+  .tf-tier-details > summary:hover .tf-tier,
+  .tf-tier-details > summary:focus-visible .tf-tier {
+    background-color: var(--global-code-bg-color, rgba(0,0,0,0.02));
+  }
+  .tf-tier-chevron {
+    font-variant-numeric: tabular-nums;
+    font-size: 1.1rem;
+    line-height: 1;
+    color: var(--global-text-color-light);
+    text-align: right;
+    transition: transform 0.2s ease, color 0.2s ease;
+    user-select: none;
+  }
+  .tf-tier-details[open] .tf-tier-chevron {
+    transform: rotate(45deg);
+    color: var(--global-text-color);
+  }
+  .tf-tier-projects {
+    padding: 0.5rem 0 1.75rem;
   }
   .tf-tier-num {
     font-variant-numeric: tabular-nums;
@@ -109,7 +137,7 @@ social: false
 
   @media (max-width: 720px) {
     .tf-tier {
-      grid-template-columns: 2.5rem 1fr;
+      grid-template-columns: 2.5rem 1fr 1.5rem;
       grid-template-rows: auto auto;
       column-gap: 1rem;
       row-gap: 0.45rem;
@@ -118,6 +146,7 @@ social: false
     .tf-tier-num { grid-row: 1 / span 2; padding-top: 0.15rem; }
     .tf-tier-meta { grid-column: 2; }
     .tf-tier-desc { grid-column: 2; font-size: 0.92rem; }
+    .tf-tier-chevron { grid-column: 3; grid-row: 1 / span 2; align-self: center; }
   }
 
   .tf-compare {
@@ -172,7 +201,6 @@ social: false
 <div class="tf-home" markdown="0">
 
 <nav class="tf-actions" aria-label="Primary">
-  <a href="{{ '/factors/' | relative_url }}">Browse all 20 factors &rarr;</a>
   <a href="{{ '/assessment.html' | relative_url }}">Maturity assessment &rarr;</a>
 </nav>
 
@@ -181,42 +209,39 @@ social: false
 <p class="tf-section-label">Structure</p>
 <p class="tf-section-intro">
   Twenty factors organized in four tiers — from foundational engineering practices
-  to AI-specific intelligence layers.
+  to AI-specific intelligence layers. Click a tier to reveal its factors.
 </p>
 
-<div class="tf-tiers">
-  <article class="tf-tier">
-    <span class="tf-tier-num">01</span>
-    <div class="tf-tier-meta">
-      <span class="tf-tier-name">Foundation</span>
-      <span class="tf-tier-range">Factors 1 – 4</span>
-    </div>
-    <p class="tf-tier-desc">Codebase, contracts, dependencies, and configuration.</p>
-  </article>
-  <article class="tf-tier">
-    <span class="tf-tier-num">02</span>
-    <div class="tf-tier-meta">
-      <span class="tf-tier-name">Construction</span>
-      <span class="tf-tier-range">Factors 5 – 8</span>
-    </div>
-    <p class="tf-tier-desc">Build pipeline, evaluation, responsible AI, and identity.</p>
-  </article>
-  <article class="tf-tier">
-    <span class="tf-tier-num">03</span>
-    <div class="tf-tier-meta">
-      <span class="tf-tier-name">Operation</span>
-      <span class="tf-tier-range">Factors 9 – 15</span>
-    </div>
-    <p class="tf-tier-desc">Lifecycle, backing services, parity, caching, durable execution, concurrency, and observability.</p>
-  </article>
-  <article class="tf-tier">
-    <span class="tf-tier-num">04</span>
-    <div class="tf-tier-meta">
-      <span class="tf-tier-name">Intelligence</span>
-      <span class="tf-tier-range">Factors 16 – 20</span>
-    </div>
-    <p class="tf-tier-desc">Models, prompts, agents, memory, and economics.</p>
-  </article>
+{% assign tier_data = "01|Foundation|Factors 1 – 4|Codebase, contracts, dependencies, and configuration.|Tier 1: Foundation,02|Construction|Factors 5 – 8|Build pipeline, evaluation, responsible AI, and identity.|Tier 2: Construction,03|Operation|Factors 9 – 15|Lifecycle, backing services, parity, caching, durable execution, concurrency, and observability.|Tier 3: Operation,04|Intelligence|Factors 16 – 20|Models, prompts, agents, memory, and economics.|Tier 4: Intelligence" | split: "," %}
+
+<div class="tf-tiers projects">
+  {% for entry in tier_data %}
+    {% assign parts = entry | split: "|" %}
+    {% assign t_num = parts[0] %}
+    {% assign t_name = parts[1] %}
+    {% assign t_range = parts[2] %}
+    {% assign t_desc = parts[3] %}
+    {% assign t_category = parts[4] %}
+    {% assign anchor = t_category | replace: " ", "-" | replace: ":", "" %}
+    <details class="tf-tier-details" id="{{ anchor }}">
+      <summary class="tf-tier">
+        <span class="tf-tier-num">{{ t_num }}</span>
+        <div class="tf-tier-meta">
+          <span class="tf-tier-name">{{ t_name }}</span>
+          <span class="tf-tier-range">{{ t_range }}</span>
+        </div>
+        <p class="tf-tier-desc">{{ t_desc }}</p>
+        <span class="tf-tier-chevron" aria-hidden="true">+</span>
+      </summary>
+      {% assign categorized_projects = site.projects | where: "category", t_category %}
+      {% assign sorted_projects = categorized_projects | sort: "importance" %}
+      <div class="row row-cols-1 row-cols-md-3 tf-tier-projects">
+        {% for project in sorted_projects %}
+          {% include projects.liquid %}
+        {% endfor %}
+      </div>
+    </details>
+  {% endfor %}
 </div>
 
 <hr class="tf-rule">
