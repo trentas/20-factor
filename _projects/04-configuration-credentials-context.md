@@ -198,6 +198,7 @@ def validate_ai_config(config):
 - [ ] Safety thresholds and content filtering settings are configurable per environment
 - [ ] AI configuration files are validated at application startup
 - [ ] Configuration changes are auditable (who changed what, when)
+- [ ] Each configuration value is explicitly classified as init-time (immutable for the process lifetime, requires restart to change) or runtime (changeable while the process is live via flag provider, dynamic config service, or hot-reload), and runtime changes are audited with the same rigor as deploys
 - [ ] Local development uses `.env` or equivalent files that are gitignored
 - [ ] Sensitive configuration values are never logged or exposed in error messages
 - [ ] AI service credentials use Workload Identity Federation (OIDC/IRSA/SPIFFE) rather than static API keys wherever the provider supports it
