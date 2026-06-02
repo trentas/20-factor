@@ -18,6 +18,7 @@ group :jekyll_plugins do
   gem 'jekyll-toc'
   gem 'jekyll-twitter-plugin'
   gem 'jemoji'
+  gem 'ostruct'        # no longer a default gem on Ruby 3.5+/4.0; required by jekyll-twitter-plugin
   gem 'unicode_utils'
   gem 'webrick'
 end
