@@ -8,6 +8,8 @@ The original [12-Factor App](https://12factor.net) (Heroku, 2011) and Kevin Hoff
 
 This methodology extends the original 15 factors to **20 factors organized in 4 tiers**, updating existing principles for the AI era and introducing new factors for evaluation, responsible AI, durable agent runtimes, model management, prompt engineering, agent orchestration, agent memory, and AI economics.
 
+> **Relationship to harness engineering.** "Harness engineering" — the 2026 successor to prompt and context engineering — is the discipline of building the loop, tools, memory, guardrails, and observability that turn a raw model into a reliable agent (*Agent = Model + Harness*). The 20-Factor App supplies the architectural principles a production harness must satisfy: where harness engineering asks *how* to assemble the agent loop, these factors define *which properties* it must have — bounded autonomy (F18), prompt & context engineering (F17), durable runtime (F13), memory (F19), evaluation gates (F6), guardrails (F7), and cost-aware observability (F15, F20). See [Factor 18](_projects/18-agent-orchestration-bounded-autonomy.md) for the full mapping.
+
 ---
 
 ## The 20 Factors
