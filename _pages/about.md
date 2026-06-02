@@ -305,4 +305,22 @@ tiers:
   The methodology extends, rather than replaces, the original twelve.
 </p>
 
+<hr class="tf-rule">
+
+<p class="tf-section-label">Relationship to harness engineering</p>
+<p class="tf-section-intro">
+  "Harness engineering" — the 2026 successor to prompt and context engineering — is the
+  discipline of building the loop, tools, memory, guardrails, and observability that turn a
+  raw model into a reliable agent. The field's anchoring formula is <em>Agent = Model + Harness</em>.
+</p>
+<p class="tf-coda">
+  The 20-Factor App supplies the architectural principles a production harness must satisfy:
+  bounded autonomy (F18), prompt &amp; context engineering (F17), durable runtime (F13),
+  agent memory (F19), evaluation gates (F6), guardrails (F7), and token-level observability
+  and cost control (F15, F20). Where harness engineering asks <em>how</em> to assemble the
+  agent loop, these factors define <em>which properties</em> that loop must have — and the
+  methodology's third guiding principle, "architectural enforcement over prompt instructions,"
+  is the harness-engineering ethos stated as a rule.
+</p>
+
 </div>

@@ -36,6 +36,33 @@ This factor *is* the AI change. It addresses:
 
 ## In Practice
 
+### Harness Engineering: The Discipline Around the Agent Loop
+
+By 2026, the practice of building everything *around* the model — to turn raw reasoning into a reliable agent — acquired its own name: **harness engineering**. It is framed as the third phase of AI engineering maturity, succeeding prompt engineering (2022–2023) and context engineering (2024–2025), and it is where the bulk of engineering investment now goes. The anchoring formula is:
+
+```
+Agent = Model + Harness
+```
+
+The discipline draws a useful distinction between two layers, and this factor owns the second:
+
+- **Scaffold** — the *behavior-defining* layer: system prompt, tool descriptions, output-format rules, and what enters each model call. This is the domain of Factor 17 (Prompt and Context Engineering) and Factor 2 (Contract-First Interfaces, for tool schemas).
+- **Harness** — the *execution* layer: the agent loop, tool-call routing, stop conditions, error handling, and guardrails. This is the domain of *this* factor.
+
+A production harness is commonly described as five layers, each of which maps onto a 20-Factor concern — which is the point: harness engineering asks *how* to assemble the agent loop, while these factors define *which properties* that loop must have.
+
+| Harness layer | 20-Factor home |
+|---------------|----------------|
+| Tool orchestration | **F18** (this factor) + **F2** tool contracts |
+| Verification loops | **F6** Evaluation-Driven Development |
+| Context & memory | **F17** Prompt & Context · **F19** Agent Memory |
+| Guardrails | **F7** Responsible AI · **F8** Identity, Access & Trust |
+| Observability | **F15** Full-Spectrum Observability · **F20** AI Economics |
+
+The harness is also where execution must survive interruption — see **Factor 13 (Durable Agent Runtime)** for journaling, idempotent tool calls, and resumable human-in-the-loop interrupts.
+
+The empirical case for treating the harness as a first-class artifact: in 2026 the LangChain team moved a coding agent from 30th to 5th place on Terminal Bench 2.0 *without changing the underlying model* — the entire gain came from harness optimization. A decent model with a strong harness beats a strong model with a weak one. This is the same claim this factor makes from the safety side: agent behavior is determined architecturally, not by asking the model nicely (Guiding Principle 3). Harness engineering is that principle applied to the whole agent loop.
+
 ### Agent Architecture Patterns
 
 **Pattern 1: Simple Tool-Use Agent**
@@ -497,6 +524,7 @@ Swarm frameworks accelerate prototyping but require explicit budget enforcement 
 
 ## Compliance Checklist
 
+- [ ] The agent harness (loop, tool routing, context assembly, guardrails, observability) is treated as a versioned, tested artifact — tuned and benchmarked independently of the model, not left as ad-hoc glue code
 - [ ] Every agent has a defined purpose, tool set, and execution budget
 - [ ] Tool permissions are enforced architecturally (code), not just through prompts
 - [ ] Execution budgets (steps, tokens, cost, time) are enforced with hard limits
