@@ -262,12 +262,12 @@ Production patterns:
 
 ### Edge / NPU vs GPU vs Cloud Routing
 
-By 2026, hybrid cloud+edge inference is mainstream. On-device NPUs (Apple A19 Pro Neural Accelerators ~75 TOPS, Gemini Nano via Android AICore, Phi-3.5-mini and Llama-3.2-1B running on 2GB-RAM devices) handle a growing share of latency-sensitive and privacy-sensitive traffic. Cloud handles the rest. Treat **inference placement** as a per-request scheduling decision:
+By 2026, hybrid cloud+edge inference is mainstream. On-device NPUs (Apple A19 Pro Neural Accelerators ~75 TOPS, Gemini Nano via Android AICore, Phi-4-mini and Llama-3.2-1B running on low-RAM devices) handle a growing share of latency-sensitive and privacy-sensitive traffic. Cloud handles the rest. Treat **inference placement** as a per-request scheduling decision:
 
 ```python
 async def route_inference(req: InferenceRequest) -> RouteDecision:
     if req.contains_sensitive_pii and device_has_capable_npu():
-        return RouteDecision(target="device-npu", model="phi-3.5-mini")
+        return RouteDecision(target="device-npu", model="phi-4-mini")
     if req.expected_latency_ms < 300 and req.tokens < 256:
         return RouteDecision(target="edge-region", model="haiku-class")
     if req.requires_extended_reasoning:

@@ -120,8 +120,8 @@ When using a third-party dataset for fine-tuning or evaluation, verify the licen
 AI workloads increasingly run on hardware beyond NVIDIA CUDA. Declare accelerator-specific dependencies explicitly and provide runtime detection or build variants:
 
 - **AWS Trainium (Trn1/Trn2)** and **AWS Inferentia (Inf2)** — inference-optimized ASICs via the Neuron SDK
-- **Google Cloud TPU v4/v5** — requires JAX/XLA or PyTorch-XLA runtime
-- **AMD ROCm** — HIP-compatible GPU compute, covers Instinct MI300X series
+- **Google Cloud TPU (v5e, v6e "Trillium", v7 "Ironwood")** — requires JAX/XLA or PyTorch-XLA runtime
+- **AMD ROCm** — HIP-compatible GPU compute, covers Instinct MI300X / MI325X / MI350 series
 - **Apple Silicon / Metal** — MLX framework or Core ML for on-device/edge inference
 
 Containers targeting specific accelerators use different base images and runtime libraries. Pin these alongside standard CUDA dependencies, and test the fallback path when the target accelerator is unavailable.

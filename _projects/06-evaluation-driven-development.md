@@ -47,7 +47,13 @@ def eval_classification(output, expected):
     return output.label == expected.label
 
 def eval_json_schema(output, schema):
-    return jsonschema.validate(output, schema) is None
+    # jsonschema.validate() returns None on success and raises on failure —
+    # wrap it so the eval returns a boolean instead of crashing on bad output.
+    try:
+        jsonschema.validate(output, schema)
+        return True
+    except jsonschema.ValidationError:
+        return False
 ```
 
 **2. Heuristic Evaluations**
