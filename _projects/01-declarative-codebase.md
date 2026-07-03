@@ -128,7 +128,7 @@ models:
   summarization:
     model: claude-sonnet-4-5-20250929
     version_pinned: "2025-09-29"
-    rollback_to: claude-sonnet-4-5-20250514    # previous known-good
+    rollback_to: claude-sonnet-4-20250514    # previous known-good
   classification:
     model: claude-haiku-4-5-20251001
 

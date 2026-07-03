@@ -45,18 +45,18 @@ cost_model:
       cache_read_per_1m_tokens: 0.30
       typical_use: "Complex reasoning, document analysis"
 
-    claude-opus-4-6-20250515:
-      input_per_1m_tokens: 15.00
-      output_per_1m_tokens: 75.00
-      cache_read_per_1m_tokens: 1.50
-      thinking_tokens_per_1m: 75.00    # thinking tokens billed as output
+    claude-opus-4-6:
+      input_per_1m_tokens: 5.00
+      output_per_1m_tokens: 25.00
+      cache_read_per_1m_tokens: 0.50
+      thinking_tokens_per_1m: 25.00    # thinking tokens billed as output
       typical_use: "Complex reasoning, multi-step analysis, research"
       note: "Extended thinking can generate 10-100x more thinking tokens than visible output"
 
     claude-haiku-4-5-20251001:
-      input_per_1m_tokens: 0.80
-      output_per_1m_tokens: 4.00
-      cache_read_per_1m_tokens: 0.08
+      input_per_1m_tokens: 1.00
+      output_per_1m_tokens: 5.00
+      cache_read_per_1m_tokens: 0.10
       typical_use: "Classification, simple Q&A, routing"
 
     text-embedding-3-small:
@@ -91,19 +91,19 @@ cost_model:
       avg_input_tokens: 2000
       avg_output_tokens: 300
       model: claude-haiku-4-5-20251001
-      estimated_cost_per_request: 0.003
+      estimated_cost_per_request: 0.0035
       monthly_volume: 200000
-      estimated_monthly_cost: 600
+      estimated_monthly_cost: 700
       cache_hit_rate: 0.30
-      estimated_monthly_cost_with_cache: 420
+      estimated_monthly_cost_with_cache: 590
 
     ticket_classification:
       avg_input_tokens: 500
       avg_output_tokens: 50
       model: claude-haiku-4-5-20251001
-      estimated_cost_per_request: 0.0006
+      estimated_cost_per_request: 0.00075
       monthly_volume: 100000
-      estimated_monthly_cost: 60
+      estimated_monthly_cost: 75
 ```
 
 ### Intelligent Model Routing
@@ -133,12 +133,12 @@ class CostAwareRouter:
             case Complexity.COMPLEX:
                 # Complex tasks: most capable model
                 # Examples: multi-step reasoning, creative writing, code generation
-                return self.get_model("sonnet", thinking_budget=16000)
+                return self.get_model("sonnet", effort="high")
 
             case Complexity.RESEARCH:
                 # Deep reasoning tasks: reasoning model with high thinking budget
                 # Examples: multi-step analysis, research synthesis, complex planning
-                return self.get_model("opus", thinking_budget=32000)
+                return self.get_model("opus", effort="max")
 
     async def route_with_fallback(self, request: AIRequest) -> ModelConfig:
         """Try cheaper model first, escalate if quality is insufficient."""
@@ -289,7 +289,7 @@ class CachingROI:
 | **Batch processing** (batch API discounts) | 50% | Low | Higher latency (24h) |
 | **Provider prompt caching** (Anthropic/OpenAI/Google) | 80-90% on cached input | Low | Requires stable prompt prefixes, min token threshold, ephemeral cache TTL |
 | **Output length control** (max_tokens) | 10-20% | Low | May truncate useful content |
-| **Thinking budget tuning** (limit reasoning tokens) | 20-50% | Low | May reduce quality on complex tasks |
+| **Reasoning-effort tuning** (lower effort level) | 20-50% | Low | May reduce quality on complex tasks |
 | **Fine-tuning** (smaller fine-tuned model) | 40-70% | High | Training cost, maintenance burden |
 | **Model distillation** (large model → small specialist) | 50-80% | High | Distillation cost, narrow task scope |
 | **Provider negotiation** (volume discounts) | 10-30% | Low | Vendor lock-in |
@@ -422,7 +422,7 @@ Essential views:
 - [ ] Cost dashboards provide visibility into spending by feature, model, and tenant
 - [ ] Prompt and output token budgets are configured to prevent waste
 - [ ] Cost optimization strategies (routing, caching, batching) are actively used
-- [ ] Reasoning model thinking tokens are budgeted per task type and tracked separately from output tokens
+- [ ] Reasoning effort is set per task type and thinking tokens are tracked separately from output tokens
 - [ ] AI cost is a line item in capacity planning and business case analysis
 - [ ] All production model traffic flows through an AI Gateway (LiteLLM, Portkey, Kong AI, Cloudflare AI Gateway, or equivalent), not via direct SDK calls
 - [ ] Every scheduled job and production route declares an explicit pinned model + version + thinking-effort; "latest" aliases are forbidden

@@ -123,15 +123,15 @@ The release artifact is immutable and self-describing:
 
 ```json
 {
-  "version": "2025.06.15-abc123f",
+  "version": "2025.10.15-abc123f",
   "build_sha": "abc123f",
-  "timestamp": "2025-06-15T14:30:00Z",
+  "timestamp": "2025-10-15T14:30:00Z",
   "artifacts": {
     "container": "registry.example.com/app:abc123f",
     "prompts": "s3://releases/abc123f/prompts.tar.gz"
   },
   "models": {
-    "summarization": "claude-sonnet-4-5-20250929@20250610",
+    "summarization": "claude-sonnet-4-5-20250929",
     "embedding": "text-embedding-3-small@v2"
   },
   "evaluations": {

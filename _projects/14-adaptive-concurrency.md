@@ -245,11 +245,12 @@ By 2026 the per-call configuration shifted from raw `budget_tokens` to **effort 
 # Anthropic Claude 4.6+ (and similar APIs from other providers)
 response = await client.messages.create(
     model="claude-sonnet-4-6",
-    thinking={"effort": "auto"},        # auto | low | medium | high
+    thinking={"type": "adaptive"},              # adaptive thinking; model sets depth
+    output_config={"effort": "high"},           # low | medium | high | xhigh | max
     messages=[...],
 )
-# `auto` lets the model adapt thinking depth to task complexity.
-# Explicit levels give predictable cost and latency for production routing.
+# Adaptive thinking lets the model set depth per request; `effort` bounds overall
+# spend. Explicit effort levels give predictable cost and latency for production routing.
 ```
 
 Production patterns:
@@ -271,7 +272,7 @@ async def route_inference(req: InferenceRequest) -> RouteDecision:
         return RouteDecision(target="edge-region", model="haiku-class")
     if req.requires_extended_reasoning:
         return RouteDecision(target="cloud", model="opus-class", effort="high")
-    return RouteDecision(target="cloud", model="sonnet-class", effort="auto")
+    return RouteDecision(target="cloud", model="sonnet-class", effort="medium")
 ```
 
 The trilemma is **latency-privacy-cost**: device wins on privacy and latency but loses on capability; cloud wins on capability but loses on per-request cost and round-trip latency. The router enforces the policy.
@@ -322,7 +323,7 @@ Go beyond CPU and memory for auto-scaling decisions:
 - [ ] Batch processing is used for throughput-oriented workloads
 - [ ] Scale-down respects graceful shutdown (Factor 9) with drain timeouts
 - [ ] Scaling decisions and cost impact are observable (Factor 15)
-- [ ] Thinking-token budgets are configured per route (effort levels low/medium/high/auto) and rate-limited separately from output tokens
+- [ ] Thinking-token budgets are configured per route (adaptive thinking + effort levels low/medium/high/xhigh/max) and rate-limited separately from output tokens
 - [ ] Inference placement (edge/NPU vs GPU vs cloud) is a routing decision, not hardcoded
 - [ ] Inference-engine choice (vLLM / TensorRT-LLM / TGI / SGLang) is pinned per release and measured in tokens/sec/dollar and tokens/sec/watt
 - [ ] Inference optimizations (speculative decoding, FP4/INT4 quantization, continuous batching, PagedAttention) are evaluated as architectural levers, not runtime knobs

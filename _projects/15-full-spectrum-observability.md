@@ -340,7 +340,7 @@ Metric names follow the same convention (e.g., `gen_ai.client.token.usage`). Tre
 
 ### Carbon and Energy as a Standard Metric
 
-Sustainability metrics moved from "nice to have" to dashboard-default in 2026. Google's disclosure benchmark of 0.10 Wh and 0.02 gCO₂e per median Gemini prompt set the public reference. EU procurement and several enterprise vendor reviews now require Wh-per-100-tokens and gCO₂e-per-request reporting. Stanford AI Index emphasizes tokens-per-second-per-watt and tokens-per-joule as serving efficiency metrics.
+Sustainability metrics moved from "nice to have" to dashboard-default in 2026. Google's disclosure benchmark of ~0.24 Wh and ~0.03 gCO₂e (plus ~0.26 mL of water) per median Gemini text prompt set the public reference. EU procurement and several enterprise vendor reviews now require Wh-per-100-tokens and gCO₂e-per-request reporting. Stanford AI Index emphasizes tokens-per-second-per-watt and tokens-per-joule as serving efficiency metrics.
 
 ```text
 ai_request_energy_wh           # Wh consumed per request

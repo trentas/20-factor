@@ -356,7 +356,7 @@ The **Model Context Protocol (MCP)** standardizes how agents discover and invoke
 agents:
   research-assistant:
     purpose: "Research topics using web search and knowledge base"
-    model: claude-sonnet-4-6-20260115
+    model: claude-sonnet-4-6
 
     # Tools provided via MCP servers (Factor 10 backing services)
     mcp_servers:
