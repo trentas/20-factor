@@ -162,7 +162,7 @@ Most major AI providers (Anthropic, Google, AWS Bedrock) support workload identi
 
 ```python
 client = OpenFeature.get_client()
-model = client.get_string_value("ai.summarization.model", "claude-sonnet-4-6", ctx)
+model = client.get_string_value("ai.summarization.model", "claude-sonnet-5", ctx)
 ```
 
 ### HSM/KMS for AI Context Encryption
@@ -171,7 +171,7 @@ Sensitive AI context — RAG documents containing PII, medical records, or finan
 
 - **AWS KMS** / **GCP Cloud KMS** / **Azure Key Vault** for cloud-hosted applications
 - **HashiCorp Vault Transit** secrets engine for multi-cloud or on-prem
-- **HSMs** (Hardware Security Modules) for regulated industries requiring FIPS 140-2 Level 3
+- **HSMs** (Hardware Security Modules) for regulated industries requiring FIPS 140-3 Level 3
 
 Encryption keys must never coexist with the encrypted context in the same config file or the same environment variable set. Apply envelope encryption: the data key encrypts the context; the master key (HSM/KMS-backed) encrypts the data key.
 

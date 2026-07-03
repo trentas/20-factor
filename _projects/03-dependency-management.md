@@ -79,7 +79,7 @@ models:
   embedding:
     registry: huggingface
     name: BAAI/bge-large-en-v1.5
-    version: "refs/pr/83"
+    version: "e8c4f2a"   # pinned commit SHA, not a floating branch/PR ref
     sha256: "abc123..."
     size: 1.34GB
     required_memory: 3GB

@@ -218,9 +218,9 @@ Traffic mirroring (shadow traffic, dark launch) runs new model versions or promp
 # AI Gateway shadow routing config
 routes:
   - name: document-summary
-    primary: anthropic/claude-sonnet-4-6
+    primary: anthropic/claude-sonnet-5
     shadow:
-      model: anthropic/claude-opus-4-7   # evaluate new model on live traffic
+      model: anthropic/claude-opus-4-8   # evaluate new model on live traffic
       sample_rate: 0.10                  # mirror 10% of requests
       log_responses: true
       evaluate_quality: true             # run Factor 6 eval on shadow responses

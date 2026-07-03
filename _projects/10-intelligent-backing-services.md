@@ -62,7 +62,7 @@ services:
     fallback:
       provider: openai
       endpoint: https://api.openai.com
-      model: gpt-4o
+      model: gpt-5.1
       credentials: vault://secrets/openai-api-key
       timeout_ms: 30000
 
@@ -84,7 +84,7 @@ services:
 
   reranker:
     provider: cohere
-    model: rerank-english-v3.0
+    model: rerank-v3.5
     endpoint: https://api.cohere.ai
     credentials: vault://secrets/cohere-api-key
 
@@ -180,7 +180,7 @@ ai_gateway:
       models: [claude-sonnet-4-5-*, claude-haiku-4-5-*]
     - name: openai
       priority: 2
-      models: [gpt-4o, gpt-4o-mini]
+      models: [gpt-5.1, gpt-4o-mini]
       note: "Fallback provider"
 ```
 

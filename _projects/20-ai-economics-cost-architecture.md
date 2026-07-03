@@ -314,7 +314,7 @@ The architectural rule: **no application code calls a model provider directly**.
 gateway:
   routes:
     - name: customer-support
-      pin_model: anthropic/claude-sonnet-4-6   # mandatory model-pin
+      pin_model: anthropic/claude-sonnet-5   # mandatory model-pin
       cache: { semantic: true, similarity_threshold: 0.95 }
       budget:
         per_tenant_daily_usd: 50
@@ -323,14 +323,14 @@ gateway:
       guardrails: [pii_redact_input, content_safety_output]
 
     - name: research-assistant
-      pin_model: anthropic/claude-opus-4-7
+      pin_model: anthropic/claude-opus-4-8
       thinking: { effort: high }
       cache: { semantic: false }
       budget:
         per_request_usd: 5
         on_breach: fallback                    # downgrade to sonnet
       fallback_chain:
-        - anthropic/claude-sonnet-4-6
+        - anthropic/claude-sonnet-5
         - openai/gpt-5.1                       # last resort
 ```
 
@@ -343,7 +343,7 @@ The 2026 pattern: a release manifest entry per job with model + version + thinki
 ```yaml
 jobs:
   - name: nightly-content-summarization
-    model: anthropic/claude-sonnet-4-6
+    model: anthropic/claude-sonnet-5
     thinking: { effort: low }
     max_cost_per_run_usd: 25
     expected_output_tokens_p99: 4000

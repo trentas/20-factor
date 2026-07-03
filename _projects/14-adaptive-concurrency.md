@@ -244,7 +244,7 @@ By 2026 the per-call configuration shifted from raw `budget_tokens` to **effort 
 ```python
 # Anthropic Claude 4.6+ (and similar APIs from other providers)
 response = await client.messages.create(
-    model="claude-sonnet-4-6",
+    model="claude-sonnet-5",
     thinking={"type": "adaptive"},              # adaptive thinking; model sets depth
     output_config={"effort": "high"},           # low | medium | high | xhigh | max
     messages=[...],
@@ -291,7 +291,7 @@ For self-hosted inference, the **inference engine** choice has compounding effec
 The compounding effect comes from stacking optimizations:
 
 - **Speculative decoding** (e.g., EAGLE-3 reporting ~6.5× speedup) — a small draft model proposes tokens, the target model verifies in parallel
-- **NVFP4 / FP4 quantization** on Blackwell — 20–30% throughput vs FP16 with minimal quality loss for many models
+- **NVFP4 / FP4 quantization** on Blackwell — roughly 2–4× the throughput of FP16 with minimal quality loss for many models
 - **Continuous batching with chunked prefill** — table stakes
 - **KV-cache offload** to CPU/SSD for long-context workloads
 - **Fused MoE kernels** for sparse-expert models

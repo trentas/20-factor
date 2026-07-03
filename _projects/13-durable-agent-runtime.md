@@ -17,7 +17,7 @@ The 12-factor "stateless processes" rule was written for request handlers — sh
 
 Treating agents as stateless handlers leads to predictable failure modes: lost work on worker preemption, double-billing on tool retry, broken human approval flows, and agents that "forget" what they were doing after a deploy. The fix is not to make the worker stateful — it's to externalize execution state into a **durable runtime** that journals every step and lets the workflow be replayed deterministically.
 
-Durable execution engines (Temporal, Restate, Inngest, Dapr Workflows) and agent SDKs (Anthropic Agent SDK, OpenAI Agents SDK, Google ADK, LangGraph, Pydantic AI) made this the default in 2025–2026. The worker stays stateless; the workflow is durable.
+Durable execution engines (Temporal, Restate, DBOS, Inngest, Dapr Workflows) and agent SDKs (Claude Agent SDK, OpenAI Agents SDK, Google ADK, LangGraph, Pydantic AI) made this the default in 2025–2026. The worker stays stateless; the workflow is durable.
 
 ## What This Replaces
 
@@ -55,10 +55,11 @@ Production-grade options as of 2026:
 | Tool | Strengths | Best for |
 |------|-----------|----------|
 | **Temporal** | Mature, battle-tested, polyglot SDKs, strong typing, observability | General-purpose long-running workflows; teams that want a cluster |
-| **Restate** | Postgres-backed, lightweight, RPC-style, journaled state machines | Teams that want durable execution without a separate cluster |
+| **Restate** | Self-contained single binary, lightweight, RPC-style, journaled state machines | Teams that want durable execution without a separate cluster |
+| **DBOS** | Postgres-native durable execution (state lives in your Postgres) | Teams already on Postgres that want durability without new infra |
 | **Inngest** | Serverless-first, event-driven, simple developer ergonomics | Event-driven agents, JAMstack/serverless deployments |
 | **Dapr Workflows** | Kubernetes-native, sidecar pattern, multi-language | K8s shops with existing Dapr investment |
-| **Anthropic Agent SDK / OpenAI Agents SDK** | Built-in durable execution for agent loops; integrated with model APIs | Teams building agents on a single provider's stack |
+| **Claude Agent SDK / OpenAI Agents SDK** | Agent-loop harness (context, tools, memory) — pair with a durable engine above for journaling and crash-safe resume | Teams building agents on a single provider's stack |
 | **LangGraph** | Python-first, graph-of-state model, integrates with LangChain ecosystem | RAG-heavy and multi-agent supervised workflows |
 | **Pydantic AI** | Type-safe, Pydantic-native, lightweight | Python teams that want strict typing without a workflow cluster |
 
@@ -127,7 +128,7 @@ idem_key = str(uuid.uuid4())
 idem_key = f"{workflow.info().workflow_id}::refund::{step_index}"
 ```
 
-The destination service (payment provider, email provider, ticketing API) deduplicates on this key. Most providers offer this natively (Stripe `Idempotency-Key`, AWS SQS deduplication, Slack `client_msg_id`). For services that don't, wrap them with a thin `(idem_key → result)` cache.
+The destination service (payment provider, email provider, ticketing API) deduplicates on this key. Most providers offer this natively (Stripe `Idempotency-Key` header, AWS SQS `MessageDeduplicationId`). For services that don't, wrap them with a thin `(idem_key → result)` cache.
 
 ### Human-in-the-Loop as Durable Interrupt
 

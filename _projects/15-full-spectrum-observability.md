@@ -317,13 +317,13 @@ SLOs turn metrics into actionable contracts. When an error budget burns down, th
 
 ### OpenTelemetry GenAI Semantic Conventions
 
-The **OpenTelemetry GenAI semantic conventions** stabilized through 2025–2026 as the canonical contract for AI telemetry. Adopt them. They make traces and metrics portable across observability stacks (Langfuse, LangSmith, Arize Phoenix, Helicone, W&B Weave, Datadog, Honeycomb) and across teams.
+The **OpenTelemetry GenAI semantic conventions** are converging (still partly experimental as of 2026) toward a common contract for AI telemetry. Adopt them, but expect some attributes to keep evolving. They make traces and metrics portable across observability stacks (Langfuse, LangSmith, Arize Phoenix, Helicone, W&B Weave, Datadog, Honeycomb) and across teams.
 
 Span attributes (subset):
 
 ```text
 gen_ai.system                 = "anthropic" | "openai" | "google" | ...
-gen_ai.request.model          = "claude-sonnet-4-6"
+gen_ai.request.model          = "claude-sonnet-5"
 gen_ai.request.temperature    = 0.7
 gen_ai.usage.input_tokens     = 1250
 gen_ai.usage.output_tokens    = 340

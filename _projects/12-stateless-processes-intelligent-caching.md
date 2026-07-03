@@ -193,15 +193,15 @@ response = await client.messages.create(
 **Design patterns that maximize provider cache hit rates:**
 - **Stable prefix, variable suffix**: Put system prompts, knowledge bases, and few-shot examples *before* the variable user content. The prefix must match byte-for-byte.
 - **Order matters**: Rearranging content invalidates the cache. Keep the order of system prompt sections consistent across requests.
-- **Minimum cacheable length**: Most providers require a minimum prefix length (e.g., 1024 tokens for Anthropic) to activate caching.
-- **Cache lifetime**: Provider caches are ephemeral (typically 5 minutes). High-traffic endpoints benefit most; low-traffic endpoints may see few cache hits.
+- **Minimum cacheable length**: Providers require a minimum prefix to activate caching, and it varies by model — for Anthropic, ~4096 tokens on Opus 4.x and Haiku 4.5, ~2048 on Sonnet 4.6, ~1024 on Sonnet 4.5. Below the threshold, caching silently no-ops.
+- **Cache lifetime**: Provider caches are ephemeral — a default 5-minute TTL, with a 1-hour TTL available (at a higher write cost) for bursty or low-traffic endpoints. High-traffic endpoints benefit most.
 - **Multi-turn conversations**: In chat applications, the conversation history grows but the system prompt prefix stays the same — naturally benefiting from prefix caching.
 
 ```yaml
 # prompt-caching-config.yaml
 prompt_caching:
   strategy: prefix_stable
-  min_cacheable_tokens: 1024
+  min_cacheable_tokens: 4096   # model-dependent: 4096 (Opus 4.x / Haiku 4.5), 2048 (Sonnet 4.6), 1024 (Sonnet 4.5)
 
   # Structure: cached sections first, variable sections last
   sections_order:

@@ -157,7 +157,7 @@ Mitigate slow model loading:
 - **Persistent model cache**: Store loaded models on fast local storage (NVMe) so subsequent startups load from cache, not from remote storage.
 - **Model preloading**: In environments with predictable scaling patterns, preload models on standby instances before they receive traffic.
 - **Shared GPU memory**: In multi-process setups, share model weights across processes using memory-mapped files.
-- **Quantization**: Use quantized models (INT8, INT4) for faster loading and lower memory footprint, trading some accuracy for operational agility.
+- **Quantization**: Use quantized models (FP8, INT8, FP4/NVFP4, INT4) for faster loading and lower memory footprint, trading some accuracy for operational agility. On current Hopper/Blackwell GPUs, FP8 and FP4/MXFP4 are the relevant formats.
 
 ### Kubernetes GPU Node Cordoning and Draining
 
@@ -196,7 +196,7 @@ GPU spot instances (AWS EC2 Spot, GCP Spot/Preemptible, Azure Spot) cost 60–90
 
 ### CRIU for Warm Model Pools
 
-[CRIU (Checkpoint/Restore in Userspace)](https://criu.org) captures the full process memory state — including loaded model weights and GPU allocations — to disk. Restoring from a CRIU checkpoint is orders of magnitude faster than cold model loading, enabling fast horizontal scaling and burst-warm instances without the GPU memory loading penalty.
+[CRIU (Checkpoint/Restore in Userspace)](https://criu.org) captures the full process memory state — including loaded model weights — to disk. (Vanilla CRIU does not checkpoint GPU/CUDA device state; capturing GPU memory additionally requires NVIDIA's `cuda-checkpoint` tool and the CRIU CUDA plugin.) Restoring from a CRIU checkpoint is orders of magnitude faster than cold model loading, enabling fast horizontal scaling and burst-warm instances without the GPU memory loading penalty.
 
 This is particularly valuable for models with long load times (30B+ parameter models) where cold-start latency violates readiness SLOs. The CRIU checkpoint is itself a versioned artifact stored in object storage (Factor 10) and invalidated when the model version changes.
 

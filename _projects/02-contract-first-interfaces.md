@@ -218,7 +218,7 @@ A2A and MCP are complementary:
 
 In production, putting an **MCP Gateway** in front of MCP servers is now the default topology. Direct agent → MCP server connections suffice for local development; production needs a control plane:
 
-- **OAuth 2.1 enforcement**: MCP standardized on OAuth 2.1 (with audited spec by 2026). The gateway centralizes auth, scope, token rotation, and audit logging — application code doesn't reimplement it.
+- **OAuth 2.1 enforcement**: MCP's authorization spec builds on OAuth 2.1 (still an IETF draft). The gateway centralizes auth, scope, token rotation, and audit logging — application code doesn't reimplement it.
 - **Tool catalog**: a single `tools/list` aggregating servers across the org, with versioning, deprecation flags, and per-tenant exposure rules.
 - **Rate limiting and budget enforcement**: per-tool, per-tenant, per-agent — enforced at the gateway, not in each server.
 - **Observability**: every tool call is logged in one place with the same correlation IDs as model calls (cross-ref Factor 15).
@@ -246,7 +246,7 @@ Vendors in this space include Portkey, Kong AI Gateway, and dedicated MCP-aware 
 
 ### Skills as a Capability Primitive
 
-**Skills** consolidated in 2025–2026 as a packaging primitive for agent capabilities — Anthropic introduced the format, OpenAI adopted it shortly after. A skill bundles:
+**Skills** consolidated in 2025–2026 as a packaging primitive for agent capabilities — Anthropic introduced the format, and it has since been adopted across multiple agent frameworks. A skill bundles:
 
 - A name and description (the discovery contract)
 - Required tools (which can be MCP server tools)

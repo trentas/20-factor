@@ -178,7 +178,7 @@ Autonomous coding agents (Claude Code, Devin, Codex) make evaluation gates *more
 Golden datasets are bottlenecked by the availability of human-labeled examples. Synthetic data generation unlocks scale: use a capable model to generate adversarial examples, edge cases, and realistic inputs, then filter for quality before adding to the eval set.
 
 ```python
-generator = LLM("claude-opus-4-7")
+generator = LLM("claude-opus-4-8")
 for category in ["edge_cases", "adversarial_inputs", "rare_language_patterns"]:
     candidates = generator.generate_eval_examples(
         task_description=task.description,
@@ -217,18 +217,18 @@ judge_calibration:
 
 ### Public Benchmarks as Reference Points
 
-Public benchmarks provide a shared vocabulary for capability comparisons when evaluating models or tracking regression:
+Public benchmarks provide a shared vocabulary for capability comparisons when evaluating models or tracking regression. Prefer current, discriminative benchmarks — older ones like MMLU, HellaSwag, and HumanEval are saturated at the frontier and no longer separate top models:
 
 | Benchmark | What it measures | Use case |
 |-----------|-----------------|----------|
-| **MMLU** | Broad knowledge across 57 subjects | General capability baseline |
-| **SWE-bench** | Software engineering (issue → patch) | Coding agent capability |
-| **HellaSwag** | Commonsense reasoning | Language understanding |
-| **HumanEval** | Code generation (Python) | Code quality |
-| **TruthfulQA** | Truthfulness vs. plausible hallucination | Hallucination tendency |
-| **MT-Bench** | Multi-turn instruction following | Chat quality |
+| **GPQA Diamond** | Graduate-level science reasoning | Frontier reasoning capability |
+| **MMLU-Pro** | Broad knowledge (harder successor to MMLU) | General capability baseline |
+| **SWE-bench Verified** | Software engineering (issue → patch) | Coding agent capability |
+| **LiveCodeBench** | Contamination-resistant code generation | Code quality without benchmark leakage |
+| **Terminal-Bench** | End-to-end agentic terminal tasks | Agent / harness capability |
+| **AIME** | Competition mathematics | Multi-step quantitative reasoning |
 
-Use these as calibration points when selecting models (Factor 16), not as the primary evaluation signal. Application-specific evaluations always take precedence over generic benchmarks — a model that scores highest on MMLU may still perform worse than a cheaper model on your specific task.
+Use these as calibration points when selecting models (Factor 16), not as the primary evaluation signal. Application-specific evaluations always take precedence over generic benchmarks — a model that scores highest on a public benchmark may still perform worse than a cheaper model on your specific task.
 
 ### Continuous Evaluation
 Evaluations don't stop at deployment:

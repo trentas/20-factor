@@ -35,7 +35,7 @@ The original factor focused on the relationship between a codebase and its deplo
 - AI coding assistants (Copilot, Claude Code, Cursor) generate code that must still pass the same review, lint, and test gates as human-written code. The codebase is the arbiter, not the generation method.
 - AI-generated code is held to the same review, testing, and CI bar as human-written code — once it lands, it gets no second-class treatment in the codebase. Quality is judged by the gates it passed, not by its origin.
 - **Track AI authorship in metadata, not in source.** Commit trailers (`Assisted-by: claude-code`, `Co-authored-by:`), PR labels, or an audit log are the right surface for provenance — they enable measurement (AI contribution rate, review cycle deltas, defect rates by authorship class, ramp-up impact) without polluting the source with markers that rot. Inline comments like `// AI-generated` are an anti-pattern: they degrade as code is edited, create review bias, and make refactoring noisier. The codebase stays clean; the metadata layer carries the signal.
-- Context files (`.cursorrules`, `CLAUDE.md`, `.github/copilot-instructions.md`) that guide AI coding assistants are themselves part of the codebase and should be versioned.
+- Context files (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/*.mdc`, `.github/copilot-instructions.md`) that guide AI coding assistants are themselves part of the codebase and should be versioned. `AGENTS.md` has emerged as a cross-tool convention; the single-file `.cursorrules` is deprecated in favor of the `.cursor/rules/` directory.
 - **Autonomous coding agents** (Claude Code, Devin, Codex) can create branches, write code, run tests, and open pull requests autonomously. The codebase must be prepared for this: CI gates, evaluation suites (Factor 6), and ephemeral environments (Factor 11) must validate agent-generated changes without human intervention in the loop. The human reviews the output, not the process.
 
 ### AI-Native Applications
@@ -63,8 +63,9 @@ repo/
 │   └── eval-config.yaml
 ├── tools/                  # Agent tool schemas
 │   └── tool-definitions.json
-├── .cursorrules            # AI coding assistant context
+├── AGENTS.md               # AI coding assistant context (cross-tool)
 ├── CLAUDE.md               # AI coding assistant context (Claude Code)
+├── .cursor/rules/          # AI coding assistant context (Cursor)
 ├── .github/copilot-instructions.md  # AI coding assistant context (Copilot)
 └── pipeline.yaml           # CI/CD definition
 ```
@@ -147,7 +148,7 @@ The AIBOM is a versioned artifact alongside application code, answering: "What m
 
 ### Secrets in Git: SOPS and Sealed Secrets
 
-GitOps workflows often need encrypted values committed to the repository. [Mozilla SOPS](https://github.com/mozilla/sops) encrypts file values using AWS KMS, GCP KMS, or age keys — keeping structure visible in diffs while keeping values encrypted. [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets) for Kubernetes encrypts secrets with a cluster-side public key so only the cluster can decrypt them. Both patterns allow AI API keys, model registry tokens, and vector database credentials to be managed in Git without plaintext exposure.
+GitOps workflows often need encrypted values committed to the repository. [SOPS](https://github.com/getsops/sops) (now a CNCF project, formerly Mozilla SOPS) encrypts file values using AWS KMS, GCP KMS, or age keys — keeping structure visible in diffs while keeping values encrypted. [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets) for Kubernetes encrypts secrets with a cluster-side public key so only the cluster can decrypt them. Both patterns allow AI API keys, model registry tokens, and vector database credentials to be managed in Git without plaintext exposure.
 
 ### Monorepo vs. Multi-repo
 The original factor's "one codebase, many deploys" still applies. Whether using a monorepo or multi-repo strategy, each deployable unit has a single codebase. Shared libraries are dependencies (Factor 3), not copy-pasted code.

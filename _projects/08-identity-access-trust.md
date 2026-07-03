@@ -176,7 +176,7 @@ Every agent action must be auditable:
 ### OAuth and API Key Management for Agents
 When agents interact with external services:
 
-- Use OAuth 2.0 with scoped tokens — never give agents long-lived credentials with broad access.
+- Use OAuth 2.1 with scoped tokens — never give agents long-lived credentials with broad access.
 - Rotate agent credentials automatically and frequently.
 - Use service accounts for agent identity, not shared user accounts.
 - Implement token downscoping — agent tokens should have the minimum scope needed for the current task.
@@ -192,7 +192,7 @@ Apply zero trust principles to agent-to-agent and agent-to-service communication
 
 ### Computer Use and Browser-Agent Delegated Identity
 
-By 2026, **computer-use agents** crossed the production threshold (Claude Sonnet OSWorld at 72.5%, Operator in enterprise tiers, Gemini Computer Use, Manus Desktop, Codex Background Computer Use). When an agent operates a browser or desktop on behalf of a user — clicking, typing, navigating across sites the user is logged into — it inherits a fraction of the user's identity. This is a categorically different trust model from API tool use.
+By 2026, **computer-use agents** crossed the production threshold (Claude computer use, OpenAI's ChatGPT agent, Gemini Computer Use, Manus, and others). When an agent operates a browser or desktop on behalf of a user — clicking, typing, navigating across sites the user is logged into — it inherits a fraction of the user's identity. This is a categorically different trust model from API tool use.
 
 Treat each computer-use session as a **scoped impersonation**:
 
