@@ -440,6 +440,8 @@ const MATURITY_LEVELS = [
   { label: "Optimized",  bg: "#0d6efd" }
 ];
 
+// Abbreviated labels for the radar chart. MUST match FACTORS order and length
+// (positional: SHORT_NAMES[i] pairs with FACTORS[i]). Guarded below.
 const SHORT_NAMES = [
   "Declarative Codebase", "Contract-First Interfaces", "Dependency Mgmt",
   "Config & Credentials", "Immutable Build", "Eval-Driven Dev",
@@ -449,6 +451,9 @@ const SHORT_NAMES = [
   "Model Lifecycle", "Prompt & Context", "Agent Orchestration",
   "Agent Memory", "AI Economics"
 ];
+if (SHORT_NAMES.length !== FACTORS.length) {
+  console.warn("SHORT_NAMES (" + SHORT_NAMES.length + ") is out of sync with FACTORS (" + FACTORS.length + ") — radar chart labels will be misaligned.");
+}
 
 const COMPARE_COLORS = [
   "#1a1a2e", "#dc3545", "#198754", "#d97706",

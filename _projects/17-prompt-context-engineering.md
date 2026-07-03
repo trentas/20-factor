@@ -369,7 +369,7 @@ Models now generate not just text but also images, audio, and structured visual 
 ```yaml
 multimodal_outputs:
   image_generation:
-    models: [dall-e-3, claude-with-image-gen]
+    models: [dall-e-3, gpt-image-1]
     output_validation:
       - content_safety_scan: true       # scan generated images for policy violations
       - watermark: ai_generated         # label AI-generated images (Factor 7 transparency)
@@ -407,36 +407,36 @@ Reasoning models (Claude's extended thinking, OpenAI o1/o3/o4-mini, DeepSeek R1)
 This changes context engineering in several ways:
 
 ```yaml
-# reasoning-budget.yaml — budget thinking tokens explicitly
-reasoning_budget:
-  model: claude-opus-4-6-20250515
-  extended_thinking:
-    enabled: true
-    max_thinking_tokens: 32000       # hard cap on internal reasoning
-    budget_strategy: task_adaptive   # simple tasks get less thinking budget
+# reasoning-effort.yaml — control reasoning depth per task with effort levels
+reasoning_effort:
+  model: claude-opus-4-6
+  thinking:
+    type: adaptive                   # model sets thinking depth; no fixed token budget
+  # `effort` bounds overall spend: low | medium | high | xhigh | max
 
   task_profiles:
     classification:
-      thinking_budget: 1024          # simple tasks need minimal reasoning
+      effort: low                    # simple tasks need minimal reasoning
       note: "Reasoning adds latency with little quality gain for classification"
 
     code_generation:
-      thinking_budget: 16000         # complex tasks benefit from deep reasoning
-      note: "More thinking tokens = better code quality and fewer bugs"
+      effort: high                   # complex tasks benefit from deeper reasoning
+      note: "Higher effort = better code quality and fewer bugs"
 
     multi_step_analysis:
-      thinking_budget: 32000         # max budget for complex analytical tasks
+      effort: max                    # deepest reasoning for complex analytical tasks
       note: "Research, planning, and multi-step reasoning benefit most"
 
     simple_qa:
-      thinking_budget: 0             # disable extended thinking entirely
-      note: "Use a non-reasoning model or disable thinking for simple retrieval"
+      thinking:
+        type: disabled               # disable extended thinking entirely
+      note: "Disable thinking (or use a lighter model) for simple retrieval"
 ```
 
 **Key engineering decisions for reasoning models:**
 - **Thinking tokens are invisible but expensive**: A response with 500 output tokens may consume 10,000+ thinking tokens. Factor 20 cost models must account for this — thinking tokens are typically priced differently from output tokens.
 - **Not all tasks benefit from reasoning**: Classification, simple Q&A, and format conversion see little quality improvement from extended thinking. Use reasoning models selectively — route simple tasks to standard models (Factor 20 model routing).
-- **Thinking budget as a quality lever**: More thinking tokens generally improve quality for complex tasks, but with diminishing returns. Tune the thinking budget per task type based on evaluation results (Factor 6).
+- **Effort as a quality lever**: Higher effort generally improves quality for complex tasks, but with diminishing returns. Tune the effort level per task type based on evaluation results (Factor 6).
 - **Streaming considerations**: With reasoning models, the first visible token may take significantly longer to appear (the model is "thinking" first). Design UIs to handle this latency — show a "thinking" indicator rather than an empty response.
 - **Summarized thinking for observability**: Some providers return a summarized version of the thinking process. Log this for debugging and quality analysis (Factor 15), but be aware it's a summary, not the full chain.
 
@@ -477,7 +477,7 @@ Models with large context windows (200K–1M+ tokens) can still degrade when rel
 - **Dynamic few-shot selection**: Don't include all examples — select the most relevant ones for the current query.
 - **Conversation summarization**: Instead of passing full conversation history, summarize older turns.
 - **Structured output over prose**: JSON schemas for output reduce tokens and improve reliability.
-- **Chain-of-thought budgeting**: If using CoT, budget tokens for reasoning steps that won't be shown to the user.
+- **Reasoning-effort tuning**: Set the effort level so reasoning depth matches task complexity — reasoning tokens are billed but not shown to the user.
 - **Reasoning model routing**: Not every request needs extended thinking. Route simple tasks to standard models and reserve reasoning models for tasks where quality measurably improves (see Factor 20 for cost-aware routing).
 
 ## Compliance Checklist
@@ -492,7 +492,7 @@ Models with large context windows (200K–1M+ tokens) can still degrade when rel
 - [ ] Conversation history management has a defined strategy (truncation, summarization)
 - [ ] Prompt effectiveness is measured through evaluations (Factor 6) and production monitoring (Factor 15)
 - [ ] Context assembly strategies handle overflow gracefully (truncation, prioritization)
-- [ ] Extended thinking / reasoning token budgets are configured per task type with cost awareness (Factor 20)
+- [ ] Reasoning effort (adaptive thinking + effort levels) is configured per task type with cost awareness (Factor 20)
 - [ ] GraphRAG is used for queries requiring multi-hop entity reasoning; standard vector RAG is used for point-in-time retrieval
 - [ ] Retrieval recall vs. context position is monitored in the eval suite; context assembly places highest-relevance passages in positions the model attends best
 - [ ] Automatic prompt optimization (DSPy, TextGrad, or equivalent) is evaluated for high-traffic prompts; optimized prompts are committed as versioned artifacts validated on held-out test data

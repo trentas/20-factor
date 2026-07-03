@@ -323,7 +323,7 @@ The AI Act also prohibits certain AI practices outright (social scoring, real-ti
 | **2 Aug 2026** | **EU Commission's enforcement powers activate (fines, recalls, mitigations); Article 50 transparency obligations apply** |
 | 2 Aug 2027 | Pre-2025 GPAI models must reach full compliance |
 
-Treat 2 Aug 2026 as a hard deadline for any system serving EU users.
+Treat 2 Aug 2026 as the key near-term milestone for any system serving EU users — but re-verify these dates before relying on them: the Commission's late-2025 "Digital Omnibus" package proposed delaying and simplifying several high-risk and GPAI obligations, so specific timelines may have shifted.
 
 ### Article 50: Content Provenance and Watermarking
 
@@ -350,7 +350,7 @@ content_provenance:
         - c2pa.created_by: "ExampleApp v2.3"
         - c2pa.actions:
             - action: c2pa.created
-              softwareAgent: "claude-sonnet-4-6"
+              softwareAgent: "claude-sonnet-5"
         - c2pa.training_mining: notAllowed   # opt-out signal for crawlers
 
   watermark:

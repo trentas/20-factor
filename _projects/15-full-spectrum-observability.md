@@ -317,13 +317,13 @@ SLOs turn metrics into actionable contracts. When an error budget burns down, th
 
 ### OpenTelemetry GenAI Semantic Conventions
 
-The **OpenTelemetry GenAI semantic conventions** stabilized through 2025–2026 as the canonical contract for AI telemetry. Adopt them. They make traces and metrics portable across observability stacks (Langfuse, LangSmith, Arize Phoenix, Helicone, W&B Weave, Datadog, Honeycomb) and across teams.
+The **OpenTelemetry GenAI semantic conventions** are converging (still partly experimental as of 2026) toward a common contract for AI telemetry. Adopt them, but expect some attributes to keep evolving. They make traces and metrics portable across observability stacks (Langfuse, LangSmith, Arize Phoenix, Helicone, W&B Weave, Datadog, Honeycomb) and across teams.
 
 Span attributes (subset):
 
 ```text
 gen_ai.system                 = "anthropic" | "openai" | "google" | ...
-gen_ai.request.model          = "claude-sonnet-4-6"
+gen_ai.request.model          = "claude-sonnet-5"
 gen_ai.request.temperature    = 0.7
 gen_ai.usage.input_tokens     = 1250
 gen_ai.usage.output_tokens    = 340
@@ -340,7 +340,7 @@ Metric names follow the same convention (e.g., `gen_ai.client.token.usage`). Tre
 
 ### Carbon and Energy as a Standard Metric
 
-Sustainability metrics moved from "nice to have" to dashboard-default in 2026. Google's disclosure benchmark of 0.10 Wh and 0.02 gCO₂e per median Gemini prompt set the public reference. EU procurement and several enterprise vendor reviews now require Wh-per-100-tokens and gCO₂e-per-request reporting. Stanford AI Index emphasizes tokens-per-second-per-watt and tokens-per-joule as serving efficiency metrics.
+Sustainability metrics moved from "nice to have" to dashboard-default in 2026. Google's disclosure benchmark of ~0.24 Wh and ~0.03 gCO₂e (plus ~0.26 mL of water) per median Gemini text prompt set the public reference. EU procurement and several enterprise vendor reviews now require Wh-per-100-tokens and gCO₂e-per-request reporting. Stanford AI Index emphasizes tokens-per-second-per-watt and tokens-per-joule as serving efficiency metrics.
 
 ```text
 ai_request_energy_wh           # Wh consumed per request

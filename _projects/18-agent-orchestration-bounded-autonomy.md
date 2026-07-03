@@ -330,7 +330,7 @@ The orchestration patterns described above (router, pipeline, supervisor) are no
 
 | Framework | Provider | Strengths |
 |-----------|----------|-----------|
-| **Anthropic Agent SDK** | Anthropic | Native Claude integration, tool use, guardrails, agent loops with built-in budget enforcement |
+| **Claude Agent SDK** | Anthropic | Native Claude integration, tool use, guardrails, agent loops with built-in budget enforcement |
 | **OpenAI Agents SDK** | OpenAI | Handoffs between agents, guardrails, tracing, built-in orchestration primitives |
 | **Google ADK** | Google | Multi-agent orchestration, A2A protocol support, Vertex AI integration |
 
@@ -356,7 +356,7 @@ The **Model Context Protocol (MCP)** standardizes how agents discover and invoke
 agents:
   research-assistant:
     purpose: "Research topics using web search and knowledge base"
-    model: claude-sonnet-4-6-20260115
+    model: claude-sonnet-5
 
     # Tools provided via MCP servers (Factor 10 backing services)
     mcp_servers:
@@ -499,11 +499,11 @@ async def reflexion(task: str, budget: ReflexionBudget) -> str:
     return draft
 ```
 
-Apply reflexion selectively: it doubles token consumption and latency. Gate reflexion on task complexity (Factor 20) and measure quality improvement in your eval suite (Factor 6) before enabling broadly. Budget the critique step's thinking tokens separately from the generation step.
+Apply reflexion selectively: it doubles token consumption and latency. Gate reflexion on task complexity (Factor 20) and measure quality improvement in your eval suite (Factor 6) before enabling broadly. Track the critique step's reasoning effort and token spend separately from the generation step.
 
-### Agent Swarms (CrewAI, AutoGen, MetaGPT)
+### Agent Swarms (CrewAI, Microsoft Agent Framework, MetaGPT)
 
-Multi-agent frameworks — CrewAI, Microsoft AutoGen, MetaGPT, and others — implement coordinated agent swarms where multiple LLM-backed agents collaborate by taking on roles (researcher, coder, reviewer, critic). Each agent in a swarm is a bounded agent as defined by this factor; the swarm adds an orchestration layer on top.
+Multi-agent frameworks — CrewAI, the Microsoft Agent Framework (which unified AutoGen and Semantic Kernel), MetaGPT, and others — implement coordinated agent swarms where multiple LLM-backed agents collaborate by taking on roles (researcher, coder, reviewer, critic). Each agent in a swarm is a bounded agent as defined by this factor; the swarm adds an orchestration layer on top.
 
 Apply bounded autonomy at both levels:
 - **Per-agent budgets**: each agent in the swarm has its own step limit, token budget, cost limit, and tool permissions
@@ -541,4 +541,4 @@ Swarm frameworks accelerate prototyping but require explicit budget enforcement 
 - [ ] Skills are versioned, registered artifacts — agents declare capabilities as skill-name + version, not inline tool definitions
 - [ ] Voice/realtime agents have TTFA SLOs configured, VAD barge-in handling implemented, and session state persisted via Factor 13
 - [ ] Reflexion / self-critique loops are gated on task complexity with token budget tracked separately; quality improvement is validated against the eval suite before broad enablement
-- [ ] Agent swarms (CrewAI, AutoGen, MetaGPT, etc.) have aggregate swarm-level budgets and circuit breakers in addition to per-agent limits
+- [ ] Agent swarms (CrewAI, Microsoft Agent Framework, MetaGPT, etc.) have aggregate swarm-level budgets and circuit breakers in addition to per-agent limits

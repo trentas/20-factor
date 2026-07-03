@@ -54,7 +54,7 @@ models:
 
   summarization-candidate:
     provider: anthropic
-    model_id: claude-sonnet-4-6-20260115  # newer version
+    model_id: claude-sonnet-5  # newer version
     purpose: "Document summarization — evaluation candidate"
     status: evaluating
     eval_scores:
@@ -202,7 +202,7 @@ Distillation uses a larger, more capable model (the "teacher") to generate train
 # distillation-pipeline.yaml
 distillation:
   teacher:
-    model: claude-opus-4-6-20250515
+    model: claude-opus-4-6
     purpose: "Generate high-quality labeled data for student training"
 
   student:
@@ -212,7 +212,7 @@ distillation:
   pipeline:
     - step: generate_training_data
       source: production_inputs             # real production queries
-      teacher_model: claude-opus-4-6-20250515
+      teacher_model: claude-opus-4-6
       output_format: jsonl
       sample_size: 50000
       quality_filter:
