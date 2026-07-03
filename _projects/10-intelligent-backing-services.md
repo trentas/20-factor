@@ -62,7 +62,7 @@ services:
     fallback:
       provider: openai
       endpoint: https://api.openai.com
-      model: gpt-5.1
+      model: gpt-5.5
       credentials: vault://secrets/openai-api-key
       timeout_ms: 30000
 
@@ -180,7 +180,7 @@ ai_gateway:
       models: [claude-sonnet-4-5-*, claude-haiku-4-5-*]
     - name: openai
       priority: 2
-      models: [gpt-5.1, gpt-4o-mini]
+      models: [gpt-5.5, gpt-5.4-mini]
       note: "Fallback provider"
 ```
 

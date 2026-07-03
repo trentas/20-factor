@@ -344,7 +344,7 @@ multimodal_policy:
   audio:
     max_duration_seconds: 300
     transcription_strategy: pre_transcribe  # transcribe before sending to LLM
-    model: whisper-large-v3
+    model: gpt-4o-transcribe
     budget_allocation: 2000          # tokens for transcript
 
   documents:
@@ -369,7 +369,7 @@ Models now generate not just text but also images, audio, and structured visual 
 ```yaml
 multimodal_outputs:
   image_generation:
-    models: [dall-e-3, gpt-image-1]
+    models: [gpt-image-2, gpt-image-1]
     output_validation:
       - content_safety_scan: true       # scan generated images for policy violations
       - watermark: ai_generated         # label AI-generated images (Factor 7 transparency)
@@ -380,7 +380,7 @@ multimodal_outputs:
       note: "Factor 20 cost model must include image generation as separate line item"
 
   audio_generation:
-    models: [tts-1, tts-1-hd]
+    models: [gpt-4o-mini-tts]
     output_validation:
       - content_safety_scan: true
       - label_as_synthetic: true        # disclose AI-generated audio
@@ -402,7 +402,7 @@ multimodal_outputs:
 
 ### Extended Thinking and Reasoning Models
 
-Reasoning models (Claude's extended thinking, OpenAI o1/o3/o4-mini, DeepSeek R1) introduce a fundamentally different token economy: **thinking tokens**. These models generate internal reasoning chains before producing a visible response, and those thinking tokens consume budget, incur cost, and affect latency — but are not shown to the user.
+Reasoning models (Claude's extended thinking, OpenAI's GPT-5 series with reasoning effort, DeepSeek R-series) introduce a fundamentally different token economy: **thinking tokens**. These models generate internal reasoning chains before producing a visible response, and those thinking tokens consume budget, incur cost, and affect latency — but are not shown to the user.
 
 This changes context engineering in several ways:
 
