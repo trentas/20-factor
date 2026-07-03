@@ -331,7 +331,7 @@ gateway:
         on_breach: fallback                    # downgrade to sonnet
       fallback_chain:
         - anthropic/claude-sonnet-5
-        - openai/gpt-5.1                       # last resort
+        - openai/gpt-5.5                       # last resort
 ```
 
 ### Mandatory Model-Pinning per Job

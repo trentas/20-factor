@@ -237,7 +237,7 @@ class BatchProcessor:
 
 ### Thinking-Token Budgets as a Concurrency Dimension
 
-Reasoning models (Claude with extended thinking, OpenAI o-series, DeepSeek R/V-series, Gemini reasoning modes) introduced a new resource axis: **thinking tokens**. A request with 500 output tokens may consume 10,000–50,000 thinking tokens internally — at separate, often higher, per-token pricing. Concurrency planning must treat thinking tokens as a first-class budget.
+Reasoning models (Claude with extended thinking, OpenAI's GPT-5 series with reasoning effort, DeepSeek R-series, Gemini reasoning modes) introduced a new resource axis: **thinking tokens**. A request with 500 output tokens may consume 10,000–50,000 thinking tokens internally — at separate, often higher, per-token pricing. Concurrency planning must treat thinking tokens as a first-class budget.
 
 By 2026 the per-call configuration shifted from raw `budget_tokens` to **effort levels**:
 

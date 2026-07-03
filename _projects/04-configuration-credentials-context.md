@@ -112,7 +112,7 @@ models:
 
   classification:
     provider: openai
-    model: gpt-4o-mini
+    model: gpt-5.4-mini
     temperature: 0.0
     max_tokens: 100
 

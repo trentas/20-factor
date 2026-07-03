@@ -65,8 +65,8 @@ models:
 
   classification-v2:
     type: fine-tuned
-    base_model: gpt-4o-mini
-    fine_tune_id: ft:gpt-4o-mini:org:classification-v2:abc123
+    base_model: gpt-5.4-mini
+    fine_tune_id: ft:gpt-5.4-mini:org:classification-v2:abc123
     training_data: "s3://ml-data/classification/training-v2.jsonl"
     training_date: "2025-05-20"
     purpose: "Support ticket classification"
@@ -301,7 +301,7 @@ fine_tuning:
       split: {train: 0.8, validation: 0.1, test: 0.1}
 
     - step: fine_tune
-      base_model: gpt-4o-mini
+      base_model: gpt-5.4-mini
       hyperparameters:
         epochs: 3
         learning_rate_multiplier: 1.8
