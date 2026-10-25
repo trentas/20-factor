@@ -126,6 +126,17 @@ Multimodal applications handle images, audio, video, and documents as first-clas
 
 Apply the same region, encryption, and lifecycle policies to the object store as to other backing services (Factor 4 for credentials, Factor 7 for content safety before serving generated media).
 
+### Backup and Restore
+
+Replication protects availability, not data: a bad migration, a buggy write, or a mistaken deletion replicates as faithfully as good data. Every stateful backing service needs a recovery objective and a restore that has actually been run:
+
+- **Set RPO and RTO per service** — how much data you can afford to lose and how long recovery may take — and choose backup frequency and method to meet them.
+- **Cover AI state, not only the database**: vector indexes (or the ability to rebuild them from source documents with the pinned embedding model, Factor 17), durable-workflow journals (Factor 13), agent memory stores (Factor 19), and object stores holding multimodal assets.
+- **Exercise the restore** on a schedule, into an isolated environment, and verify integrity afterward with counts, checksums, and application-level invariants.
+- **Re-apply deletions after a restore.** A backup taken before an erasure request brings the erased data back; replay the erasure log before restored data serves traffic (Factor 7, Factor 19).
+
+Further reading: Google SRE, [Data Integrity](https://sre.google/sre-book/data-integrity/); AWS Well-Architected, [Plan for disaster recovery (DR)](https://docs.aws.amazon.com/wellarchitected/latest/reliability-pillar/plan-for-disaster-recovery-dr.html).
+
 ### Operational Considerations
 AI backing services have unique operational characteristics:
 
@@ -152,3 +163,4 @@ AI backing services have unique operational characteristics:
 - [ ] Hybrid search roles (BM25, vector, reranker) are attached resources that can be swapped independently, whether deployed as separate services or combined in one platform
 - [ ] Feature stores are declared as backing services with latency SLOs for online serving
 - [ ] Object stores are used for multimodal binary content; applications reference assets by URI, not embedded binary
+- [ ] Each stateful backing service (databases, vector indexes, workflow journals, memory stores) has RPO/RTO targets and a restore that is exercised and verified on a schedule

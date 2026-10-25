@@ -269,3 +269,4 @@ Models with large context windows (200K–1M+ tokens) can still degrade when rel
 - [ ] GraphRAG is used for queries requiring multi-hop entity reasoning; standard vector RAG is used for point-in-time retrieval
 - [ ] Retrieval recall vs. context position is monitored in the eval suite; context assembly places highest-relevance passages in positions the model attends best
 - [ ] Automatic prompt optimization (DSPy, TextGrad, or equivalent) is evaluated for high-traffic prompts; optimized prompts are committed as versioned artifacts validated on held-out test data
+- [ ] Retrieval enforces the caller's tenant and permissions inside the search, re-checks before content reaches the reranker or model, and is tested with documents from different tenants, including right after access is revoked

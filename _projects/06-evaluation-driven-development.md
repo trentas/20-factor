@@ -103,7 +103,7 @@ The non-negotiable: every eval result must be traceable to (model version, promp
 ### Statistical Quality Gates
 Evaluations produce distributions, not single pass/fail results. Define gates per feature and per quality dimension:
 
-- **Gate on the confidence bound, not the point estimate.** "Accuracy ≥ 0.90" means the lower bound of the 95% confidence interval is at or above 0.90 — which requires a minimum sample size (for example, 100 cases) before the gate means anything.
+- **Gate on the confidence bound, not the point estimate.** "Accuracy ≥ 0.90" means the lower bound of the 95% confidence interval is at or above 0.90 — which requires a minimum sample size (for example, 100 cases) before the gate means anything. For metrics where lower is better — harmful-output or policy-violation rates — gate on the *upper* bound instead, and size the sample to the risk: a rate near zero needs many cases before its upper bound is small.
 - **Choose metrics per task.** Summarization might gate on judged accuracy (≥ 0.90) and relevance (≥ 0.85); classification on accuracy (≥ 0.95) and F1 (≥ 0.92).
 - **Gate cost alongside quality.** Mean and p95 output tokens per request (for example 500 and 1,200) catch a prompt change that buys quality by making every answer much longer.
 - **Compare against the current release, not only a fixed threshold**, so a regression is caught even while scores remain above the bar.

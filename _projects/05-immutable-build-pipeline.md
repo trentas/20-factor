@@ -109,7 +109,7 @@ A minimal AIBOM entry per model includes: model identifier and version, weights 
 
 Generate the AIBOM in the build from the model manifest, the evaluation results, the dataset lockfile, and the guardrail configuration, and sign it together with the other release artifacts (see below).
 
-The AIBOM travels with the release. Downstream consumers (compliance, procurement, customers) verify it before deployment. Regulators (EU AI Act, NIST profiles — see Factor 7) increasingly require it, and the EU Cyber Resilience Act makes a component inventory part of the technical documentation for products on the EU market (obligations from December 2027; vulnerability reporting already since September 2026 — see Factor 3). Keep every release's SBOM and AIBOM queryable, so an advisory can be matched to the releases that ship the affected component within hours.
+The AIBOM travels with the release. Downstream consumers (compliance, procurement, customers) verify it before deployment. No regulation mandates an AIBOM format, but several ask for the same information: the EU AI Act's technical documentation for high-risk systems (Annex IV) covers software versions, data sets, and model design (see Factor 7), and the EU Cyber Resilience Act makes a component inventory part of the technical documentation for products on the EU market (obligations from December 2027; vulnerability reporting already since September 2026 — see Factor 3). The NIST AI RMF is voluntary; customer and procurement contracts are where a specific format is most often required. Keep every release's SBOM and AIBOM queryable, so an advisory can be matched to the releases that ship the affected component within hours.
 
 ### Provenance, Signing, and Reproducibility
 
@@ -121,10 +121,19 @@ Further reading: [SLSA 1.2 — Build track basics](https://slsa.dev/spec/v1.2/bu
 
 ### Immutability Rules
 - **Never mutate a released artifact**. If a prompt needs changing, create a new release.
-- **Never change a model version** in a running deployment. Change the configuration and trigger a new release.
-- **Runtime switches stay inside the release.** A flag may switch among model / prompt / parameter combinations that this release contains and that passed its evaluation gates — for example, the evaluated fallback (Factor 4). Any other combination is a new release.
+- **Never introduce a model version into a running deployment.** A flag may switch only among model / prompt / parameter combinations that this release contains and that passed its evaluation gates — for example, the evaluated fallback (Factor 4). Any other combination, including a new model version, is a new release.
 - **Evaluation results are part of the release**. They're not just CI output — they're the evidence that this release meets quality standards.
 - **Rollback is deployment of a previous release**, not manual surgery on a running system.
+
+### Data Migrations and Backfills
+
+The original twelve-factor rule for admin processes still holds: run one-off tasks against the same release and configuration as the app ([12-Factor: Admin Processes](https://12factor.net/admin-processes)). Schema migrations and backfills are part of the release:
+
+- **Same artifact, narrow identity.** A migration runs as a job built from the release artifact and its configuration (Factor 4), under an identity that can change the schema and little else (Factor 8).
+- **Expand, then contract.** During a rolling or canary deployment, old and new code run against the same data. Add new structures first, ship code that works with both shapes, backfill, and remove the old structures only in a later release — so rolling back the application never requires rolling back the schema.
+- **Resumable, idempotent backfills.** Process in batches with a recorded checkpoint, throttle against production load, and make re-running a batch harmless (Factor 13).
+- **One runner at a time.** A lock, or the migration tool's own bookkeeping, keeps two runners from applying the same migration concurrently.
+- **Verify before depending on it.** Check counts, constraints, and invariants after a backfill, before the code that relies on it ships. Re-embedding a vector index after an embedding-model change follows the same pattern: build the new index next to the old one, verify, then switch (Factor 17).
 
 ### Progressive Delivery
 For AI applications, progressive delivery is essential because behavior changes are harder to predict:
@@ -149,3 +158,4 @@ For AI applications, progressive delivery is essential because behavior changes 
 - [ ] SLSA provenance attestations are generated for container images, prompt bundles, and fine-tuned model weights
 - [ ] Release artifacts are signed (sigstore/cosign) and signatures are verified at deploy time
 - [ ] Builds are reproducible — same inputs produce byte-identical outputs (with documented exceptions for non-deterministic training, where seeds and dataset hashes are captured)
+- [ ] Schema migrations and backfills run as jobs from the same release, stay backward-compatible during rollout (expand/contract), and are resumable and verified before dependent code ships

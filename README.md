@@ -124,7 +124,7 @@ Use the interactive **[Maturity Assessment Tool](assessment.html)** to evaluate 
 
 ## How to Use This Methodology
 
-**For teams building traditional cloud-native apps**: Tiers 1-3 (Factors 1-15) apply directly. Tier 4 factors become relevant when you add AI capabilities.
+**For teams building traditional cloud-native apps**: Tiers 1-3 (Factors 1-15) hold the general engineering practices, but some of their checklist items are AI-specific (evaluation suites, prompt-injection defenses, durable agent runtimes); mark those not applicable until you add AI capabilities. Tier 4 factors become relevant at the same point.
 
 **For teams building AI-native applications**: All 20 factors apply. Start with the Foundation tier and build upward.
 

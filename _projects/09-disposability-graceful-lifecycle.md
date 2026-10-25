@@ -88,7 +88,7 @@ Mitigate slow model loading:
 
 - **Persistent model cache**: Store loaded models on fast local storage (NVMe) so subsequent startups load from cache, not from remote storage.
 - **Model preloading**: In environments with predictable scaling patterns, preload models on standby instances before they receive traffic.
-- **Shared GPU memory**: In multi-process setups, share model weights across processes using memory-mapped files.
+- **Shared weights**: memory-mapping a weights file shares the host page cache, which speeds repeated loads — it does not share GPU memory between processes. To serve several workers from one copy of the weights in GPU memory, use the serving engine's own mechanism (one engine process serving many requests, models, or adapters) or CUDA inter-process memory sharing where the engine supports and manages it.
 - **Warm pools for agent sandboxes**: Keep a small pool of pre-started, unassigned sandboxes (gVisor or microVM) so an agent session doesn't pay the boot cost; assign one per session and never return a used sandbox to the pool.
 - **Quantization**: Use quantized models (FP8, INT8, FP4/NVFP4, INT4) for faster loading and lower memory footprint, trading some accuracy for operational agility. On current Hopper/Blackwell GPUs, FP8 and FP4/MXFP4 are the relevant formats.
 
@@ -107,8 +107,8 @@ GPU spot instances (AWS EC2 Spot, GCP Spot/Preemptible, Azure Spot) cost 60–90
 
 - Register a SIGTERM handler that immediately stops accepting requests, drains in-flight inference, and saves checkpoint state before exit
 - Pair with Factor 13 (Durable Agent Runtime) for multi-step workflows that span preemption events — the workflow resumes on a new node from the last durable checkpoint
-- Use Kubernetes `priorityClass` to ensure inference pods are evicted before lower-priority batch pods when the node is reclaimed
-- Test preemption handling in CI by injecting SIGTERM mid-inference and verifying graceful recovery
+- Give inference pods a higher `PriorityClass` than batch pods, so the scheduler preempts batch work first under resource pressure. Node shutdown is a separate mechanism: graceful node shutdown by pod priority (the kubelet's `shutdownGracePeriodByPodPriority`) stops pods in phases by priority class, each with its own grace period — give inference the period its drain needs. Neither replaces handling the provider's interruption notice
+- Test preemption handling in CI by injecting SIGTERM mid-inference and verifying graceful recovery — and test abrupt loss too (a hard kill or node failure with no notice), where in-flight work must be recovered from durable state rather than from the drain
 
 ### CRIU for Warm Model Pools
 

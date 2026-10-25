@@ -100,7 +100,7 @@ When designing MCP servers, apply the same contract-first principles from this f
 | Change | Architectural consequence |
 |--------|---------------------------|
 | Protocol-level sessions, the `Mcp-Session-Id` header, and the `initialize` handshake removed; each request is self-describing | Remote MCP servers are stateless and can sit behind an ordinary load balancer (Factor 9, Factor 12) |
-| Multi round-trip requests (MRTR) replace server-initiated requests (sampling, elicitation, roots) | A server asks for more input by returning `input_required`; the client retries with the answers — a pattern that fits durable workflows (Factor 13) |
+| Multi round-trip requests (MRTR) replace server-initiated requests (sampling, elicitation, roots) | A server asks for more input by returning `input_required`; the client retries with the answers — a pattern that fits durable workflows (Factor 13). The state the client carries back is untrusted input: the server integrity-protects it (signed or MACed), binds it to the caller and the original operation, and gives it an expiry |
 | Roots, Sampling, and Logging deprecated | Pass paths as tool parameters, call model providers directly, and log via stderr or OpenTelemetry |
 | Tasks moved to an official extension (`io.modelcontextprotocol/tasks`) with polling | Long-running tools return a handle that a durable runtime can poll (Factor 13) |
 | `tools/list` returned in deterministic order; list results carry `ttlMs` and `cacheScope` | Tool lists can be cached by clients and gateways, and stable ordering keeps model prompt caches warm (Factor 12) |
@@ -126,10 +126,10 @@ A2A and MCP are complementary:
 
 ### MCP Gateway as Production Topology
 
-In production, putting an **MCP Gateway** in front of MCP servers is now the default topology. Direct agent → MCP server connections suffice for local development; production needs a control plane:
+In production, MCP traffic needs a control plane. An **MCP Gateway** in front of the servers is the usual shape when several agents, teams, or tenants share them; a single application can apply the same controls in its MCP host. Direct agent → MCP server connections without those controls suffice only for local development. Either way, production needs:
 
 - **OAuth 2.1 enforcement**: MCP's authorization spec builds on OAuth 2.1 (still an IETF draft). The gateway centralizes auth, scope, token rotation, and audit logging — application code doesn't reimplement it. As of 2026-07-28, clients register via **Client ID Metadata Documents** (Dynamic Client Registration is deprecated), validate the `iss` parameter on authorization responses (RFC 9207), and key stored credentials by issuer so they are never replayed against a different authorization server.
-- **Header-based routing**: Streamable HTTP requests carry `Mcp-Method` and `Mcp-Name` headers (and tools can mirror selected parameters into `Mcp-Param-*` headers), so the gateway can route, authorize, and rate-limit without parsing the JSON-RPC body. Never mirror secrets or PII into headers.
+- **Header-based routing**: Streamable HTTP requests carry `Mcp-Method` and `Mcp-Name` headers (and tools can mirror selected parameters into `Mcp-Param-*` headers), so the gateway can route, authorize, and rate-limit without parsing the JSON-RPC body. Never mirror secrets or PII into headers. Because decisions are made on the headers, the server must reject a request whose headers disagree with its body — otherwise a caller authorized for one tool can invoke another.
 - **Tool catalog**: a single `tools/list` aggregating servers across the org, with versioning, deprecation flags, and per-tenant exposure rules.
 - **Rate limiting and budget enforcement**: per-tool, per-tenant, per-agent — enforced at the gateway, not in each server.
 - **Observability**: every tool call is logged in one place with the same correlation IDs as model calls (cross-ref Factor 15).
@@ -216,7 +216,7 @@ Adopting these conventions makes traces portable across tools (Langfuse, LangSmi
 - [ ] Schema descriptions are written to be useful for both humans and AI models
 - [ ] Breaking changes go through a review process with migration plans
 - [ ] Cross-team interfaces have shared contract ownership and review processes
-- [ ] An MCP Gateway fronts production MCP servers (OAuth 2.1, rate limits, audit log, circuit breakers)
+- [ ] Production MCP servers sit behind one enforced control point — an MCP gateway, or equivalent controls in the MCP host — providing OAuth 2.1, rate limits, audit log, and circuit breakers
 - [ ] MCP servers and clients pin the protocol version they implement, use Streamable HTTP (not the deprecated HTTP+SSE) for remote transport, and track deprecated features (Roots, Sampling, Logging) against the 12-month deprecation window
 - [ ] Skills follow the Agent Skills specification (SKILL.md), are versioned and validated in CI, and carry no limits that only the skill text enforces
 - [ ] Cross-org agents are discoverable via an Agent Directory Service (e.g., AGNTCY) rather than hardcoded URLs

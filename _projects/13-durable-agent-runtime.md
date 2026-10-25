@@ -63,7 +63,7 @@ Production-grade options as of 2026:
 | **LangGraph** | Python-first, graph-of-state model, integrates with LangChain ecosystem — durable only when backed by a persistent checkpointer (e.g., Postgres) | RAG-heavy and multi-agent supervised workflows |
 | **Pydantic AI** | Type-safe, Pydantic-native, lightweight — durable execution via its Temporal/DBOS integrations | Python teams that want strict typing on top of an existing engine |
 
-**The test for "durable":** kill the worker mid-step, restart it, and check that the run resumes from its last completed step without re-executing side effects. An engine passes on its own; an agent SDK or framework passes only when it runs on top of an engine or a persistent checkpointer. An SDK running its loop in process memory does not — however good its context and tool handling.
+**The test for "durable":** kill the worker mid-step, restart it, and check that the run resumes from its last completed step without re-executing side effects. An engine gives you resumption on its own; not repeating side effects also takes idempotent activities (see Idempotency Keys for Tool Calls below). An agent SDK or framework passes only when it runs on top of an engine or a persistent checkpointer. An SDK running its loop in process memory does not — however good its context and tool handling.
 
 The architectural pattern is the same across all of them: **define a workflow** (deterministic), **call activities/tools** (non-deterministic), **journal every input/output**. On replay, the engine returns journaled results instead of re-executing — making retry safe and resumption fast.
 

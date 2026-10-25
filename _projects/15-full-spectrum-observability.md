@@ -85,7 +85,7 @@ Trace every step of the pipeline, so latency, tokens, and cost are attributed to
 | Refusals | Counter | model, category, feature | Refusals returned inside successful responses (Factor 10) |
 | Rate-limit headroom | Gauge | provider, limit type | Remaining provider quota (Factor 14) |
 
-**Keep label cardinality bounded.** Model, feature, and tenant are bounded sets; user IDs, request IDs, and prompt text are not. Put per-request detail on traces and logs, never in metric labels.
+**Keep label cardinality bounded.** Model and feature are small, bounded sets; user IDs, request IDs, and prompt text are not. Tenant sits in between: with thousands of tenants it can exceed what the metrics backend handles, so keep it as a label only when its measured cardinality fits, and otherwise attribute per tenant from traces, logs, and cost records. Put per-request detail on traces and logs, never in metric labels.
 
 ### Dashboards
 
@@ -190,7 +190,7 @@ gen_ai.provider.name                   = "anthropic" | "openai" | "gcp.vertex_ai
 gen_ai.request.model                   = "<pinned model ID>"
 gen_ai.request.max_tokens              = 4096
 gen_ai.usage.input_tokens              = 1250
-gen_ai.usage.output_tokens             = 340
+gen_ai.usage.output_tokens             = 6140
 gen_ai.usage.cache_read.input_tokens   = 980
 gen_ai.usage.reasoning.output_tokens   = 5800
 gen_ai.response.finish_reasons         = ["end_turn"]
@@ -200,6 +200,8 @@ gen_ai.tool.call.id                    = "tool_call_abc123"
 gen_ai.agent.id                        = "research-agent-v3"
 gen_ai.agent.name                      = "research-agent"
 ```
+
+Totals include their subsets: `gen_ai.usage.input_tokens` includes cached reads, and `gen_ai.usage.output_tokens` includes reasoning — this call produced 6,140 output tokens, of which 5,800 were reasoning and 340 visible text. Normalize every provider's usage to this shape before storing it, and price each kind of token once: adding reasoning on top of output counts it twice.
 
 Metric names follow the same convention (e.g., `gen_ai.client.token.usage`). Treat the OTel GenAI spec as an inbound contract (cross-ref Factor 2) — your telemetry conforms to it.
 

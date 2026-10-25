@@ -63,7 +63,7 @@ Use multi-stage builds to keep the build toolchain out of the runtime image:
 
 - **Build stage**: a full toolchain image (compilers, CUDA *development* image) installs dependencies from the lockfile, with hash checking.
 - **Runtime stage**: starts from the matching CUDA *runtime* image and copies in only the installed packages, the application, and any model files it ships. Compilers, headers, and package caches stay behind, which shrinks both the image and its attack surface.
-- **Same versions in both stages**: the CUDA, Python, and OS versions must match exactly, and base images are pinned by digest, not by a mutable tag.
+- **Compatible stages**: the build and runtime stages use the same Python version and a compatible OS (libc) and CUDA runtime — simplest when both come from the same base-image family, such as a CUDA development image to build and the matching runtime image to run — and base images are pinned by digest, not by a mutable tag.
 
 ### Model Dependency Declaration
 Declare model dependencies explicitly, just like code dependencies, in a versioned manifest. What it must record depends on how the model is consumed:
