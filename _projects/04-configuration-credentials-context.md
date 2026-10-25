@@ -34,7 +34,7 @@ This update splits the original concept into three distinct categories with diff
 - Configuration for AI coding assistants (which model, which context, which rules) should be in versioned config files, not scattered across tool settings UIs.
 
 ### AI-Native Applications
-- **Model selection as config**: Which model handles which request is a configuration decision, not a code decision. It should be changeable without redeployment.
+- **Model selection as config**: Which model handles which request is a configuration decision, not a code decision. Switching among models that a release has already evaluated should not require a redeploy; introducing a model that has never been evaluated is a new release (Factor 5).
 - **Inference parameters**: Reasoning effort, max tokens, stop sequences, and — only where the model still accepts them — sampling parameters such as temperature and top-p. These are tunable per environment, but the parameter *set* is model-specific: reasoning models increasingly fix sampling (Claude 4.7 and later accept only the default values, and from Anthropic API version `2026-10-21` sending `temperature`, `top_p`, or `top_k` is an error on every Claude model), and effort has become the main quality/cost knob. Validate parameters against what the pinned model supports instead of assuming a universal set.
 - **Cost budgets**: Per-request, per-user, and per-tenant cost limits are configuration values that operators must be able to adjust without code changes.
 - **Safety thresholds**: Content filtering sensitivity, PII detection thresholds, and human-in-the-loop triggers are policy decisions expressed as configuration.
@@ -58,73 +58,25 @@ The same value can be either, depending on the system: `AI_DEFAULT_MODEL` as an 
 
 Treat init-time config as the default. Promote a value to runtime config only when there's a concrete operational need to change it without a deploy — every runtime knob is a surface that can be misconfigured in production.
 
+**Runtime model switching has a boundary.** A flag or dynamic config may select only among model / prompt / parameter combinations that shipped in the current release and passed its evaluation gates (Factor 5, Factor 6) — for example, flipping to the evaluated fallback during a provider outage. Record the policy version and the effective selection on every execution (Factor 15). A combination that has never been evaluated is not a configuration change: it needs an evaluation run and a new release.
+
 ## In Practice
 
 ### The Three Categories
 
-**1. Configuration (Environment Variables / Config Files)**
-Changes between environments. Never contains secrets. Safe to log.
+| Category | Examples | Where it lives | Handling |
+|----------|----------|----------------|----------|
+| **Configuration** | Database URL, feature flags, default model, effort level, max tokens, daily cost budget, rate limits | Environment variables or config files | Changes between environments. Never contains secrets. Safe to log. |
+| **Credentials** | Model-provider API keys, vector-store tokens, database passwords | A secrets manager (Vault, AWS Secrets Manager, GCP Secret Manager, …), mounted or injected at runtime | Never in `.env` files, config maps, or CI logs. Rotated regularly. Audited on access. |
+| **AI context** | Per-task model routing, effort and token limits, fallbacks, safety thresholds, per-user and per-tenant limits | Versioned, reviewed structured files (for example `ai-config.yaml`) | Too structured for flat environment variables. Changes go through review like code. |
 
-```bash
-# Traditional config
-DATABASE_URL=postgres://db:5432/myapp
-FEATURE_FLAG_NEW_UI=true
+A structured AI context file groups settings by task. For each task it names:
 
-# AI-specific config
-AI_DEFAULT_MODEL=claude-sonnet-5-5
-AI_EMBEDDING_MODEL=text-embedding-3-small
-AI_MAX_TOKENS=4096
-AI_REASONING_EFFORT=medium
-AI_COST_BUDGET_DAILY_USD=500          # see Factor 20 for full budget hierarchy
-AI_RATE_LIMIT_RPM=1000
-```
+- **The model**: provider and pinned model ID, plus an evaluated fallback (Factor 16).
+- **Inference parameters**: effort level, max output tokens, and sampling parameters only where the pinned model accepts them. Keep them next to the model pin — they are model-specific, so a model change forces you to revisit them.
+- **Limits**: timeout and per-request cost limit (Factor 20 defines the full budget hierarchy).
 
-**2. Credentials (Secrets Manager)**
-Grants access to services. Never in environment variables on disk. Rotated regularly. Audited on access.
-
-```yaml
-# These go in Vault, AWS Secrets Manager, GCP Secret Manager, etc.
-# NEVER in .env files, config maps, or environment variables in CI logs
-secrets:
-  - ANTHROPIC_API_KEY
-  - OPENAI_API_KEY
-  - PINECONE_API_KEY
-  - DATABASE_PASSWORD
-  - VECTOR_DB_TOKEN
-```
-
-**3. AI Context (Versioned Config Files)**
-Structured configuration specific to AI behavior. Too complex for flat env vars. Needs versioning and review.
-
-```yaml
-# ai-config.yaml — versioned in repo, values vary by environment
-models:
-  summarization:
-    provider: anthropic
-    model: claude-sonnet-5-5
-    effort: medium                    # reasoning depth — the main quality/cost knob
-    max_tokens: 1024
-    cost_limit_per_request_usd: 0.05  # Factor 20 defines the full budget hierarchy
-    timeout_seconds: 30
-    fallback:
-      provider: anthropic
-      model: claude-haiku-5-5
-
-  classification:
-    provider: openai
-    model: gpt-5.4-mini
-    effort: low
-    max_tokens: 100
-
-safety:
-  content_filter_threshold: 0.8
-  pii_detection_enabled: true
-  human_review_threshold: 0.6
-
-rate_limits:
-  per_user_rpm: 20
-  per_tenant_daily_tokens: 1000000
-```
+Alongside the tasks, the same file holds the safety thresholds (content-filter sensitivity, PII detection, the score that triggers human review) and the per-user and per-tenant limits.
 
 ### Environment-Specific Overrides
 Use layered configuration with environment-specific overrides:
@@ -158,12 +110,7 @@ Most major AI providers (Anthropic, Google, AWS Bedrock) support workload identi
 [OpenFeature](https://openfeature.dev) (CNCF standard) decouples feature flag evaluation from implementation. Instead of bespoke flag systems for model selection, A/B routing, or capability toggles, use an OpenFeature-compatible provider (LaunchDarkly, Flagsmith, Unleash, Flipt, Harness). This enables:
 - Integration-testing flag evaluation without a live flag service dependency
 - Consistent flag semantics across services using different providers
-- Model routing decisions expressed as flag evaluations, observable and auditable
-
-```python
-client = OpenFeature.get_client()
-model = client.get_string_value("ai.summarization.model", "claude-sonnet-5-5", ctx)
-```
+- Model routing decisions expressed as flag evaluations, observable and auditable — choosing only among evaluated combinations (see "Runtime model switching has a boundary" above)
 
 ### HSM/KMS for AI Context Encryption
 
@@ -178,20 +125,23 @@ Encryption keys must never coexist with the encrypted context in the same config
 **Plan for post-quantum crypto-agility.** AI data with a long confidentiality lifetime — agent memory (Factor 19), conversation archives, fine-tuning datasets — is exposed to "harvest now, decrypt later": traffic and ciphertext captured today can be decrypted once large quantum computers exist. Hybrid post-quantum key exchange (X25519 + ML-KEM-768) is already enabled by default in major browsers and supported by mainstream TLS libraries. Inventory where AI data is encrypted and for how long it must stay confidential, keep algorithm choices in configuration rather than code, and adopt the NIST post-quantum standards (ML-KEM for key establishment, ML-DSA for signatures) as your KMS/HSM and TLS stacks support them.
 
 ### Configuration Validation
-Validate AI configuration at startup — fail fast if configuration is invalid:
+Validate AI configuration at startup, not at the first request — fail fast if it is invalid:
+
+- **Check it against the pinned model's capabilities**: the model is supported, the effort level is one the model offers, sampling parameters are present only if the model accepts them (many reasoning models accept none), and max tokens is positive and within the model's output limit.
+- **Check limits are set and sane**: per-request cost limit and timeout are positive and within policy.
+- **Fail with explicit errors, not `assert`.** Python removes `assert` statements when run with `-O`, so assert-based validation can silently disappear from an optimized production build. Raise a dedicated error that names the field, the value, and what is allowed, and stop the process before it takes traffic.
 
 ```python
-# Validate at startup, not at first request
-def validate_ai_config(config):
-    assert config.model in SUPPORTED_MODELS
-    caps = SUPPORTED_MODELS[config.model]
-    assert config.effort in caps.effort_levels
-    # Many reasoning models accept no sampling parameters at all
-    assert set(config.sampling_params) <= caps.sampling_params
-    assert config.max_tokens > 0 and config.max_tokens <= caps.max_output_tokens
-    assert config.cost_limit_per_request > 0
-    assert config.timeout_seconds > 0
+# WRONG — stripped under `python -O`; invalid config reaches production
+assert config.effort in caps.effort_levels
+
+# RIGHT — explicit check; the process refuses to start with a clear message
+if config.effort not in caps.effort_levels:
+    raise ConfigError(f"effort={config.effort!r} is not supported by {config.model}; "
+                      f"allowed: {sorted(caps.effort_levels)}")
 ```
+
+Further reading: Python reference, [The `assert` statement](https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement).
 
 ## Compliance Checklist
 

@@ -36,7 +36,7 @@ This update retains the process-model scaling principle and extends it to handle
 
 ### AI-Native Applications
 - **GPU scaling is discrete**: You can't add 0.3 GPUs. GPU instances come in fixed sizes. Scaling decisions are coarser than CPU scaling.
-- **Rate limits are hard ceilings**: Adding more processes doesn't help if the bottleneck is a provider's rate limit of 60,000 tokens per minute. You need to manage concurrency *within* the rate limit.
+- **Rate limits are hard ceilings**: Adding more processes doesn't help if the bottleneck is a provider's rate limit of 60,000 tokens per minute. You need to pace requests and tokens *within* the rate limit — and a rate is not a concurrency cap.
 - **Cost scales linearly with usage**: Unlike CPU (which you pay for whether idle or busy), LLM costs scale directly with usage. More concurrency = more cost. Scaling must be cost-aware.
 - **Latency vs. throughput trade-offs**: Batch inference is cheaper per token but higher latency. Interactive requests need low latency. These require different scaling strategies.
 
@@ -44,221 +44,69 @@ This update retains the process-model scaling principle and extends it to handle
 
 ### Process Types for AI Applications
 
-```yaml
-# Process types with heterogeneous resource requirements
-processes:
-  web:
-    type: cpu
-    description: "API server — handles HTTP requests, orchestrates AI calls"
-    scaling:
-      metric: request_rate
-      min: 2
-      max: 20
-    resources:
-      cpu: 1
-      memory: 2Gi
+Each process type scales on the resource that actually limits it, not on CPU by default. A typical AI application runs at least four:
 
-  inference:
-    type: gpu
-    description: "Self-hosted model serving"
-    scaling:
-      metric: gpu_utilization
-      target: 70%
-      min: 1
-      max: 8
-    resources:
-      gpu: 1  # NVIDIA A100
-      gpu_memory: 40Gi
-      cpu: 4
-      memory: 32Gi
+| Process type | Limiting resource | Scale on | Watch out for |
+|--------------|-------------------|----------|---------------|
+| Web / API | CPU, open connections | Request rate, p95 latency | Holding a request thread for the whole duration of a slow model call — stream, or hand off to a worker |
+| Self-hosted inference | GPU memory and compute | Queue depth, GPU and KV-cache utilization | Capacity comes in whole GPUs, and a new replica needs minutes to load weights before it serves traffic |
+| Embedding / ingestion | CPU or GPU; provider tokens-per-minute | Backlog (queue depth) | A bulk re-index consuming the rate limit that interactive traffic shares |
+| Agent orchestration | Little compute; many long-lived workflows | Active workflows, task-queue latency | Counting parked workflows as load — a workflow waiting on approval holds no worker (Factor 13) |
 
-  embedding:
-    type: cpu_intensive
-    description: "Embedding computation for ingestion pipeline"
-    scaling:
-      metric: queue_depth
-      target: 100  # messages in queue
-      min: 1
-      max: 10
-    resources:
-      cpu: 4
-      memory: 8Gi
+### Rate Limits Are Not Concurrency Limits
 
-  orchestrator:
-    type: lightweight
-    description: "Agent orchestration — coordinates multi-step AI workflows"
-    scaling:
-      metric: active_workflows
-      min: 2
-      max: 10
-    resources:
-      cpu: 0.5
-      memory: 1Gi
-```
+Calling a model provider involves four separate controls. Conflating them is the usual cause of 429 storms, stalled queues, and runaway retries:
 
-### Rate-Limit-Aware Concurrency
+| Control | Question it answers | Typical mechanism |
+|---------|---------------------|-------------------|
+| **Concurrency** | How many calls are in flight right now? | Semaphore or connection pool |
+| **Rate** | How many requests and tokens per time window? | Token bucket or sliding window per provider quota (RPM, input TPM, output TPM) |
+| **Queue** | What waits when capacity is full, and in what order? | Bounded priority queue drained by a dispatcher |
+| **Budget** | How much may this tenant or task spend? | Reservation against a cost budget (Factor 20) |
 
-```python
-class RateLimitedConcurrency:
-    """Manage concurrency within AI provider rate limits."""
+A semaphore sized to the requests-per-minute quota caps calls *in flight*, not calls *per minute*: sixty fast calls finish in two seconds, release their slots, and sixty more go out. A correct client follows these rules:
 
-    def __init__(self, provider_limits: ProviderLimits):
-        self.rpm_semaphore = asyncio.Semaphore(
-            provider_limits.requests_per_minute
-        )
-        self.tpm_budget = TokenBudget(
-            provider_limits.tokens_per_minute
-        )
-        self.queue = asyncio.PriorityQueue()
+- **Enforce rate per time window, for requests and tokens.** Reserve the estimated tokens before sending, then reconcile with the actual usage the response reports. Reasoning tokens are billed as output tokens, so output estimates for reasoning routes must include them.
+- **Treat the quota as global.** A provider quota applies to an organization, project, or API key — not to one process. Ten replicas that each enforce the full limit send up to ten times the quota. Enforce it in one shared place (an AI gateway, Factor 10, or a shared limiter), or give each replica an explicit share.
+- **Bound the queue and drain it.** A dispatcher releases work as rate and concurrency allow. Interactive requests go first, but waiting batch work gains priority over time so it is not starved, and each tenant gets a fair share so one tenant cannot consume the whole quota. When the queue is full, reject immediately with a retry hint instead of growing memory.
+- **Send retries back through the limiter.** On 429 or 503, honor the provider's `Retry-After` header (or its rate-limit headers); otherwise back off exponentially with jitter. Release the concurrency slot while waiting, cap the number of attempts, and never retry past the caller's deadline. A retry that holds its slot or bypasses the limiter amplifies the overload it is reacting to.
+- **Propagate deadlines and cancellation.** When the caller gives up, its request leaves the queue and stops consuming quota.
 
-    async def execute(self, request: AIRequest) -> AIResponse:
-        # Priority queue: interactive > batch
-        priority = 0 if request.is_interactive else 1
-        await self.queue.put((priority, request))
-
-        # Wait for rate limit capacity
-        async with self.rpm_semaphore:
-            # Check token budget
-            estimated_tokens = request.estimate_tokens()
-            await self.tpm_budget.acquire(estimated_tokens)
-
-            try:
-                response = await self.provider.complete(request)
-                # Adjust token budget based on actual usage
-                self.tpm_budget.adjust(estimated_tokens, response.actual_tokens)
-                return response
-            except RateLimitError:
-                # Back off and retry
-                await asyncio.sleep(self.backoff.next())
-                return await self.execute(request)
-```
+Further reading: Google SRE, [Handling Overload](https://sre.google/sre-book/handling-overload/); AWS Builders' Library, [Timeouts, retries, and backoff with jitter](https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/); [RFC 9110, `Retry-After`](https://www.rfc-editor.org/rfc/rfc9110#field.retry-after).
 
 ### Cost-Aware Auto-Scaling
 
-```yaml
-# Auto-scaling that considers cost constraints
-autoscaling:
-  inference_workers:
-    scale_up:
-      conditions:
-        - metric: request_queue_depth > 50
-        - metric: p95_latency > 5s
-      constraints:
-        - max_cost_per_hour_usd: 100
-        - max_instances: 8
-      action:
-        add_instances: 1
-        cooldown: 300s
-
-    scale_down:
-      conditions:
-        - metric: gpu_utilization < 20%
-        - duration: 10m
-      constraints:
-        - min_instances: 1
-      action:
-        remove_instances: 1
-        drain_timeout: 60s  # Factor 9: graceful shutdown
-
-    cost_circuit_breaker:             # Factor 20 defines the full budget hierarchy
-      daily_budget_usd: 2000
-      alert_threshold: 0.80     # Alert at 80% of budget
-      action_threshold: 0.95    # Stop scaling at 95% of budget
-      action: freeze_scaling    # No new instances until next budget period
-```
+- **Scale up on demand, within hard caps.** Queue depth and p95 latency trigger scale-up; a maximum instance count and a maximum cost rate ($/hour) bound it.
+- **Use leading signals for GPUs.** Queue depth rises before utilization does, and a new GPU replica takes minutes to become useful. Keep a warm minimum for interactive routes instead of scaling from zero.
+- **Damp oscillation.** Apply a cooldown after each scaling action, and scale down only after a sustained quiet period (for example, GPU utilization below 20% for 10 minutes).
+- **Scale down by draining.** A replica being removed finishes or hands off its in-flight work first (Factor 9).
+- **Let budget pressure change behavior before it stops service.** Alert at a threshold (for example, 80% of the period budget), freeze scale-up near the limit, and defer batch work before touching interactive traffic. Freezing scale-up caps infrastructure spend only; spend on provider APIs needs the budget controls in Factor 20.
 
 ### Multi-Provider Load Balancing
 
-An **AI Gateway** (Factor 10) can handle multi-provider routing at the infrastructure level, centralizing rate limit management, failover, and cost tracking across all application instances. When using a gateway, the application delegates routing decisions to the gateway; when managing routing in-app, implement it as follows:
+An **AI Gateway** (Factor 10) can handle multi-provider routing at the infrastructure level, centralizing rate limit management, failover, and cost tracking across all application instances. Whether routing lives in the gateway or in the application, the same rules apply:
 
-```python
-class MultiProviderRouter:
-    """Route requests across providers based on rate limits and cost."""
-
-    def __init__(self, providers: list[ProviderConfig]):
-        self.providers = providers
-
-    async def route(self, request: AIRequest) -> ProviderConfig:
-        available = []
-        for provider in self.providers:
-            capacity = await provider.available_capacity()
-            if capacity.can_handle(request):
-                available.append((provider, capacity))
-
-        if not available:
-            # All providers at capacity — queue or reject
-            raise CapacityExhaustedError()
-
-        # Route based on strategy
-        if request.is_interactive:
-            # Lowest latency for interactive requests
-            return min(available, key=lambda p: p[1].estimated_latency)
-        else:
-            # Lowest cost for batch requests
-            return min(available, key=lambda p: p[1].cost_per_token)
-```
+- **Route only to providers with capacity left** under their current rate limits. When none has capacity, queue (bounded) or reject with a retry hint.
+- **Optimize per workload**: lowest latency for interactive requests, lowest cost for batch.
+- **Route only among evaluated equivalents.** The same model served by two providers can differ in supported parameters, limits, and output behavior. Every routing target must have passed the evaluation suite for that task (Factor 6, Factor 16); a fallback that was never evaluated is an unannounced quality change.
 
 ### Batch Processing Patterns
-For throughput-oriented workloads:
 
-```python
-class BatchProcessor:
-    """Process AI workloads in batches for cost efficiency."""
+Throughput-oriented work has two levels of batching:
 
-    def __init__(self, batch_size: int = 20, max_wait_ms: int = 100):
-        self.batch_size = batch_size
-        self.max_wait_ms = max_wait_ms
-        self.buffer = []
-
-    async def process(self, request: AIRequest) -> AIResponse:
-        future = asyncio.Future()
-        self.buffer.append((request, future))
-
-        if len(self.buffer) >= self.batch_size:
-            await self.flush()
-        else:
-            # Wait briefly for more requests to batch together
-            await asyncio.sleep(self.max_wait_ms / 1000)
-            if not future.done():
-                await self.flush()
-
-        return await future
-
-    async def flush(self):
-        batch = self.buffer[:self.batch_size]
-        self.buffer = self.buffer[self.batch_size:]
-
-        # Send batch to provider (embedding APIs support batching natively)
-        results = await self.provider.batch_process([r for r, _ in batch])
-
-        for (_, future), result in zip(batch, results):
-            future.set_result(result)
-```
+- **Micro-batching in the client.** Group small requests (embeddings are the classic case) and send the batch when it is full or when a short maximum wait expires, whichever comes first. Size batches to the provider's per-request limits, and return each item's result or error to its own caller — one failed item must not fail, or silently drop, the others.
+- **Provider batch APIs.** For work that can wait hours, the asynchronous batch endpoints that major providers offer are typically discounted relative to synchronous calls and draw on a separate quota. Results can arrive in any order, so match them by request ID, not by position. Treat a batch API as a queue with a completion window, not as a faster API.
 
 ### Thinking-Token Budgets as a Concurrency Dimension
 
-Reasoning models (Claude with extended thinking, OpenAI's GPT-5 series with reasoning effort, DeepSeek R-series, Gemini reasoning modes) introduced a new resource axis: **thinking tokens**. A request with 500 output tokens may consume 10,000–50,000 thinking tokens internally — at separate, often higher, per-token pricing. Concurrency planning must treat thinking tokens as a first-class budget.
+Reasoning models (Claude with extended thinking, OpenAI's GPT-5 series with reasoning effort, DeepSeek R-series, Gemini reasoning modes) introduced a new resource axis: **thinking tokens**. A request with 500 output tokens may consume 10,000–50,000 thinking tokens internally, billed as output tokens even when the reasoning itself is not returned. Concurrency planning must treat thinking tokens as a first-class budget.
 
-By 2026 the per-call configuration shifted from raw `budget_tokens` to **effort levels**:
-
-```python
-# Anthropic Claude 4.6+ (and similar APIs from other providers)
-response = await client.messages.create(
-    model="claude-sonnet-5-5",
-    thinking={"type": "adaptive"},              # adaptive thinking; model sets depth
-    output_config={"effort": "high"},           # low | medium | high | xhigh | max
-    messages=[...],
-)
-# Adaptive thinking lets the model set depth per request; `effort` bounds overall
-# spend. Explicit effort levels give predictable cost and latency for production routing.
-# On several current models thinking cannot be turned off at all, and default effort
-# differs by model — always set it explicitly per route.
-```
+By 2026 the per-call control shifted from raw thinking-token budgets (`budget_tokens`) to **effort levels** (low through max), usually combined with adaptive thinking, in which the model decides how deeply to reason within that bound. On several current models thinking cannot be turned off at all, and the default effort differs by model, so set effort explicitly for each route.
 
 Production patterns:
 
 - **Route by reasoning depth, not just by model**: classification → effort=low; multi-step plans → effort=medium; research/repair tasks → effort=high. This is orthogonal to model selection and often more impactful for cost.
-- **Cap thinking-token rate per tenant**: high-effort traffic from one tenant can exhaust shared quota. Apply a separate `thinking_tokens_per_minute` semaphore alongside `output_tokens_per_minute`.
+- **Cap thinking-token rate per tenant**: high-effort traffic from one tenant can exhaust shared quota. Give thinking tokens their own per-tenant rate limit, alongside the output-token limit.
 - **Track thinking-token ratio** as a saturation signal: if `thinking_tokens / output_tokens` rises above expected baseline for a given route, either the task is harder than intended (alert) or a prompt regression is causing wasted reasoning (investigate).
 - **Don't over-route to reasoning**: many workloads see no quality gain from extended thinking (classification, format conversion, factual lookup). Default new routes to `effort=low` and prove a quality lift before escalating.
 
@@ -266,18 +114,14 @@ Production patterns:
 
 By 2026, hybrid cloud+edge inference is mainstream. On-device NPUs (Apple A19 Pro Neural Accelerators ~75 TOPS, Gemini Nano via Android AICore, Phi-4-mini and Llama-3.2-1B running on low-RAM devices) handle a growing share of latency-sensitive and privacy-sensitive traffic. Cloud handles the rest. Treat **inference placement** as a per-request scheduling decision:
 
-```python
-async def route_inference(req: InferenceRequest) -> RouteDecision:
-    if req.contains_sensitive_pii and device_has_capable_npu():
-        return RouteDecision(target="device-npu", model="phi-4-mini")
-    if req.expected_latency_ms < 300 and req.tokens < 256:
-        return RouteDecision(target="edge-region", model="haiku-class")
-    if req.requires_extended_reasoning:
-        return RouteDecision(target="cloud", model="opus-class", effort="high")
-    return RouteDecision(target="cloud", model="sonnet-class", effort="medium")
-```
+| Request characteristic | Placement | Trade-off |
+|------------------------|-----------|-----------|
+| Sensitive data, capable on-device NPU | On device, small model | Data stays on the device; lowest capability |
+| Short and latency-critical | Edge region, small fast model | Shortest round trip; limited context and reasoning |
+| Needs extended reasoning | Cloud, frontier model, higher effort | Highest capability; highest cost and latency |
+| Everything else | Cloud, mid-tier model, moderate effort | Default balance |
 
-The trilemma is **latency-privacy-cost**: device wins on privacy and latency but loses on capability; cloud wins on capability but loses on per-request cost and round-trip latency. The router enforces the policy.
+The trilemma is **latency-privacy-cost**: device wins on privacy and latency but loses on capability; cloud wins on capability but loses on per-request cost and round-trip latency. The router enforces the policy, and each placement serves a different model — evaluate every option on the task before it receives traffic (Factor 6).
 
 ### Inference-Engine Selection as an Architectural Decision
 
@@ -332,11 +176,11 @@ Go beyond CPU and memory for auto-scaling decisions:
 
 - [ ] Each process type is independently scalable with appropriate resource definitions
 - [ ] GPU workloads scale on GPU-specific metrics (utilization, memory), not CPU
-- [ ] AI provider rate limits are respected through client-side concurrency control
+- [ ] AI provider rate limits (requests and tokens per time window) are enforced by a rate limiter shared across replicas and separate from concurrency caps, with bounded queues and retries that honor Retry-After
 - [ ] Cost budgets are enforced as scaling constraints — circuit breakers aligned with Factor 20 budget hierarchy
 - [ ] Auto-scaling signals include AI-specific metrics (queue depth, token throughput, cost rate)
 - [ ] Interactive and batch workloads use different scaling strategies
-- [ ] Multi-provider routing balances load across providers based on capacity and cost
+- [ ] Multi-provider routing balances load across providers based on capacity and cost, and routes only to targets evaluated for the task
 - [ ] Batch processing is used for throughput-oriented workloads
 - [ ] Scale-down respects graceful shutdown (Factor 9) with drain timeouts
 - [ ] Scaling decisions and cost impact are observable (Factor 15)

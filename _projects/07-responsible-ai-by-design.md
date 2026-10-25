@@ -76,22 +76,7 @@ The guardrails patterns described in this factor (input validation, output safet
 | **Guardrails AI** | Pydantic-style validators for LLM outputs | Structured output validation, type checking, custom validators |
 | **LLM Guard** | Input/output scanner pipeline | Prompt injection detection, PII scanning, toxicity, bias |
 
-These frameworks implement the defense-in-depth architecture above as reusable components. Use them to accelerate guardrail implementation — but remember that frameworks provide *mechanisms*; you must define the *policies* specific to your application.
-
-```python
-# Example: NeMo Guardrails declarative configuration
-# config.yml
-rails:
-  input:
-    flows:
-      - self check input        # block prompt injection
-      - check jailbreak         # block jailbreak attempts
-  output:
-    flows:
-      - self check output       # filter harmful content
-      - check hallucination     # verify against source documents
-      - check pii               # block PII in outputs
-```
+These frameworks implement the defense-in-depth architecture above as reusable components, typically as declarative rails or validators attached to the input and output sides of each model call. Use them to accelerate guardrail implementation — but remember that frameworks provide *mechanisms*; you must define the *policies* specific to your application.
 
 **Key selection criteria:**
 - **Input protection**: Does it detect prompt injection and jailbreak attempts? (NeMo, LLM Guard)
@@ -123,23 +108,15 @@ rule_of_two: pass           # adding any outbound tool requires per-action human
 - **Least-privilege tools**: read-only by default; write tools scoped to the current user and object (Factor 8, Factor 18).
 - **Separate channels**: operator instructions travel in the system channel; untrusted content is delimited and labeled as data. This reduces risk but does not remove it.
 
-Detection remains useful — to log, alert, and raise the attacker's cost:
+Detection remains useful — to log, alert, and raise the attacker's cost — as long as it is never the only control:
 
-```python
-# Detection layer — useful signal, never the only control
-class InputGuardrail:
-    def check(self, text: str, source: str) -> GuardrailResult:
-        results = [
-            self.pattern_detector.scan(text),          # known injection patterns
-            self.injection_classifier.classify(text),  # ML-based classifier
-        ]
-        # Check untrusted sources too (web pages, emails, tool output), not only user input
-        return GuardrailResult.aggregate(results, source=source)
-```
+- **Scan every untrusted source**, not only the user's message: retrieved documents, web pages, emails, and tool output carry injections too. Record which source each detection came from.
+- **Combine signals**: known-pattern matching catches the cheap attacks; an ML classifier catches paraphrases. Neither is complete, and both produce false positives.
+- **Route detections to monitoring and response**, not only to a block decision: a spike in detections from one source or tenant is an incident signal (Factor 15).
 
 ### OWASP Top 10s as the Threat Checklist
 
-Two OWASP GenAI Security Project lists are the common vocabulary for AI threats in reviews and audits: the **Top 10 for LLM Applications (2025)** and the **Top 10 for Agentic Applications (2026)**, published in December 2025. Map each entry to a control and to an adversarial eval (see Red Teaming below):
+Two OWASP GenAI Security Project lists are the common vocabulary for AI threats in reviews and audits: the [**Top 10 for LLM Applications (2025)**](https://genai.owasp.org/llm-top-10/) and the **Top 10 for Agentic Applications (2026)**, published in December 2025. Map each entry to a control and to an adversarial eval (see Red Teaming below):
 
 | OWASP LLM Top 10 (2025) | Primary factors |
 |---|---|
@@ -168,116 +145,54 @@ Two OWASP GenAI Security Project lists are the common vocabulary for AI threats 
 | ASI10 Rogue Agents | F15, F18 |
 
 ### PII Handling
-Detect and handle personally identifiable information at system boundaries:
+Detect and handle personally identifiable information at system boundaries — emails, phone numbers, national ID numbers, payment card numbers, addresses, dates of birth, and whatever identifiers your domain adds:
 
-```yaml
-pii_policy:
-  input:
-    detection_enabled: true
-    action: redact_and_log           # redact_and_log | block | allow_and_flag
-    entity_types:
-      - email
-      - phone_number
-      - ssn
-      - credit_card
-      - address
-      - date_of_birth
-
-  output:
-    detection_enabled: true
-    action: block                     # Stricter on output — never leak PII
-    fallback_response: "I can't include personal information in my response."
-
-  storage:
-    redacted_in_logs: true
-    redacted_in_traces: true
-    retention_days: 30
-```
+| Boundary | Default handling | Notes |
+|----------|------------------|-------|
+| **Input** (user messages, retrieved content, tool results) | Redact before the model sees it, unless the task needs the value | Strip what the task doesn't need (data minimization); block only where policy requires it |
+| **Output** (to users and downstream systems) | Stricter than input: block or redact, with a safe fallback response | The model can surface PII it read from context or memorized in training |
+| **Storage** (logs, traces, caches, eval datasets) | Redacted by default, with a defined retention period | Prompts and responses copied into telemetry are personal data too (Factor 15) |
 
 ### Bias Monitoring
 Continuously monitor for systematic biases in AI outputs:
 
-```python
-# Bias monitoring across demographic dimensions
-class BiasMonitor:
-    def evaluate(self, requests, responses):
-        # Segment by demographic indicators
-        segments = self.segment_by_demographics(requests)
-
-        for dimension in ["gender", "ethnicity", "age_group", "language"]:
-            metrics = {}
-            for segment_value, segment_data in segments[dimension].items():
-                metrics[segment_value] = {
-                    "quality_score": self.evaluate_quality(segment_data),
-                    "refusal_rate": self.measure_refusal_rate(segment_data),
-                    "response_length": self.measure_response_length(segment_data),
-                    "sentiment": self.measure_sentiment(segment_data),
-                }
-
-            # Alert on significant disparities
-            if self.detect_disparity(metrics):
-                self.alert(dimension, metrics)
-```
+- **Segment** traffic or evaluation sets along the dimensions that matter for your users — for example gender, ethnicity, age group, and language — using only data you are allowed to process for this purpose (see the AI Act's bias-detection basis below).
+- **Compare the same metrics across segments**: output quality, refusal rate, response length, and sentiment.
+- **Alert on disparities**, not on single values, and only when the segment is large enough for the difference to be meaningful.
+- **Close the loop**: a confirmed disparity becomes an eval case (Factor 6) and an incident if it caused harm (see Incident Response below).
 
 ### Human-in-the-Loop Gates
 Define clear criteria for *when* human oversight is required. This factor owns the trigger conditions; Factor 8 defines *who* can approve, and Factor 18 defines *how* approval is executed at runtime.
 
-```yaml
-human_review_triggers:
-  # Content-based triggers
-  - condition: safety_score < 0.7
-    action: block_and_queue_for_review
-    approval_timeout_seconds: 1800
+| Trigger | Example condition | Action |
+|---------|-------------------|--------|
+| **Content** | Safety classifier score below threshold | Block, and queue for human review |
+| **Action** | The agent wants to delete, publish, send an email, or move money | Require approval before execution (Factor 18) |
+| **Confidence** | A *calibrated* uncertainty signal — verifier score, disagreement across samples, retrieval coverage — below threshold | Flag for review before serving |
+| **Volume** | Unusually high request rate from one user or tenant | Sample a share of outputs for review |
 
-  # Action-based triggers
-  - condition: agent_action in [delete, publish, send_email, financial_transaction]
-    action: require_approval_before_execution
-    approval_timeout_seconds: 300
-
-  # Confidence-based triggers
-  - condition: model_confidence < 0.5
-    action: flag_for_review_before_serving
-    approval_timeout_seconds: 900
-
-  # Volume-based triggers
-  - condition: user_requests_per_hour > 100
-    action: sample_and_review
-    sample_rate: 0.10
-```
+Thresholds are set from evaluation data (Factor 6), not guessed, and each trigger has a timeout with a safe default (usually deny). The model's self-reported confidence is not a probability: use it only after it has been calibrated against observed error rates.
 
 ### Transparency and Explainability
 Make AI decisions auditable:
 
 - **Disclosure**: Clearly indicate when content is AI-generated.
 - **Attribution**: When RAG is used, cite the source documents.
-- **Reasoning traces**: Log the chain-of-thought or reasoning steps for important decisions.
-- **Confidence indicators**: Surface confidence scores to users and downstream systems.
+- **Decision records**: For important decisions, log observable facts — model and prompt versions, retrieved sources, tool calls with sanitized arguments, policy decisions, approvals, results, and any rationale the API exposes. Do not treat reasoning text or reasoning summaries as proof of why the model decided: research shows models' stated reasoning is not always faithful to what drove the answer ([Anthropic, 2025](https://www.anthropic.com/research/reasoning-models-dont-say-think)), and many providers return only summaries.
+- **Confidence indicators**: Surface calibrated confidence to users and downstream systems.
 - **Appeal mechanisms**: Provide paths for users to contest AI decisions.
 
 ### Data Governance for AI
 AI systems consume, generate, and store data with unique governance challenges:
 
-```yaml
-data_governance:
-  training_data:
-    provenance: documented        # track origin of all training/fine-tuning data
-    licensing: verified           # confirm data usage rights before training
-    pii_handling: anonymized      # no PII in training datasets without consent
+| Data | Governance rules |
+|------|------------------|
+| **Training and fine-tuning data** | Origin documented; usage rights verified before training; personal data minimized and used only with a legal basis — pseudonymized data still counts as personal data |
+| **Conversation logs** | Retention period defined per regulation; deletion requests honored; used for training only with opt-in consent |
+| **RAG sources** | Source, update date, and license tracked; refreshed on a defined cadence; source-document permissions enforced at retrieval (Factor 17) |
+| **Synthetic data** | Labeled as synthetic, never mixed with real data unlabeled; generation method documented for reproducibility |
 
-  conversation_logs:
-    retention_days: 90            # define retention period per regulation
-    right_to_erasure: supported   # users can request deletion of their data
-    use_for_training: opt_in      # never use production logs for training without consent
-
-  rag_sources:
-    provenance: tracked           # document source, update date, license
-    refresh_cadence: weekly       # stale data degrades quality
-    access_controls: enforced     # respect source document permissions
-
-  synthetic_data:
-    labeled_as_synthetic: true    # never mix synthetic with real without labeling
-    generation_method: documented # reproducibility
-```
+Derived copies — embeddings, caches, traces, agent memory, eval datasets — inherit the rules of the data they came from, including retention and deletion (Factor 12, Factor 19).
 
 ### Regulatory Compliance (GDPR / LGPD)
 AI applications that process personal data must comply with data protection regulations. These requirements are architectural — they must be built into the system, not bolted on after launch.
@@ -293,65 +208,19 @@ AI applications that process personal data must comply with data protection regu
 ### EU AI Act Compliance
 The EU AI Act establishes a risk-based classification framework that imposes architectural requirements on AI systems. Unlike GDPR (which focuses on data), the AI Act regulates the *AI system itself* — how it's built, tested, deployed, and monitored. Compliance is not optional for systems operating in or affecting EU citizens.
 
-**Risk classification determines architectural requirements:**
+**Risk classification determines architectural requirements.** Classify each AI system — unacceptable (prohibited), high, limited, or minimal risk — record the reasoning, and review the classification whenever the system's purpose or capabilities change significantly. High-risk systems must implement all of the following:
 
-```yaml
-eu_ai_act:
-  system_classification:
-    # Step 1: Classify your AI system by risk level
-    risk_level: high               # unacceptable | high | limited | minimal
-    category: "AI system that profiles natural persons"
-    determination_date: "2025-08-01"
-    review_cadence: on_significant_change
+| Requirement | What the architecture must provide |
+|-------------|------------------------------------|
+| **Risk management** (Art. 9) | A continuous risk-management process; residual risks identified and mitigated; testing before deployment and in operation |
+| **Data governance** (Art. 10) | Training, validation, and test data documented for provenance, relevance, and representativeness; bias examined across protected characteristics; data-quality criteria defined |
+| **Technical documentation** (Art. 11) | Purpose, intended use, and limitations; model, training, and evaluation methodology; performance metrics |
+| **Record-keeping** (Art. 12) | Automatic event logging, so decisions can be traced to inputs and model version, retained as the regulation requires |
+| **Transparency to deployers** (Art. 13) | Instructions for use, capabilities, and limitations |
+| **Human oversight** (Art. 14) | People can understand, monitor, and override the system, including stopping it |
+| **Accuracy, robustness, cybersecurity** (Art. 15) | Declared and tested accuracy levels; robustness against adversarial inputs and edge cases; protection against manipulation of training data and inputs |
 
-  # High-risk systems must implement all of the following:
-  high_risk_requirements:
-    risk_management:
-      system: documented            # continuous risk management system
-      residual_risks: documented    # identify and mitigate residual risks
-      testing: "pre-deployment and ongoing"
-
-    data_governance:
-      training_data: documented     # provenance, relevance, representativeness
-      bias_testing: "across protected characteristics"
-      data_quality_criteria: defined
-
-    technical_documentation:
-      system_description: complete  # purpose, intended use, limitations
-      architecture: documented      # model, training, evaluation methodology
-      performance_metrics: published
-
-    record_keeping:
-      automatic_logging: enabled    # system must log events for traceability
-      log_retention: "as required by deployer, minimum per regulation"
-      audit_trail: complete         # decisions traceable to inputs and model version
-
-    transparency:
-      user_notification: required   # users must know they're interacting with AI
-      instructions_for_use: provided # deployers receive clear operating instructions
-      capabilities_and_limitations: documented
-
-    human_oversight:
-      mechanism: defined            # human can understand, monitor, and override
-      override_capability: "stop button or manual override"
-      monitoring_dashboard: required
-
-    accuracy_robustness_cybersecurity:
-      accuracy_levels: documented   # declared and tested accuracy metrics
-      robustness: "tested against adversarial inputs and edge cases"
-      cybersecurity: "protected against manipulation of training data and inputs"
-
-  # Limited-risk systems (e.g., chatbots) require transparency
-  limited_risk_requirements:
-    disclosure: "Users must be informed they are interacting with an AI system"
-    ai_generated_content: "Must be labeled as AI-generated (deepfakes, synthetic text)"
-
-  # Conformity assessment
-  conformity:
-    assessment_type: internal       # internal | third_party (depends on category)
-    eu_database_registration: required  # high-risk systems must register
-    ce_marking: required            # before placing on EU market
-```
+Limited-risk systems such as chatbots carry transparency duties instead: users must know they are interacting with an AI system, and AI-generated content must be labeled (Article 50, below). High-risk systems also need a conformity assessment — internal or third-party depending on the category — registration in the EU database, and CE marking before they are placed on the EU market.
 
 **Architectural implications:**
 - **Automatic logging** is not optional for high-risk systems — Factor 15 (Observability) must capture every decision input and output for traceability.
@@ -396,29 +265,10 @@ The two consolidating technical layers:
 
 These are complementary, not alternatives. Production AI systems generating user-visible content should:
 
-```yaml
-content_provenance:
-  c2pa:
-    enabled: true
-    sign_with: cosign-key-prod         # cryptographic signing key
-    metadata:
-      assertions:
-        - c2pa.created_by: "ExampleApp v2.3"
-        - c2pa.actions:
-            - action: c2pa.created
-              softwareAgent: "claude-sonnet-5-5"
-        - c2pa.training_mining: notAllowed   # opt-out signal for crawlers
-
-  watermark:
-    enabled: true
-    method: synthid                    # or equivalent
-    apply_to: [image, audio, text_long_form]
-    minimum_detection_confidence: 0.95
-
-  monitoring:
-    detection_test_corpus: weekly       # verify watermark survives normal handling
-    c2pa_signature_verification: required_at_publish
-```
+- **Attach Content Credentials at creation**: record what created the content (application and version, the generating model) and how, signed with the organization's C2PA signing certificate held in a key-management service — not a general-purpose artifact-signing key.
+- **Watermark where the medium supports it**: images, audio, video, and long-form text, using a SynthID-class or equivalent scheme, with the detection threshold set from testing.
+- **Verify at publish**: check credentials before content leaves the system, and periodically test a corpus of outputs to confirm the watermark survives normal handling (compression, resizing, light edits).
+- **Carry opt-out preferences** where you publish them, so crawlers can see that the content is not available for AI training.
 
 Open problem: C2PA-vs-watermark contradictions can arise when content is re-edited. Define your handling policy explicitly (re-sign, drop, flag).
 
@@ -432,27 +282,7 @@ EU AI Act is the legal layer. The de-facto compliance stack pairs it with two me
 
 The mapping isn't 1:1, but the controls overlap heavily. Build a single internal control set that satisfies all of them. Keep evidence in one place; cross-map at audit time. Use the OWASP Top 10 mappings above as the threat-side index into the same control set.
 
-```yaml
-compliance_evidence_map:
-  control_set: internal_v3
-  source_frameworks:
-    - eu_ai_act_high_risk
-    - iso_42001_aims_clauses
-    - nist_ai_rmf_govern_map_measure_manage
-    - nist_genai_profile
-  evidence_store: s3://compliance-evidence/
-  controls:
-    risk_management:
-      eu_ai_act: art.9
-      iso_42001: clause_6.1
-      nist_ai_rmf: GOVERN-3.1, MAP-1.1
-      evidence: risk-register.yaml
-    automatic_logging:
-      eu_ai_act: art.12
-      iso_42001: clause_8.4
-      nist_ai_rmf: MEASURE-2.4
-      evidence: factor-15-observability/
-```
+Each internal control lists the clauses it satisfies in every framework and points at its evidence. One risk-management control, for example, can cover the AI Act's risk-management requirement (Art. 9), ISO/IEC 42001's risk assessment and treatment clauses, and the NIST AI RMF Govern and Map functions, with the risk register as its evidence; an automatic-logging control (Art. 12) points at the observability pipeline of Factor 15. Version the control set and the mapping like code, so an auditor can see which version of each control was in force on a given date.
 
 ### Training Data Licensing and Copyright
 
@@ -464,106 +294,53 @@ Generative AI raised unsettled but high-stakes questions about training data lic
 - **PII in training data**: training/fine-tuning datasets are subject to GDPR/LGPD just like operational data. Right-to-erasure may require re-training or differential-privacy mitigation.
 
 ### Non-Production Data Anonymization
-Non-production environments (dev, staging, QA) must never contain real personal data. This is one of the most common — and most preventable — regulatory violations.
+Non-production environments (dev, staging, QA) must not contain real personal data by default. This is one of the most common — and most preventable — regulatory violations.
 
-```yaml
-non_production_data:
-  policy: anonymize_before_copy     # never copy production data without anonymization
+**Pseudonymization is not anonymization.** Swapping names for fake ones, hashing emails, or shifting dates keeps records linkable — to each other and, with enough auxiliary data, to the people behind them. A hashed email can be matched by hashing a list of candidates. Under GDPR, pseudonymized data that can be attributed to a person with additional information is still personal data, with all the obligations that brings. Choose data for non-production use in this order:
 
-  anonymization:
-    strategy: pseudonymization       # pseudonymization | synthetic_generation | k-anonymity
-    fields:
-      - type: name
-        method: fake_name            # generate realistic fake names
-      - type: email
-        method: hash_and_domain      # user@company.com → a3f8c@test.example.com
-      - type: phone
-        method: randomize            # preserve format, randomize digits
-      - type: address
-        method: generalize           # keep city/state, remove street
-      - type: free_text
-        method: ner_redact           # NER-based PII redaction in unstructured text
-      - type: date_of_birth
-        method: shift                # shift by random offset, preserve age distribution
+1. **Synthetic data** generated to match the shapes and distributions the tests need — the default for development and for automated agent environments.
+2. **Effectively anonymized data**: transformations such as generalization, aggregation, suppression of rare values, and removal of identifiers from free text, validated against re-identification — including linkage with other data you hold. "Anonymized" is a claim you test, not a label you apply.
+3. **Pseudonymized or real personal data only as a documented exception**: a stated purpose and legal basis, restricted access, the same protection as production, and a retention limit.
 
-  validation:
-    scan_after_copy: true            # run PII scanner on anonymized dataset
-    block_on_pii_detected: true      # fail pipeline if PII leaks through
-    audit_log: true                  # log who copied what and when
+Whatever the source, scan every copied dataset for PII — including NER-based detection in free text — fail the pipeline if any leaks through, and log who copied what, when, and under which exception.
 
-  refresh_cadence: monthly           # re-anonymize from production monthly for freshness
-```
-
-This is especially critical when AI agents autonomously create branches and spin up ephemeral environments (Factor 11) — automated pipelines must use anonymized datasets by default, never production data.
+This is especially critical when AI agents autonomously create branches and spin up ephemeral environments (Factor 11) — automated pipelines must use synthetic or anonymized datasets by default, never production data. Further reading: EDPB, [Guidelines 01/2025 on Pseudonymisation](https://www.edpb.europa.eu/our-work-tools/documents/public-consultations/2025/guidelines-012025-pseudonymisation_en).
 
 ### Red Teaming and Adversarial Testing
 Defensive guardrails are necessary but not sufficient. You must actively test them. Red teaming is the practice of systematically probing an AI system for vulnerabilities — prompt injection bypasses, harmful output generation, PII extraction, bias exploitation, and jailbreaks.
 
-```yaml
-red_team_program:
-  cadence: quarterly                  # full red team exercise
-  continuous: true                    # automated adversarial evals run in CI
+| Attack category | Goal | Typical methods |
+|-----------------|------|-----------------|
+| **Prompt injection** | Override system instructions | Direct and indirect (via retrieved content or tool output) injection, payload splitting |
+| **Jailbreak** | Bypass safety boundaries | Role-play, encoding tricks, multi-turn escalation |
+| **Data extraction** | Extract training data, PII, or the system prompt | Memorization probing, context extraction, system-prompt leakage |
+| **Bias exploitation** | Trigger biased outputs | Demographic probing, stereotype elicitation |
+| **Harmful output** | Generate harmful content | Indirect requests, dual-use framing, gradual escalation |
+| **Agentic** (OWASP Agentic Top 10) | Make an agent act against its user | Goal hijack via tool output, tool misuse, memory poisoning, exfiltration via rendered links |
 
-  attack_categories:
-    - prompt_injection:               # attempts to override system instructions
-        methods: [direct_injection, indirect_injection, payload_splitting]
-    - jailbreak:                      # attempts to bypass safety boundaries
-        methods: [roleplay, encoding_tricks, multi_turn_escalation]
-    - data_extraction:                # attempts to extract training data or PII
-        methods: [memorization_probing, context_extraction, system_prompt_leak]
-    - bias_exploitation:              # attempts to trigger biased outputs
-        methods: [demographic_probing, stereotype_elicitation]
-    - output_manipulation:            # attempts to generate harmful content
-        methods: [indirect_harmful, dual_use, gradual_escalation]
-    - agentic:                        # OWASP Agentic Top 10 scenarios
-        methods: [goal_hijack_via_tool_output, tool_misuse, memory_poisoning, exfiltration_via_rendered_links]
-
-  adversarial_eval_dataset:
-    source: evals/adversarial.jsonl   # versioned alongside code (Factor 1)
-    min_samples: 200
-    refresh: after_each_exercise      # add new attack vectors discovered
-
-  response:
-    vulnerability_found:
-      - add_to_adversarial_dataset
-      - create_guardrail_or_fix
-      - re_run_eval_suite
-      - update_incident_playbook
-```
+Run a full human-led exercise on a fixed cadence (for example, quarterly) and automated adversarial evals in CI on every change. Keep the adversarial dataset versioned alongside the code (Factor 1) and grow it after each exercise. Every confirmed vulnerability follows the same loop: add it to the adversarial dataset, ship a fix or guardrail, re-run the eval suite, and update the incident playbook.
 
 Red teaming is not a one-time audit — it's a continuous practice. Every model upgrade, prompt change, or new feature should trigger adversarial evaluation. Automated adversarial eval suites (Factor 6) complement but do not replace human-led exercises.
 
 ### Incident Response for AI
 AI incidents require specific response procedures:
 
-```yaml
-ai_incident_playbook:
-  severity_1_harmful_output:
-    - immediately: disable_affected_feature
-    - within_1h: identify_root_cause_and_affected_scope
-    - within_4h: deploy_fix_or_guardrail
-    - within_24h: conduct_retrospective
-    - within_1w: add_to_eval_suite
+| Severity | Immediately | Then |
+|----------|-------------|------|
+| **Sev 1 — harmful output** | Disable the affected feature | Root cause and affected scope within 1 hour; fix or guardrail within 4 hours; retrospective within 24 hours; regression case in the eval suite within a week |
+| **Sev 2 — bias detected** | Flag for investigation | Impact and scope quantified within 24 hours; mitigation within a week; enhanced monitoring afterwards |
 
-  severity_2_bias_detected:
-    - immediately: flag_for_investigation
-    - within_24h: quantify_impact_and_scope
-    - within_1w: implement_mitigation
-    - ongoing: enhanced_monitoring
+Regulatory clocks run in parallel with the technical response, from the moment of awareness:
 
-  # Regulatory clocks run in parallel with the technical response, from the moment of awareness
-  regulatory_reporting:
-    eu_ai_act_art_73:                 # serious incidents, high-risk systems; calendar days
-      widespread_or_critical_infrastructure: 2d
-      death_of_a_person: 10d
-      other_serious_incident: 15d
-    eu_cra_art_14:                    # products with digital elements; applies since 11 Sep 2026
-      actively_exploited_vulnerability: { early_warning: 24h, notification: 72h, final_report: "14d after fix available" }
-      severe_security_incident: { early_warning: 24h, notification: 72h, final_report: "1 month" }
-    personal_data_breach:
-      gdpr: 72h                       # to the supervisory authority
-      lgpd: "3 working days"          # to the ANPD (Resolution CD/ANPD 15/2024)
-```
+| Regime | Event | Deadline |
+|--------|-------|----------|
+| **EU AI Act Art. 73** (serious incidents, high-risk systems; calendar days) | Widespread infringement or critical-infrastructure disruption | 2 days |
+| | Death of a person | 10 days |
+| | Other serious incident | 15 days |
+| **Cyber Resilience Act Art. 14** (products with digital elements; applies since 11 Sep 2026) | Actively exploited vulnerability | Early warning 24h, notification 72h, final report 14 days after a fix is available |
+| | Severe security incident | Early warning 24h, notification 72h, final report within 1 month |
+| **GDPR** | Personal data breach | 72h, to the supervisory authority |
+| **LGPD** | Personal data breach | 3 working days, to the ANPD (Resolution CD/ANPD 15/2024) |
 
 One incident can trigger several regimes at once — a prompt-injection exfiltration from a high-risk system can be an AI Act serious incident, a CRA severe incident, and a personal-data breach. Decide in advance who owns each clock, and log the moment of awareness with a timestamp you can defend (cross-ref Factor 20's AI incident log).
 
@@ -576,7 +353,7 @@ One incident can trigger several regimes at once — a prompt-injection exfiltra
 - [ ] Bias monitoring evaluates output quality, refusal rates, and sentiment across demographic segments on a defined cadence
 - [ ] Human-in-the-loop gates are defined for high-risk actions and low-confidence outputs
 - [ ] AI-generated content is clearly disclosed to users
-- [ ] Non-production environments use anonymized data with automated PII scanning to prevent leaks
+- [ ] Non-production environments use synthetic or effectively anonymized data (pseudonymized data counts as personal data), with automated PII scanning to prevent leaks and documented exceptions
 - [ ] Regulatory compliance (GDPR/LGPD) is addressed: legal basis, data minimization, right to erasure, and DPIA for high-risk AI features
 - [ ] EU AI Act risk classification is determined and documented for each AI system
 - [ ] High-risk AI systems implement mandatory requirements — risk management, data governance, technical documentation, record-keeping, transparency, human oversight, and accuracy/robustness testing — before their application date under Regulation (EU) 2026/1744 (2 Dec 2027 for Annex III, 2 Aug 2028 for Annex I)

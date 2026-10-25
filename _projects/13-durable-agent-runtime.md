@@ -69,56 +69,23 @@ The architectural pattern is the same across all of them: **define a workflow** 
 
 ### Workflow / Activity Separation
 
-```python
-# Temporal-style example — same pattern applies to other engines
+Every durable engine splits agent code into two kinds of step:
 
-# Activities (non-deterministic — call external systems)
-@activity.defn
-async def call_llm(prompt: str, model: str) -> LLMResponse:
-    return await anthropic_client.messages.create(model=model, messages=[...])
+| | Workflow | Activity (model or tool call) |
+|---|---|---|
+| **Role** | Drives the plan: decides which step runs next | Does the work: calls the model, a tool, an external API |
+| **Determinism** | Must be deterministic — replay must reproduce the same decisions | May be non-deterministic |
+| **May do** | Branch on journaled results, wait on signals and timers, start activities | Network and disk I/O, model calls, side effects |
+| **Must not do** | Direct I/O, read the wall clock, generate random IDs, call external systems | Keep state that must survive a crash |
+| **On failure** | Resumes from the journal on any worker | Retried by the engine under its retry policy |
 
-@activity.defn
-async def issue_refund(order_id: str, amount: float, idempotency_key: str) -> RefundReceipt:
-    # Idempotency key MUST be deterministic and survive retry — see next section
-    return await payments.refund(order_id=order_id, amount=amount, key=idempotency_key)
+The workflow code is **deterministic**: no `datetime.now()`, no random IDs, no direct I/O — use the engine's own clock and random helpers where it provides them. All other non-determinism is delegated to activities. This guarantees that replay produces the same plan that was originally executed.
 
-# Workflow (deterministic — drives the plan, never calls external systems directly)
-@workflow.defn
-class CustomerSupportAgent:
-    @workflow.run
-    async def run(self, ticket: Ticket) -> Resolution:
-        # Every activity result is journaled; on replay these return journaled values
-        analysis = await workflow.execute_activity(
-            analyze_ticket, ticket,
-            start_to_close_timeout=timedelta(minutes=2),
-            retry_policy=RetryPolicy(maximum_attempts=3, backoff=ExponentialBackoff()),
-        )
-
-        if analysis.requires_human_approval:
-            # Durable interrupt — workflow pauses, worker freed
-            decision = await workflow.wait_condition(
-                lambda: self.human_decision is not None,
-                timeout=timedelta(hours=24),
-            )
-            if decision.action == "reject":
-                return Resolution(status="rejected", reason=decision.reason)
-
-        # Idempotency key derived from workflow run — stable across retries
-        idem_key = f"refund-{workflow.info().workflow_id}-{ticket.id}"
-        receipt = await workflow.execute_activity(
-            issue_refund, ticket.order_id, ticket.amount, idem_key,
-        )
-        return Resolution(status="completed", receipt=receipt)
-
-    @workflow.signal
-    def submit_human_decision(self, decision: HumanDecision):
-        # Durable signal handler — runs on the next workflow turn
-        self.human_decision = decision
-```
-
-The workflow code is **deterministic**: no `datetime.now()`, no random IDs, no direct I/O. All non-determinism is delegated to activities. This guarantees that replay produces the same plan that was originally executed.
+Give every activity a per-attempt timeout, a bounded retry policy with exponential backoff and jitter, and a heartbeat if it runs long, so the engine can tell a slow step from a lost worker.
 
 ### Idempotency Keys for Tool Calls
+
+Engines retry activities — after a timeout, an error, or a worker crash — and that is what makes them durable. It also means any activity can run more than once. The engine guarantees that the *workflow* resumes; it does not make an external charge, email, or ticket happen exactly once. That is the job of idempotency.
 
 Every external side effect — payment, email send, ticket creation, model call with cost — must carry an idempotency key derived from the workflow run, not from local randomness:
 
@@ -126,42 +93,33 @@ Every external side effect — payment, email send, ticket creation, model call 
 # WRONG — generates a new key on each retry; double-charges the customer
 idem_key = str(uuid.uuid4())
 
-# RIGHT — deterministic per workflow run + step; safe under retry
-idem_key = f"{workflow.info().workflow_id}::refund::{step_index}"
+# RIGHT — deterministic per workflow + step; the same on every retry
+idem_key = f"{workflow_id}::refund::{step_index}"
 ```
 
-The destination service (payment provider, email provider, ticketing API) deduplicates on this key. Most providers offer this natively (Stripe `Idempotency-Key` header, AWS SQS `MessageDeduplicationId`). For services that don't, wrap them with a thin `(idem_key → result)` cache.
+The key only helps if the **destination** deduplicates on it. Many payment, messaging, and ticketing APIs do so natively (Stripe `Idempotency-Key` header, AWS SQS `MessageDeduplicationId`). When a destination doesn't:
+
+- **A local `(idem_key → result)` cache is not enough.** If the effect happens and the worker crashes before the result is recorded, the retry finds no entry and repeats the effect.
+- **Commit intent and effect together** when the effect is a write to a database you control — for example, with a transactional outbox — and still make downstream consumers tolerate duplicates.
+- **Treat each attempt as having three outcomes**: success, confirmed failure, or *unknown* (timeout, dropped connection, crash mid-call). Retry directly only after a confirmed failure. For an unknown outcome, reconcile first — look the operation up at the destination by its key or a business identifier — then retry or record the result.
+- **Define a compensation for what cannot be deduplicated** (refund, retraction, follow-up message), and who triggers it.
+
+Further reading: Temporal, [What is idempotency? And why it matters for durable systems](https://temporal.io/blog/idempotency-and-durable-execution); AWS Prescriptive Guidance, [Transactional outbox pattern](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html).
 
 ### Human-in-the-Loop as Durable Interrupt
 
-The naive pattern blocks a worker on a synchronous approval call:
+The naive pattern blocks a worker on a synchronous approval call: the worker is held for hours, and the pending approval dies with the process.
 
-```python
-# ANTI-PATTERN — blocks the worker for hours
-decision = await human_approval_api.wait_for_decision(approval_id, timeout=8 * 3600)
-```
+The durable pattern parks the workflow instead:
 
-The durable pattern parks the workflow and waits for a signal:
+1. An activity notifies the approver (email, chat, ticket), identifying the workflow and the exact action to approve.
+2. The workflow waits on a durable condition — "a decision has arrived" — with a timeout. No worker is held while it waits.
+3. The approver's response reaches your API, which sends the workflow a **signal**. The signal handler stores the decision in workflow state, and the engine resumes the workflow on the next available worker — possibly in a different process, after a deploy.
+4. The workflow reads the decision from that state and acts on it.
 
-```python
-# PATTERN — workflow paused, worker freed; resumes when signal arrives
-@workflow.run
-async def run(self, request):
-    self.pending_decision = None
-    await self.notify_approver(request)        # send notification (activity)
-    await workflow.wait_condition(             # park here, no worker held
-        lambda: self.pending_decision is not None,
-        timeout=timedelta(hours=24),
-    )
-    if self.pending_decision == "approve":
-        ...
+Two details are easy to get wrong. The wait primitive is a condition, not a channel: Temporal's `wait_condition`, for example, returns nothing — it resumes when the condition holds or the timeout expires — so read the decision from the state the signal handler set, never from the wait call. And a timeout is an outcome, not an error: decide in advance whether an unanswered request expires, escalates, or is rejected. Factor 18 defines what an approval must be bound to (the exact action, an authorized approver, an expiry), so a decision recorded hours ago cannot authorize something else.
 
-@workflow.signal
-def submit_decision(self, decision: str):
-    self.pending_decision = decision
-```
-
-The approver clicks the link in their email; the API handler emits a workflow signal; the engine resumes the workflow on the next available worker. No worker is held during the wait. This is what makes 24-hour and multi-day approval workflows feasible.
+This is what makes 24-hour and multi-day approval workflows feasible. Further reading: Temporal, [Workflow message passing (Python)](https://docs.temporal.io/develop/python/workflows/message-passing).
 
 ### Long-Running Tools over MCP
 
@@ -178,77 +136,22 @@ Workflows in flight when you deploy a new version need a determinism guarantee. 
 
 Two safe options:
 
-```python
-# Option 1 — branch by version using the engine's versioning primitive
-version = workflow.patched("retry-with-backoff-v2")
-if version:
-    await workflow.execute_activity(new_retry_activity, ...)
-else:
-    await workflow.execute_activity(legacy_retry_activity, ...)
-
-# Option 2 — pin in-flight workflows to old code by deploying old + new side by side
-# (queue/task list separation; new workflows go to new code, old finish on old)
-```
+- **Branch by version inside the workflow** with the engine's versioning primitive (Temporal's patching API, for example): in-flight runs replay the old branch, new runs take the new one, and the old branch is removed once no run that needs it remains.
+- **Run old and new code side by side**: route new workflows to the new code through a separate queue or task list, and let in-flight workflows finish on the old workers.
 
 Versioning is the single most under-tested aspect of durable workflows. Add a CI test that replays a fixed set of historical journals against current code and fails if any step diverges.
 
 ### Recovery from Worker Preemption
 
-```yaml
-# kubernetes — workers run on spot/preemptible GPU nodes
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: agent-worker
-spec:
-  template:
-    spec:
-      tolerations:
-        - key: preemptible
-          value: "true"
-      terminationGracePeriodSeconds: 30   # graceful drain (Factor 9)
-      containers:
-        - name: worker
-          env:
-            - name: TEMPORAL_TASK_QUEUE
-              value: "agent-tasks"
-          # On SIGTERM the worker stops polling, finishes in-flight steps,
-          # and exits. The workflow keeps running on another worker — its
-          # state is durable, not in this process.
-```
+Workers on spot or preemptible nodes — GPU inference especially — must treat termination as routine:
 
-CI test for preemption recovery:
-
-```python
-async def test_workflow_survives_worker_preemption():
-    workflow_handle = await client.start_workflow(CustomerSupportAgent.run, ticket)
-
-    # Wait for the workflow to enter activity execution
-    await wait_until_activity_started(workflow_handle, "analyze_ticket")
-
-    # Kill the worker mid-execution
-    await kill_all_workers()
-
-    # Restart workers and assert workflow completes
-    await start_workers()
-    result = await workflow_handle.result(timeout=60)
-    assert result.status == "completed"
-```
+- **Drain on SIGTERM**: stop polling for new tasks, let in-flight steps finish or heartbeat within the grace period, then exit (Factor 9). The workflow keeps running on another worker; its state is in the journal, not in this process.
+- **Heartbeat long activities** and set per-attempt timeouts, so the engine detects a lost worker quickly and reschedules the step.
+- **Test it in CI**: start a workflow, kill every worker while a side-effecting step is in flight, restart the workers, and assert that the workflow completes *and* that the external effect happened exactly once. Cover a kill before the external call commits and a kill after it commits but before the result is journaled — the second case is the one a local cache gets wrong.
 
 ### Observability Integration
 
-Durable engines emit step-by-step traces natively. Wire them into the broader telemetry pipeline (Factor 15) so a single trace shows: workflow plan → activity execution → LLM call → tool result → workflow continuation.
-
-```python
-# Workflow events emitted as OpenTelemetry spans, correlated with LLM call spans
-@workflow.run
-async def run(self, request):
-    with workflow.trace.span("plan-generation"):
-        plan = await workflow.execute_activity(generate_plan, request)
-    for step in plan.steps:
-        with workflow.trace.span(f"step:{step.name}"):
-            await workflow.execute_activity(execute_step, step)
-```
+Durable engines emit step-by-step traces natively. Wire them into the broader telemetry pipeline (Factor 15) so a single trace shows: workflow plan → activity execution → LLM call → tool result → workflow continuation. Propagate trace context from the workflow into each activity, so model-call spans nest under the step that issued them, and tag spans with the workflow ID so any user report can be traced to its run.
 
 Key signals to alert on:
 
@@ -261,20 +164,9 @@ Key signals to alert on:
 
 A single agent platform serves many tenants. Workflows must be tenant-scoped to prevent cross-tenant data leakage and to enable per-tenant rate/cost limits:
 
-```python
-@workflow.defn
-class TenantScopedAgent:
-    @workflow.run
-    async def run(self, ctx: TenantContext, request):
-        # All activities receive tenant-scoped clients
-        await workflow.execute_activity(
-            call_llm,
-            ctx.tenant_id,
-            request.prompt,
-            # Per-tenant rate limit at the worker pool level — see Factor 14
-            task_queue=f"tenant-{ctx.tenant_id}-agents",
-        )
-```
+- **The tenant is part of the workflow's input**, recorded in the journal — never looked up from ambient process state.
+- **Activities act with tenant-scoped clients and credentials** (Factor 8); a worker never reuses one tenant's token for another tenant's step.
+- **Limits apply per tenant**: rate and concurrency limits in the worker pools (Factor 14), cost budgets and circuit breakers (Factor 20). Tenants that need hard isolation get their own task queues or worker pools.
 
 Pair with Factor 8 (Identity) for tenant identity, Factor 14 (Adaptive Concurrency) for per-tenant rate-limited worker pools, and Factor 20 (AI Economics) for per-tenant cost budgets and circuit breakers.
 
@@ -283,7 +175,7 @@ Pair with Factor 8 (Identity) for tenant identity, Factor 14 (Adaptive Concurren
 - [ ] Long-running agent execution state is persisted in a durable runtime (Temporal, Restate, DBOS, Inngest, Dapr Workflows, or equivalent); an agent SDK or framework counts only when it runs on one of these or on a persistent checkpointer that resumes from the last completed step after a crash
 - [ ] Long-running MCP tool calls (tasks, multi round-trip requests) are journaled and polled from activities, and side-effecting MCP tools carry idempotency keys
 - [ ] Workflow definitions are deterministic — no direct I/O, no `datetime.now()`, no random IDs in workflow code
-- [ ] Tool calls are idempotent or guarded by deterministic idempotency keys derived from the workflow run
+- [ ] Tool calls are idempotent or guarded by deterministic idempotency keys derived from the workflow run and honored by the destination; attempts with an unknown outcome are reconciled before retry
 - [ ] Human-in-the-loop gates are implemented as durable interrupts (signals/events), not synchronous blocks
 - [ ] Recovery from worker preemption (spot GPU, OOM, deploy) is exercised in CI
 - [ ] Long-running workflow timeouts and step heartbeats are configured per activity
