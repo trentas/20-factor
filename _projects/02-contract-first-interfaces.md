@@ -126,7 +126,7 @@ A2A and MCP are complementary:
 
 ### MCP Gateway as Production Topology
 
-In production, putting an **MCP Gateway** in front of MCP servers is now the default topology. Direct agent → MCP server connections suffice for local development; production needs a control plane:
+In production, MCP traffic needs a control plane. An **MCP Gateway** in front of the servers is the usual shape when several agents, teams, or tenants share them; a single application can apply the same controls in its MCP host. Direct agent → MCP server connections without those controls suffice only for local development. Either way, production needs:
 
 - **OAuth 2.1 enforcement**: MCP's authorization spec builds on OAuth 2.1 (still an IETF draft). The gateway centralizes auth, scope, token rotation, and audit logging — application code doesn't reimplement it. As of 2026-07-28, clients register via **Client ID Metadata Documents** (Dynamic Client Registration is deprecated), validate the `iss` parameter on authorization responses (RFC 9207), and key stored credentials by issuer so they are never replayed against a different authorization server.
 - **Header-based routing**: Streamable HTTP requests carry `Mcp-Method` and `Mcp-Name` headers (and tools can mirror selected parameters into `Mcp-Param-*` headers), so the gateway can route, authorize, and rate-limit without parsing the JSON-RPC body. Never mirror secrets or PII into headers.
@@ -216,7 +216,7 @@ Adopting these conventions makes traces portable across tools (Langfuse, LangSmi
 - [ ] Schema descriptions are written to be useful for both humans and AI models
 - [ ] Breaking changes go through a review process with migration plans
 - [ ] Cross-team interfaces have shared contract ownership and review processes
-- [ ] An MCP Gateway fronts production MCP servers (OAuth 2.1, rate limits, audit log, circuit breakers)
+- [ ] Production MCP servers sit behind one enforced control point — an MCP gateway, or equivalent controls in the MCP host — providing OAuth 2.1, rate limits, audit log, and circuit breakers
 - [ ] MCP servers and clients pin the protocol version they implement, use Streamable HTTP (not the deprecated HTTP+SSE) for remote transport, and track deprecated features (Roots, Sampling, Logging) against the 12-month deprecation window
 - [ ] Skills follow the Agent Skills specification (SKILL.md), are versioned and validated in CI, and carry no limits that only the skill text enforces
 - [ ] Cross-org agents are discoverable via an Agent Directory Service (e.g., AGNTCY) rather than hardcoded URLs

@@ -109,7 +109,7 @@ A minimal AIBOM entry per model includes: model identifier and version, weights 
 
 Generate the AIBOM in the build from the model manifest, the evaluation results, the dataset lockfile, and the guardrail configuration, and sign it together with the other release artifacts (see below).
 
-The AIBOM travels with the release. Downstream consumers (compliance, procurement, customers) verify it before deployment. Regulators (EU AI Act, NIST profiles — see Factor 7) increasingly require it, and the EU Cyber Resilience Act makes a component inventory part of the technical documentation for products on the EU market (obligations from December 2027; vulnerability reporting already since September 2026 — see Factor 3). Keep every release's SBOM and AIBOM queryable, so an advisory can be matched to the releases that ship the affected component within hours.
+The AIBOM travels with the release. Downstream consumers (compliance, procurement, customers) verify it before deployment. No regulation mandates an AIBOM format, but several ask for the same information: the EU AI Act's technical documentation for high-risk systems (Annex IV) covers software versions, data sets, and model design (see Factor 7), and the EU Cyber Resilience Act makes a component inventory part of the technical documentation for products on the EU market (obligations from December 2027; vulnerability reporting already since September 2026 — see Factor 3). The NIST AI RMF is voluntary; customer and procurement contracts are where a specific format is most often required. Keep every release's SBOM and AIBOM queryable, so an advisory can be matched to the releases that ship the affected component within hours.
 
 ### Provenance, Signing, and Reproducibility
 
@@ -121,8 +121,7 @@ Further reading: [SLSA 1.2 — Build track basics](https://slsa.dev/spec/v1.2/bu
 
 ### Immutability Rules
 - **Never mutate a released artifact**. If a prompt needs changing, create a new release.
-- **Never change a model version** in a running deployment. Change the configuration and trigger a new release.
-- **Runtime switches stay inside the release.** A flag may switch among model / prompt / parameter combinations that this release contains and that passed its evaluation gates — for example, the evaluated fallback (Factor 4). Any other combination is a new release.
+- **Never introduce a model version into a running deployment.** A flag may switch only among model / prompt / parameter combinations that this release contains and that passed its evaluation gates — for example, the evaluated fallback (Factor 4). Any other combination, including a new model version, is a new release.
 - **Evaluation results are part of the release**. They're not just CI output — they're the evidence that this release meets quality standards.
 - **Rollback is deployment of a previous release**, not manual surgery on a running system.
 

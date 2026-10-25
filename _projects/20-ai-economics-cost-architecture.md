@@ -239,15 +239,15 @@ Tokens are no longer the only money an AI system moves. Agents that can buy — 
 
 ### FinOps Maturity for AI
 
-The 2026 State of FinOps shows real-time AI cost visibility as the top tooling request. Practical maturity model:
+The 2026 State of FinOps shows real-time AI cost visibility as the top tooling request. The ladder below is this project's practical checklist for AI spend — not the FinOps Foundation's model, which assesses maturity per capability (Crawl, Walk, Run):
 
-- **Level 1 (Visibility)**: cost is visible per feature/tenant in a daily/weekly cadence
-- **Level 2 (Attribution)**: showback in monthly reviews; teams see their own spend
-- **Level 3 (Chargeback)**: actual financial allocation; per-team budgets enforced
-- **Level 4 (Optimization)**: routing, caching, and reservation decisions are made on cost data, not gut feel
-- **Level 5 (Forecasting)**: cost is a forecasted line item in product business cases; new features carry a $/unit-economics model before launch
+- **Visibility**: cost is visible per feature/tenant on a daily/weekly cadence
+- **Attribution**: each team and product sees the spend it causes, through showback or chargeback. Which of the two fits is an organizational decision, not a maturity level
+- **Budgets**: per-team and per-product budgets with the enforcement described above
+- **Optimization**: routing, caching, and reservation decisions are made on cost data, not gut feel
+- **Forecasting**: cost is a forecasted line item in product business cases; new features carry a $/unit-economics model before launch
 
-Most production AI orgs in 2026 are at Level 2–3. Level 4 is the practical bar to aim for before the next major product expansion.
+Optimization is the practical bar to reach before the next major product expansion.
 
 ### Cost Dashboards
 
@@ -279,7 +279,7 @@ Essential views:
 - [ ] Steady-state high-volume workloads run on reserved/provisioned throughput (Bedrock PT, Azure PTUs, enterprise commits, or reserved GPU)
 - [ ] Carbon-per-request (gCO₂e) is tracked alongside dollar cost, with regional grid factors
 - [ ] Fallback chains are explicitly defined per route, including a "fail loudly" option for cost-sensitive jobs
-- [ ] FinOps maturity is at least Level 3 (chargeback) before major product expansion involving new AI features
+- [ ] Before major product expansion involving new AI features, AI spend is attributed to the teams and products that cause it (showback or chargeback, as fits the organization) and cost decisions are made on that data
 - [ ] An AI incident log is maintained (separate from general observability) capturing model version, sanitized I/O, and safety activations for potential EU AI Act Art. 73 reporting
 - [ ] The incident runbook meets the EU AI Act Art. 73 limits in calendar days (2 days widespread/critical infrastructure, 10 days death, 15 days otherwise) and, where the Cyber Resilience Act applies, its 24h/72h clock
 - [ ] Vendor MSA liability terms (caps, indemnification, IP coverage) are reviewed annually and documented alongside model registry entries

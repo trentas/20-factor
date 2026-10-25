@@ -289,7 +289,7 @@ Swarm frameworks accelerate prototyping but require explicit budget enforcement 
 - **No checkpoint/resume**: If an agent fails after 20 steps, it has to start over. Checkpoint state to enable resume.
 - **Silent agents**: Agents that act without logging. Every tool call, every decision, every error should be traced.
 - **NIH orchestration**: Building custom agent loops, retry logic, and tracing when a standard Agent SDK handles it correctly. Use frameworks for infrastructure; focus custom code on business logic and boundaries.
-- **Hardcoded tool sets**: Defining tools inline instead of using MCP for dynamic discovery. Hardcoded tools create tight coupling and prevent tool reuse across agents.
+- **Unreviewed dynamic tool sets**: Letting an agent use whatever tools a server advertises at runtime. A fixed, reviewed tool set is fine — often the safer choice; dynamic discovery (MCP) earns its place when tools change often or are shared across agents. Either way, each tool has a contract (Factor 2) and an assigned permission.
 - **Computer use for API-available tasks**: Using screenshot-based computer use when a structured API or MCP server exists. Computer use is slower, more expensive, and less reliable than structured tool calls.
 - **The lethal trifecta by accident**: giving one agent session private data, untrusted input, and an outbound channel at once — usually by adding "just one more" tool or MCP server (Factor 7).
 - **Floating tool servers**: launching MCP servers with unpinned `npx`/`latest` commands, so whatever was published last runs with the agent's permissions.

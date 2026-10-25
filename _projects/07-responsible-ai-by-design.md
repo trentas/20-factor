@@ -223,7 +223,7 @@ The EU AI Act establishes a risk-based classification framework that imposes arc
 Limited-risk systems such as chatbots carry transparency duties instead: users must know they are interacting with an AI system, and AI-generated content must be labeled (Article 50, below). High-risk systems also need a conformity assessment — internal or third-party depending on the category — registration in the EU database, and CE marking before they are placed on the EU market.
 
 **Architectural implications:**
-- **Automatic logging** is not optional for high-risk systems — Factor 15 (Observability) must capture every decision input and output for traceability.
+- **Automatic logging** is required for high-risk systems (Article 12): the system records the events needed to trace its operation, identify risks, and support post-market monitoring, with specific minimum fields for some categories (such as remote biometric identification). That is not a mandate to store every input and output — decide per system which events and content to keep, and apply data minimization (sampling, redaction, retention limits; Factor 15).
 - **Human oversight mechanisms** must be architectural, not advisory — Factor 18 (Agent Orchestration) human-in-the-loop gates satisfy this when properly implemented.
 - **Risk management** is continuous, not a one-time assessment — integrate AI Act risk reviews into your CI/CD pipeline (Factor 5) and evaluation suite (Factor 6).
 - **Conformity assessment** must be completed before deployment. For high-risk systems, this may require third-party audit.

@@ -109,7 +109,7 @@ The dev container spec is versioned alongside application code (Factor 1), meani
 
 ### Region and Data-Residency Parity
 
-For applications with data residency requirements (GDPR, LGPD, data sovereignty laws), environment parity extends to cloud regions. Staging must be in the same cloud region as production, and AI provider API calls must route to the same data-processing region.
+For applications with data residency requirements (GDPR, LGPD, data sovereignty laws), environment parity extends to regions. Any environment that processes regulated data — including a staging environment that receives mirrored production traffic — follows the same residency rules as production: compute, AI provider endpoints, vector stores, and object storage stay in the permitted regions. Staging that uses only synthetic data is not bound by those rules, but a region or endpoint difference that changes behavior (latency, model availability) is a documented parity exception.
 
 A "data must stay in EU" requirement violated in staging creates gaps that only appear in production compliance audits. Key parity dimensions:
 - **AI provider region**: Anthropic, OpenAI, Google all offer EU-based API endpoints — ensure staging and production call the same one
