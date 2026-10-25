@@ -36,6 +36,7 @@ This update broadens the principle from HTTP APIs to all interface boundaries:
 - AI coding tools can generate server stubs, client SDKs, and test harnesses from contract definitions (OpenAPI, protobuf, AsyncAPI).
 - Contract-first design gives AI assistants clear constraints, producing more accurate generated code.
 - Schema definitions serve as unambiguous specifications that AI tools can reason about.
+- **Spec-driven development** (GitHub Spec Kit, Kiro, OpenSpec) extends contract-first upstream of the interface: requirements, design, and task specs are written and reviewed before a coding agent implements them, and the interface contracts in this factor are one of the spec's outputs. See Factor 1 for keeping specs as versioned source artifacts.
 
 ### AI-Native Applications
 - **Tool schemas as contracts**: When an LLM uses function calling, the JSON Schema defining each tool *is* the contract. Poorly defined schemas lead to hallucinated parameters, type mismatches, and security vulnerabilities. The **Model Context Protocol (MCP)** standardizes this contract, providing a universal protocol for tool discovery and invocation across any model or agent framework.
@@ -134,77 +135,117 @@ Define tool contracts with precision — every parameter typed, described, and c
 
 ### MCP: The Standard Protocol for Tool Interfaces
 
-The **Model Context Protocol (MCP)** has emerged as the open standard for connecting AI models to external tools and data sources. Rather than defining tool schemas ad hoc per agent or per provider, MCP provides a unified protocol that any model or agent framework can use to discover and invoke tools.
+The **Model Context Protocol (MCP)** has emerged as the open standard for connecting AI models to external tools and data sources. Rather than defining tool schemas ad hoc per agent or per provider, MCP provides a unified protocol that any model or agent framework can use to discover and invoke tools. It is now stewarded by the Agentic AI Foundation (AAIF) under the Linux Foundation.
 
-MCP standardizes the contract between AI agents and their tools:
+MCP standardizes the contract between AI agents and their tools. As of the **2026-07-28** revision, every request carries its own protocol version and client capabilities in `_meta`, and list results carry cache hints:
 
 ```json
 {
   "jsonrpc": "2.0",
+  "id": 1,
   "method": "tools/list",
-  "id": 1
+  "params": {
+    "_meta": {
+      "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+      "io.modelcontextprotocol/clientInfo": { "name": "support-agent", "version": "3.2.0" },
+      "io.modelcontextprotocol/clientCapabilities": {}
+    }
+  }
 }
 ```
 
 ```json
 {
-  "tools": [
-    {
-      "name": "search_knowledge_base",
-      "description": "Search the knowledge base for relevant documents",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string",
-            "description": "The search query, rephrased for semantic search"
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "resultType": "complete",
+    "tools": [
+      {
+        "name": "search_knowledge_base",
+        "description": "Search the knowledge base for relevant documents",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "The search query, rephrased for semantic search"
+            },
+            "max_results": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20,
+              "default": 5
+            }
           },
-          "max_results": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 20,
-            "default": 5
-          }
-        },
-        "required": ["query"]
+          "required": ["query"]
+        }
       }
-    }
-  ]
+    ],
+    "ttlMs": 300000,
+    "cacheScope": "public"
+  }
 }
 ```
 
 Key design principles for MCP tool contracts:
 - **MCP servers as contract artifacts**: An MCP server *is* the contract implementation. The tool schema it exposes is the interface definition, and the server enforces it.
-- **Discovery over hardcoding**: Agents discover available tools at runtime via `tools/list`, enabling dynamic composition. New capabilities can be added by deploying a new MCP server without changing agent code.
+- **Discovery over hardcoding**: Agents discover available tools at runtime via `tools/list` (and a server's versions, capabilities, and identity via `server/discover`), enabling dynamic composition. New capabilities can be added by deploying a new MCP server without changing agent code.
 - **Resources and prompts**: Beyond tools, MCP defines contracts for resources (data the model can read) and prompts (reusable prompt templates). All three — tools, resources, and prompts — follow the same contract-first principle.
-- **Transport-agnostic**: MCP works over stdio (local) and HTTP+SSE (remote), so the same contract applies whether the tool runs locally or as a remote service.
+- **Transports**: MCP runs over stdio (local) and **Streamable HTTP** (remote). The older HTTP+SSE transport has been deprecated since 2025 — don't build new servers on it.
+- **Explicit state, not sessions**: the protocol has no session, so a server that needs state across calls (a cart, a browser context, a transaction) returns an explicit handle from one tool and accepts it as an argument on the next — validating the caller's authorization against the handle on every call.
 
 When designing MCP servers, apply the same contract-first principles from this factor: define the tool schemas with precise types, descriptions, and constraints *before* implementing the server logic. The schema descriptions are consumed by LLMs, so clarity matters.
 
+**What changed in 2026-07-28, and why it matters architecturally.** This revision was a deliberate break, and it moved MCP onto the same principles this methodology applies everywhere else:
+
+| Change | Architectural consequence |
+|--------|---------------------------|
+| Protocol-level sessions, the `Mcp-Session-Id` header, and the `initialize` handshake removed; each request is self-describing | Remote MCP servers are stateless and can sit behind an ordinary load balancer (Factor 9, Factor 12) |
+| Multi round-trip requests (MRTR) replace server-initiated requests (sampling, elicitation, roots) | A server asks for more input by returning `input_required`; the client retries with the answers — a pattern that fits durable workflows (Factor 13) |
+| Roots, Sampling, and Logging deprecated | Pass paths as tool parameters, call model providers directly, and log via stderr or OpenTelemetry |
+| Tasks moved to an official extension (`io.modelcontextprotocol/tasks`) with polling | Long-running tools return a handle that a durable runtime can poll (Factor 13) |
+| `tools/list` returned in deterministic order; list results carry `ttlMs` and `cacheScope` | Tool lists can be cached by clients and gateways, and stable ordering keeps model prompt caches warm (Factor 12) |
+| `traceparent`/`tracestate`/`baggage` propagated in `_meta` | Tool calls join the same distributed trace as the model call (Factor 15) |
+| Feature lifecycle policy with a minimum 12-month deprecation window | Protocol versions are dependencies with an end-of-life date — track them like model deprecations (Factor 16) |
+
+Pin the protocol version your servers and clients implement, and test against the next version before the deprecation window closes.
+
 ### A2A: The Standard Protocol for Agent-to-Agent Communication
 
-While MCP standardizes how agents interact with tools, the **Agent-to-Agent (A2A) protocol** standardizes how agents interact with each other. In multi-agent systems (Factor 18), agents need a common contract for task delegation, status updates, and result exchange.
+While MCP standardizes how agents interact with tools, the **Agent-to-Agent (A2A) protocol** standardizes how agents interact with each other. In multi-agent systems (Factor 18), agents need a common contract for task delegation, status updates, and result exchange. A2A reached **v1.0** in early 2026 — the first stable release — and, like MCP, is now hosted by the Agentic AI Foundation.
 
 A2A defines:
-- **Agent Cards**: Machine-readable descriptions of an agent's capabilities, published at a well-known URL. These are the contract for what an agent can do.
-- **Task lifecycle**: A standard state machine (submitted → working → completed/failed) with streaming updates, so orchestrators can manage tasks uniformly regardless of the agent implementation.
+- **Agent Cards**: Machine-readable descriptions of an agent's capabilities, published at a well-known URL. These are the contract for what an agent can do. In v1.0 a card can be **signed** (JWS), so a caller can verify who published it before trusting the capabilities it claims (Factor 8).
+- **Multiple bindings**: the same agent can be reached over JSON-RPC, gRPC, or HTTP+JSON; the card lists each interface with its protocol version, and multi-tenant deployments can declare a tenant per interface.
+- **Task lifecycle**: A standard state machine — submitted, working, input-required, auth-required, and the terminal completed, failed, canceled, and rejected — with streaming updates, so orchestrators can manage tasks uniformly regardless of the agent implementation.
 - **Message exchange**: A common message format for agent-to-agent communication, including support for multimodal content (text, files, structured data).
 
 ```json
 {
   "name": "research-assistant",
   "description": "Researches topics using web search and knowledge base",
-  "url": "https://agents.example.com/research",
+  "version": "2.1.0",
+  "supportedInterfaces": [
+    { "url": "https://agents.example.com/research/a2a/v1", "protocolBinding": "JSONRPC", "protocolVersion": "1.0" },
+    { "url": "https://agents.example.com/research/grpc", "protocolBinding": "GRPC", "protocolVersion": "1.0" }
+  ],
   "capabilities": {
     "streaming": true,
     "pushNotifications": true
   },
+  "defaultInputModes": ["text/plain"],
+  "defaultOutputModes": ["text/plain", "application/json"],
   "skills": [
     {
       "id": "web-research",
       "name": "Web Research",
-      "description": "Search the web and synthesize findings"
+      "description": "Search the web and synthesize findings",
+      "tags": ["research"]
     }
+  ],
+  "signatures": [
+    { "protected": "eyJhbGciOiJFUzI1NiIsImtpZCI6InJlc2VhcmNoLTIwMjYifQ", "signature": "MEUCIQ..." }
   ]
 }
 ```
@@ -218,7 +259,8 @@ A2A and MCP are complementary:
 
 In production, putting an **MCP Gateway** in front of MCP servers is now the default topology. Direct agent → MCP server connections suffice for local development; production needs a control plane:
 
-- **OAuth 2.1 enforcement**: MCP's authorization spec builds on OAuth 2.1 (still an IETF draft). The gateway centralizes auth, scope, token rotation, and audit logging — application code doesn't reimplement it.
+- **OAuth 2.1 enforcement**: MCP's authorization spec builds on OAuth 2.1 (still an IETF draft). The gateway centralizes auth, scope, token rotation, and audit logging — application code doesn't reimplement it. As of 2026-07-28, clients register via **Client ID Metadata Documents** (Dynamic Client Registration is deprecated), validate the `iss` parameter on authorization responses (RFC 9207), and key stored credentials by issuer so they are never replayed against a different authorization server.
+- **Header-based routing**: Streamable HTTP requests carry `Mcp-Method` and `Mcp-Name` headers (and tools can mirror selected parameters into `Mcp-Param-*` headers), so the gateway can route, authorize, and rate-limit without parsing the JSON-RPC body. Never mirror secrets or PII into headers.
 - **Tool catalog**: a single `tools/list` aggregating servers across the org, with versioning, deprecation flags, and per-tenant exposure rules.
 - **Rate limiting and budget enforcement**: per-tool, per-tenant, per-agent — enforced at the gateway, not in each server.
 - **Observability**: every tool call is logged in one place with the same correlation IDs as model calls (cross-ref Factor 15).
@@ -246,31 +288,37 @@ Vendors in this space include Portkey, Kong AI Gateway, and dedicated MCP-aware 
 
 ### Skills as a Capability Primitive
 
-**Skills** consolidated in 2025–2026 as a packaging primitive for agent capabilities — Anthropic introduced the format, and it has since been adopted across multiple agent frameworks. A skill bundles:
+**Agent Skills** consolidated in 2025–2026 as the packaging primitive for agent capabilities. Anthropic published the format as an open specification (agentskills.io) in December 2025, and it is now read natively by most coding agents — Claude Code, OpenAI Codex, GitHub Copilot, Gemini CLI, and others. A skill is a directory:
 
-- A name and description (the discovery contract)
-- Required tools (which can be MCP server tools)
-- Required resources (files, knowledge bases)
-- Optional system prompt fragment
-
-Skills are contracts at the *capability* level, sitting above individual tool schemas. Where MCP says "here is a tool," a skill says "here is a way of doing something that requires these tools and behaves like this." Treat the skill manifest as a versioned artifact — same review and CI rules as OpenAPI or protobuf.
-
-```yaml
-# skill.yaml
-name: invoice-reconciliation
-description: Reconcile invoices against payment records and flag discrepancies
-version: 1.2.0
-tools:
-  - mcp://accounts-mcp/list_invoices
-  - mcp://payments-mcp/list_payments
-  - mcp://accounts-mcp/flag_discrepancy
-resources:
-  - reconciliation-policy.md
-prompt_fragment: prompts/invoice-reconciliation.md
-guardrails:
-  max_invoices_per_run: 500
-  human_approval_required_above_amount_usd: 10000
 ```
+invoice-reconciliation/
+├── SKILL.md          # required: YAML frontmatter + instructions
+├── scripts/          # optional: executable code the agent can run
+├── references/       # optional: documentation loaded on demand
+└── assets/           # optional: templates, schemas, lookup tables
+```
+
+```markdown
+---
+name: invoice-reconciliation
+description: Reconcile invoices against payment records and flag discrepancies. Use when the user asks to match invoices to payments, find unpaid invoices, or audit a billing period.
+license: Proprietary
+metadata:
+  owner: finance-platform
+  version: "1.2.0"
+---
+
+1. List invoices for the period with `accounts-mcp/list_invoices`.
+2. List payments with `payments-mcp/list_payments`.
+3. Match on amount and reference; see [matching rules](references/matching-rules.md).
+4. Flag each unmatched invoice with `accounts-mcp/flag_discrepancy`.
+```
+
+Only `name` (lowercase, hyphenated, matching the directory) and `description` are required; `license`, `compatibility`, `metadata`, and an experimental `allowed-tools` are optional. The design relies on **progressive disclosure**: the agent loads every skill's name and description at startup (~100 tokens each), the `SKILL.md` body only when the skill is activated, and files under `references/` or `scripts/` only when a step needs them — so the `description` is the discovery contract and must say *when* to use the skill, not just what it does.
+
+Skills are contracts at the *capability* level, sitting above individual tool schemas. Where MCP says "here is a tool," a skill says "here is a way of doing something that uses these tools." Treat the skill directory as a versioned artifact — same review and CI rules as OpenAPI or protobuf — and validate it against the spec in CI (the reference `skills-ref validate` tool does this).
+
+A skill is instructions, not enforcement. Limits such as "at most 500 invoices per run" or "human approval above $10,000" belong in the tool permissions and execution budgets of Factor 18, where code enforces them, not in the skill text (Guiding Principle 3).
 
 ### AGNTCY: Discovery for Agent Networks
 
@@ -280,11 +328,12 @@ The directory service entry is itself a contract. Treat it as part of the same c
 
 ### OTel GenAI Semantic Conventions
 
-Telemetry is also a contract. The **OpenTelemetry GenAI semantic conventions** (stabilizing through 2026) define standard span and metric names for LLM calls, tool invocations, and agent steps:
+Telemetry is also a contract. The **OpenTelemetry GenAI semantic conventions** define standard span and metric names for LLM calls, tool invocations, and agent steps. In June 2026 they moved to their own repository (`open-telemetry/semantic-conventions-genai`), and the `gen_ai.*` attributes are still at *Development* stability — names can change, so pin the convention version your instrumentation emits:
 
-- `gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.usage.thinking_tokens`
+- Inference: `gen_ai.operation.name` (`chat`, `invoke_agent`, `execute_tool`, …), `gen_ai.provider.name` (replaces the older `gen_ai.system`), `gen_ai.request.model`, `gen_ai.response.finish_reasons`
+- Usage: `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.usage.cache_read.input_tokens`, `gen_ai.usage.reasoning.output_tokens`
 - Tool span: `gen_ai.tool.name`, `gen_ai.tool.call.id`
-- Agent span: `gen_ai.agent.id`, `gen_ai.agent.step`
+- Agent span: `gen_ai.agent.id`, `gen_ai.agent.name`, `gen_ai.conversation.id`
 
 Adopting these conventions makes traces portable across tools (Langfuse, LangSmith, Arize, Helicone, Datadog) and across teams. Treat the OTel GenAI spec as an inbound contract — your telemetry conforms to it the same way your API conforms to OpenAPI.
 
@@ -315,7 +364,9 @@ Adopting these conventions makes traces portable across tools (Langfuse, LangSmi
 - [ ] Breaking changes go through a review process with migration plans
 - [ ] Cross-team interfaces have shared contract ownership and review processes
 - [ ] An MCP Gateway fronts production MCP servers (OAuth 2.1, rate limits, audit log, circuit breakers)
-- [ ] Skill manifests (Anthropic Skills format or equivalent) are versioned artifacts under contract review
+- [ ] MCP servers and clients pin the protocol version they implement, use Streamable HTTP (not the deprecated HTTP+SSE) for remote transport, and track deprecated features (Roots, Sampling, Logging) against the 12-month deprecation window
+- [ ] Skills follow the Agent Skills specification (SKILL.md), are versioned and validated in CI, and carry no limits that only the skill text enforces
 - [ ] Cross-org agents are discoverable via an Agent Directory Service (e.g., AGNTCY) rather than hardcoded URLs
-- [ ] Telemetry conforms to OpenTelemetry GenAI semantic conventions for portable traces and metrics
-- [ ] MCP authorization uses OAuth 2.1 with scoped tokens and short-lived credentials
+- [ ] A2A Agent Cards declare their interfaces and protocol version, and cross-organization cards are signed and verified before use
+- [ ] Telemetry conforms to a pinned version of the OpenTelemetry GenAI semantic conventions for portable traces and metrics
+- [ ] MCP authorization uses OAuth 2.1 with scoped tokens and short-lived credentials, Client ID Metadata Documents for registration, and issuer (`iss`) validation

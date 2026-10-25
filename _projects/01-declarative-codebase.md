@@ -37,14 +37,14 @@ The original factor focused on the relationship between a codebase and its deplo
 - AI coding assistants (Copilot, Claude Code, Cursor) generate code that must still pass the same review, lint, and test gates as human-written code. The codebase is the arbiter, not the generation method.
 - AI-generated code is held to the same review, testing, and CI bar as human-written code — once it lands, it gets no second-class treatment in the codebase. Quality is judged by the gates it passed, not by its origin.
 - **Track AI authorship in metadata, not in source.** Commit trailers (`Assisted-by: claude-code`, `Co-authored-by:`), PR labels, or an audit log are the right surface for provenance — they enable measurement (AI contribution rate, review cycle deltas, defect rates by authorship class, ramp-up impact) without polluting the source with markers that rot. Inline comments like `// AI-generated` are an anti-pattern: they degrade as code is edited, create review bias, and make refactoring noisier. The codebase stays clean; the metadata layer carries the signal.
-- Context files (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/*.mdc`, `.github/copilot-instructions.md`) that guide AI coding assistants are themselves part of the codebase and should be versioned. `AGENTS.md` has emerged as a cross-tool convention; the single-file `.cursorrules` is deprecated in favor of the `.cursor/rules/` directory.
-- **Autonomous coding agents** (Claude Code, Devin, Codex) can create branches, write code, run tests, and open pull requests autonomously. The codebase must be prepared for this: CI gates, evaluation suites (Factor 6), and ephemeral environments (Factor 11) must validate agent-generated changes without human intervention in the loop. The human reviews the output, not the process.
+- Context files (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/*.mdc`, `.github/copilot-instructions.md`) that guide AI coding assistants are themselves part of the codebase and should be versioned. `AGENTS.md` has emerged as the cross-tool convention and is now stewarded by the Agentic AI Foundation (Linux Foundation); the single-file `.cursorrules` is deprecated in favor of the `.cursor/rules/` directory. Agent Skills directories (`SKILL.md`, see Factor 2) belong in the same category: versioned, reviewed, and kept small.
+- **Autonomous coding agents** (Claude Code, Devin, Codex, GitHub Copilot coding agent) can create branches, write code, run tests, and open pull requests autonomously — increasingly as background agents running in cloud sandboxes. The codebase must be prepared for this: CI gates, evaluation suites (Factor 6), and ephemeral environments (Factor 11) must validate agent-generated changes without human intervention in the loop. The human reviews the output, not the process.
 
 ### AI-Native Applications
 - **Prompt-as-code**: System prompts, few-shot examples, and chain-of-thought templates are versioned alongside application code. They go through pull requests, code review, and CI checks.
 - **Agent tool schemas**: Tool definitions (JSON Schema, OpenAPI specs) that define what an AI agent can do are declarative specifications that belong in the codebase.
 - **Evaluation datasets**: The golden datasets used to evaluate AI output quality are versioned artifacts. Small datasets can live in the repo like test fixtures; large ML eval corpora (gigabytes to terabytes) live in object storage with the repo holding an immutable, content-addressed pointer (Git LFS, DVC manifest, lakeFS commit, Hugging Face dataset revision, or a versioned S3 URI). The repository is still the source of truth for *which version* of the dataset a given commit was evaluated against.
-- **Model configuration**: Model selection, temperature, token limits, and other inference parameters are declared in config files, not buried in application code.
+- **Model configuration**: Model selection, reasoning effort, token limits, and other inference parameters are declared in config files, not buried in application code.
 
 ## In Practice
 
@@ -65,6 +65,7 @@ repo/
 │   └── eval-config.yaml
 ├── tools/                  # Agent tool schemas
 │   └── tool-definitions.json
+├── specs/                  # Feature specs for spec-driven development
 ├── AGENTS.md               # AI coding assistant context (cross-tool)
 ├── CLAUDE.md               # AI coding assistant context (Claude Code)
 ├── .cursor/rules/          # AI coding assistant context (Cursor)
@@ -101,6 +102,25 @@ rendered = prompt.render(
 
 Use pull requests for prompt changes — diffs are meaningful and reviewable. Tag prompt versions that correspond to production deployments.
 
+### Specs as Source Artifacts (Spec-Driven Development)
+
+When coding agents write most of the implementation, the durable, reviewable artifact moves upstream to the **spec**. Spec-driven development (SDD), popularized in 2025–2026 by GitHub Spec Kit, AWS Kiro, and OpenSpec, has the human and the agent agree on requirements, a technical design, and a task breakdown *before* code is generated. The agent implements against that spec, and the spec stays in the repository.
+
+```
+specs/
+└── 0042-refund-agent/
+    ├── requirements.md   # user stories + acceptance criteria ("WHEN … THE SYSTEM SHALL …")
+    ├── design.md         # architecture, interfaces (links to Factor 2 contracts), data model
+    └── tasks.md          # ordered implementation steps the agent executes and checks off
+```
+
+Treat specs like every other declarative artifact in this factor:
+
+- **Reviewed before implementation**: the spec PR is where design review happens; the implementation PR is checked against it. Reviewers who cannot read every generated line can still verify behavior against an agreed spec.
+- **Versioned with the code**: a behavior change starts as a spec change, so the history explains *why* the code changed.
+- **Traceable**: acceptance criteria map to tests and eval cases (Factor 6); interface sections link to the contracts they produce (Factor 2).
+- **Kept honest**: a spec that drifts from the code is worse than none. Update it in the same PR as the behavior change, or delete it.
+
 ### CI Validation for AI Artifacts
 Validate prompts and schemas in the CI pipeline, just like application code:
 
@@ -129,11 +149,10 @@ Declare model versions, endpoint configurations, and feature flags in Git:
 # deploy/ai-config.yaml — GitOps deploys this on merge to main
 models:
   summarization:
-    model: claude-sonnet-4-5-20250929
-    version_pinned: "2025-09-29"
-    rollback_to: claude-sonnet-4-20250514    # previous known-good
+    model: claude-sonnet-5-5                 # immutable model ID, never a floating alias
+    rollback_to: claude-sonnet-5             # previous known-good
   classification:
-    model: claude-haiku-4-5-20251001
+    model: claude-haiku-5-5
 
 feature_flags:
   use_new_rag_pipeline: false                  # toggle without redeploy
@@ -165,6 +184,7 @@ The original factor's "one codebase, many deploys" still applies. Whether using 
 - [ ] Agent tool definitions and schemas are in the repository
 - [ ] Evaluation datasets and benchmarks are versioned artifacts
 - [ ] AI coding assistant context files are maintained and versioned
+- [ ] Feature specs (requirements, design, tasks) that drive coding agents are versioned in the repository and updated in the same change as the behavior they describe
 - [ ] AI authorship is tracked in commit metadata or PR labels (not in source comments) so contribution metrics — AI contribution rate, review cycle deltas, defect rates by authorship class — can be measured
 - [ ] Model configuration (selection, parameters) is declared in config files
 - [ ] Every production deployment is traceable to a specific commit

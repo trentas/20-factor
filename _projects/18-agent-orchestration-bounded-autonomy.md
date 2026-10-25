@@ -61,7 +61,9 @@ A production harness is commonly described as five layers, each of which maps on
 
 The harness is also where execution must survive interruption — see **Factor 13 (Durable Agent Runtime)** for journaling, idempotent tool calls, and resumable human-in-the-loop interrupts.
 
-The empirical case for treating the harness as a first-class artifact: in 2026 the LangChain team moved a coding agent from 30th to 5th place on Terminal Bench 2.0 *without changing the underlying model* — the entire gain came from harness optimization. A decent model with a strong harness beats a strong model with a weak one. This is the same claim this factor makes from the safety side: agent behavior is determined architecturally, not by asking the model nicely (Guiding Principle 3). Harness engineering is that principle applied to the whole agent loop.
+Harnesses now come in three deployment shapes: a loop you write yourself; a harness-only SDK you host (Claude Agent SDK, OpenAI Agents SDK, Google ADK); and managed agent platforms that run both the loop and the tool sandbox for you (for example Claude Managed Agents, Amazon Bedrock AgentCore, Vertex AI Agent Engine). The properties in this factor apply to all three. With a managed platform, the question becomes whether it exposes the controls you need — budgets, permission policies, approval hooks, traces — for you to set and observe, rather than whether you have to build them.
+
+The empirical case for treating the harness as a first-class artifact: in 2026 the LangChain team moved a coding agent from 30th to 5th place on Terminal Bench 2.0 *without changing the underlying model* — the entire gain came from harness optimization. A decent model with a strong harness beats a strong model with a weak one. This is the same claim this factor makes from the safety side: agent behavior is determined architecturally, not by asking the model nicely (Guiding Principle 3). Harness engineering is that principle applied to the whole agent loop. The industry has noticed: Gartner's Top Strategic Technology Trends for 2027 (October 2026) list the *AI coding agent harness* and *AI agent identity* as trends in their own right — the same two concerns this factor and Factor 8 treat as architecture.
 
 ### Agent Architecture Patterns
 
@@ -103,7 +105,7 @@ User → Supervisor Agent → Worker Agent 1 ─┐
 agents:
   research-assistant:
     purpose: "Research topics using web search and knowledge base"
-    model: claude-sonnet-4-5-20250929
+    model: claude-sonnet-5-5
 
     tools:
       - name: web_search
@@ -129,6 +131,7 @@ agents:
       max_retries: 3                # Maximum retries on failure
 
     safety:
+      capability_review: rule_of_two  # private data / untrusted input / external action — at most two (Factor 7)
       require_reasoning: true       # Agent must explain its plan before acting
       checkpoint_interval: 5        # Checkpoint state every 5 steps
       rollback_on_failure: true     # Revert partial actions if agent fails
@@ -356,12 +359,13 @@ The **Model Context Protocol (MCP)** standardizes how agents discover and invoke
 agents:
   research-assistant:
     purpose: "Research topics using web search and knowledge base"
-    model: claude-sonnet-5
+    model: claude-sonnet-5-5
 
     # Tools provided via MCP servers (Factor 10 backing services)
     mcp_servers:
       - name: web-search
-        transport: sse
+        transport: streamable_http       # HTTP+SSE is deprecated
+        protocol_version: "2026-07-28"
         endpoint: https://mcp.example.com/web-search
         tool_permissions:
           web_search: autonomous
@@ -369,7 +373,7 @@ agents:
 
       - name: knowledge-base
         transport: stdio
-        command: "npx @company/mcp-kb"
+        command: "npx @company/mcp-kb@2.3.1"   # pinned version, scoped package (Factor 3)
         tool_permissions:
           search_documents: autonomous
           update_document: human_approval
@@ -386,6 +390,8 @@ MCP enables key capabilities for agent orchestration:
 - **Swappable tool providers**: Replace an MCP server without changing agent code — the agent discovers the new server's tools automatically (Factor 10).
 - **Permission layering**: MCP defines what tools *exist*; the agent's permission model (above) defines what tools it's *allowed to use*. These are separate concerns.
 - **Resource access**: Beyond tools, MCP servers can expose resources (files, data) and prompt templates that agents can use contextually.
+- **Human input through the protocol**: since 2026-07-28, a server that needs a confirmation or a credential returns an `input_required` result and the client retries with the answer (multi round-trip requests). Route those requests through the same approval gates as any other human-in-the-loop decision, and persist them durably (Factor 13).
+- **Servers are dependencies you execute or trust**: pin each server's version, install from verified publishers under scoped package names, and review updates like any other dependency (Factor 3). An MCP server's tool descriptions go straight into the model's context, so a malicious or compromised server is a prompt-injection vector as well as a code-execution one.
 
 ### A2A for Multi-Agent Interoperability
 
@@ -402,8 +408,10 @@ class A2AOrchestrator:
     async def delegate_task(self, agent_name: str, task: str) -> A2ATaskResult:
         endpoint = self.agents[agent_name]
 
-        # Discover agent capabilities via Agent Card
+        # Discover agent capabilities via Agent Card; verify its signature (A2A v1.0)
+        # before trusting what it claims — see Factor 8
         card = await self.fetch_agent_card(endpoint)
+        self.verify_card_signature(card, trusted_issuers=self.trusted_issuers)
 
         # Submit task via A2A protocol
         task_id = await self.submit_task(endpoint, task)
@@ -418,6 +426,11 @@ class A2AOrchestrator:
                 # Agent needs human input — escalate
                 response = await self.request_human_input(update)
                 await self.send_input(endpoint, task_id, response)
+            elif update.status == "auth_required":
+                # Agent needs a credential — obtain a scoped, delegated token (Factor 8)
+                await self.send_input(endpoint, task_id, await self.delegate_auth(update))
+            elif update.status in ("failed", "canceled", "rejected"):
+                raise AgentTaskError(agent_name, task_id, update.status)
 
         raise AgentTimeoutError(agent_name, task_id)
 ```
@@ -459,18 +472,23 @@ agents:
 
 **Key design principles for computer use agents:**
 - **Prefer structured tools over computer use**: If an API or MCP server exists for the task, use it. Computer use should be the last resort for systems that don't expose programmatic interfaces.
-- **Sandbox the environment**: Run computer use agents in isolated browser sessions or VMs. Never give them access to the host system.
+- **Sandbox the environment**: Run computer use agents in isolated browser sessions or VMs. Never give them access to the host system. The same applies to any agent that executes code or shell commands — see Factor 8 for sandbox isolation levels.
 - **Tighter budgets**: Computer use consumes far more tokens (screenshots) and has higher risk per action. Apply stricter execution budgets than for structured tool agents.
 - **Visual confirmation gates**: Show the human what the agent sees (screenshot) and what it plans to do before executing high-risk GUI actions.
 
 ### The Skills Primitive
 
-A **Skill** is a named, versioned, composable unit of agent capability — a bundle of a prompt template, one or more tool definitions, and an execution policy. Skills are a higher-level abstraction than raw tools: a tool is a single function; a skill encodes the *context* for using it correctly.
+A **Skill** is a packaged unit of agent capability — instructions plus optional scripts, references, and assets — in the open Agent Skills format (`SKILL.md`; see Factor 2). Skills sit above raw tools: a tool is a single function; a skill encodes the *procedure and context* for using tools correctly, and is loaded only when relevant (progressive disclosure).
 
-Skills are versioned artifacts committed to version control (Factor 1) and registered via MCP tool schemas (Factor 2). An agent's capability manifest declares a list of skill names + versions, not a loose bag of tool definitions. This enables:
-- Skill reuse across agents without copy-pasting tool definitions
-- Independent versioning and A/B testing of skill implementations
-- Skill discovery via agent directory services (cross-ref Factor 2)
+For orchestration, this means:
+- **Breadth without context bloat**: each skill costs roughly its name and description (~100 tokens) until activated, so an agent can carry a broad repertoire without a huge system prompt (Factor 17).
+- **Skills are not permissions**: activating a skill must not widen what the agent can do. Tool permissions and execution budgets stay in the agent definition and are enforced in code. Treat a third-party skill's experimental `allowed-tools` field as something to review, not a grant your harness honors automatically.
+- **Versioned, evaluated, and supply-chain-checked**: skills are committed (Factor 1), validated in CI, and evaluated like prompts (Factor 6). Third-party skills are dependencies that can carry scripts and instructions someone else wrote (Factor 3).
+- **Reuse and discovery**: the same skill directory works across agents and across tools that support the standard, and can be published to agent directory services (Factor 2).
+
+### Agents That Transact
+
+Agentic commerce turns "bounded autonomy" into a question about money. Protocols for agent-initiated checkout and payment (AP2, ACP, UCP, x402; see Factor 8) let an agent buy on a user's behalf — a ticket, a subscription, an API call. Apply the bounded-autonomy model with the strictest settings: purchases run only under an explicit, scoped, expiring mandate from the user; amount and velocity limits are enforced by the payment layer, not the prompt; anything above a threshold, or outside the mandate's merchant or category scope, goes to a human gate; and every purchase is reconciled against the mandate and the agent trace (Factor 15, Factor 20).
 
 ### Voice and Realtime Agents
 
@@ -521,6 +539,8 @@ Swarm frameworks accelerate prototyping but require explicit budget enforcement 
 - **NIH orchestration**: Building custom agent loops, retry logic, and tracing when a standard Agent SDK handles it correctly. Use frameworks for infrastructure; focus custom code on business logic and boundaries.
 - **Hardcoded tool sets**: Defining tools inline instead of using MCP for dynamic discovery. Hardcoded tools create tight coupling and prevent tool reuse across agents.
 - **Computer use for API-available tasks**: Using screenshot-based computer use when a structured API or MCP server exists. Computer use is slower, more expensive, and less reliable than structured tool calls.
+- **The lethal trifecta by accident**: giving one agent session private data, untrusted input, and an outbound channel at once — usually by adding "just one more" tool or MCP server (Factor 7).
+- **Floating tool servers**: launching MCP servers with unpinned `npx`/`latest` commands, so whatever was published last runs with the agent's permissions.
 
 ## Compliance Checklist
 
@@ -538,7 +558,11 @@ Swarm frameworks accelerate prototyping but require explicit budget enforcement 
 - [ ] Multi-agent communication uses standardized protocols (A2A) for cross-team and cross-framework interoperability
 - [ ] Computer use agents run in sandboxed environments with tighter budgets and confirmation gates for GUI actions
 - [ ] Agent execution patterns and budget usage are monitored for optimization
-- [ ] Skills are versioned, registered artifacts — agents declare capabilities as skill-name + version, not inline tool definitions
+- [ ] Skills follow the Agent Skills format and are versioned, reviewed artifacts; activating a skill never widens tool permissions or budgets
+- [ ] Every agent profile passes a Rule-of-Two capability review (private data / untrusted input / external action) before deployment (Factor 7)
+- [ ] MCP servers are pinned to versions from verified publishers; remote servers use Streamable HTTP, and MCP input requests route through the same approval gates as other human-in-the-loop decisions
+- [ ] Cross-organization A2A agents are trusted only after verifying their signed Agent Cards, and all terminal task states (failed, canceled, rejected) are handled
+- [ ] Agents that can initiate purchases act only under scoped, expiring user mandates with payment-layer amount and velocity limits (Factor 8, Factor 20)
 - [ ] Voice/realtime agents have TTFA SLOs configured, VAD barge-in handling implemented, and session state persisted via Factor 13
 - [ ] Reflexion / self-critique loops are gated on task complexity with token budget tracked separately; quality improvement is validated against the eval suite before broad enablement
 - [ ] Agent swarms (CrewAI, Microsoft Agent Framework, MetaGPT, etc.) have aggregate swarm-level budgets and circuit breakers in addition to per-agent limits

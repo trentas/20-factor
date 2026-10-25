@@ -61,7 +61,9 @@ class AIRequestHandler:
         conversation = await self.load_conversation(request.conversation_id)
 
         # Check semantic cache before calling LLM
-        cached = await self.cache.semantic_lookup(request.message, conversation.context)
+        cached = await self.cache.semantic_lookup(
+            request.message, conversation.context, scope=request.cache_scope  # tenant + data permissions
+        )
         if cached and cached.similarity > 0.95:
             return cached.response
 
@@ -72,7 +74,7 @@ class AIRequestHandler:
         await self.save_conversation(request.conversation_id, conversation)
 
         # Cache the response for future similar queries
-        await self.cache.store(request.message, conversation.context, response)
+        await self.cache.store(request.message, conversation.context, response, scope=request.cache_scope)
 
         return response
 ```
@@ -89,7 +91,7 @@ class SemanticCache:
         self.vector_store = vector_store
         self.response_store = response_store
 
-    async def lookup(self, query: str, context: str) -> CacheResult | None:
+    async def lookup(self, query: str, context: str, scope: str) -> CacheResult | None:
         # Embed the query
         query_embedding = await self.embed(query)
 
@@ -97,7 +99,7 @@ class SemanticCache:
         results = await self.vector_store.query(
             vector=query_embedding,
             top_k=1,
-            filter={"context_hash": hash(context)},  # Same context
+            filter={"context_hash": hash(context), "scope": scope},  # Same context, same tenant/permissions
             threshold=0.95,  # High similarity required
         )
 
@@ -110,17 +112,22 @@ class SemanticCache:
             )
         return None
 
-    async def store(self, query: str, context: str, response: str):
+    async def store(self, query: str, context: str, response: str, scope: str):
         query_embedding = await self.embed(query)
         cache_id = generate_id()
 
         await self.vector_store.upsert([Vector(
             id=cache_id,
             values=query_embedding,
-            metadata={"context_hash": hash(context), "timestamp": now()},
+            metadata={"context_hash": hash(context), "scope": scope, "timestamp": now()},
         )])
         await self.response_store.set(cache_id, response, ttl=3600)
 ```
+
+**Scope the cache, or it becomes a leak and an attack surface.** A semantic cache serves an answer that was generated for someone else, which brings two failure modes:
+
+- **Cross-tenant and cross-permission leakage**: a response generated from tenant A's documents, or from data only an admin may see, is served to tenant B or a less-privileged user whose question happens to be similar. Key every entry by tenant *and* by the permission scope of the data that produced it, and bypass the cache for personalized answers.
+- **Cache poisoning**: an attacker elicits a manipulated answer once — for example through prompt injection in retrieved content — and the cache then serves it to every user whose query lands nearby in embedding space. Similarity thresholds are not a security boundary. Cache only responses that passed output guardrails (Factor 7), never cache responses built from untrusted tool output or web content, keep *shared* caches to vetted, FAQ-style content, and record which request produced each entry so a poisoned one can be traced and purged (OWASP LLM08, ASI06).
 
 ### Embedding Caching
 
@@ -161,12 +168,12 @@ class EmbeddingCache:
 
 ### Provider-Level Prompt Caching
 
-Major LLM providers (Anthropic, OpenAI, Google) now offer **native prompt caching** as a first-class feature. When the prefix of a request matches a previously cached prefix, the provider reuses cached computation — reducing input token costs by up to 90% and latency by up to 85%. This is one of the highest-leverage cost optimizations available.
+Major LLM providers (Anthropic, OpenAI, Google) now offer **native prompt caching** as a first-class feature. When the prefix of a request matches a previously cached prefix, the provider reuses cached computation — reducing input token costs by up to 90–95% and latency by up to 85%. This is one of the highest-leverage cost optimizations available.
 
 ```python
 # Anthropic prompt caching — mark stable content with cache_control
 response = await client.messages.create(
-    model="claude-sonnet-4-5-20250929",
+    model="claude-sonnet-5-5",
     system=[
         {
             "type": "text",
@@ -185,7 +192,7 @@ response = await client.messages.create(
 )
 
 # Result: first request pays full price + small cache write fee
-# Subsequent requests with same prefix: 90% discount on cached tokens
+# Subsequent requests with same prefix: cached tokens bill at 5-10% of the input price
 # response.usage.cache_creation_input_tokens → tokens written to cache
 # response.usage.cache_read_input_tokens → tokens read from cache (discounted)
 ```
@@ -193,15 +200,17 @@ response = await client.messages.create(
 **Design patterns that maximize provider cache hit rates:**
 - **Stable prefix, variable suffix**: Put system prompts, knowledge bases, and few-shot examples *before* the variable user content. The prefix must match byte-for-byte.
 - **Order matters**: Rearranging content invalidates the cache. Keep the order of system prompt sections consistent across requests.
-- **Minimum cacheable length**: Providers require a minimum prefix to activate caching, and it varies by model — for Anthropic, ~4096 tokens on Opus 4.x and Haiku 4.5, ~2048 on Sonnet 4.6, ~1024 on Sonnet 4.5. Below the threshold, caching silently no-ops.
+- **Minimum cacheable length**: Providers require a minimum prefix to activate caching, and it varies by model — for Anthropic it ranges from 512 tokens on the newest models to 4096 on some older ones, and it is not monotonic across generations. Below the threshold, caching silently no-ops, so re-check it whenever you change the pinned model.
 - **Cache lifetime**: Provider caches are ephemeral — a default 5-minute TTL, with a 1-hour TTL available (at a higher write cost) for bursty or low-traffic endpoints. High-traffic endpoints benefit most.
 - **Multi-turn conversations**: In chat applications, the conversation history grows but the system prompt prefix stays the same — naturally benefiting from prefix caching.
+- **Deterministic tool lists**: Tool definitions render at the very start of the prompt, so a tool list whose order changes between requests invalidates everything after it. The MCP 2026-07-28 revision asks servers to return `tools/list` in deterministic order for exactly this reason; sort tool definitions in your own harness as well.
+- **Append-only history**: Change the conversation only by appending. Editing or deleting an earlier turn invalidates the cache from that point on — and on newer reasoning models it can also invalidate preserved reasoning state. When history must shrink, compact it at a deliberate checkpoint (Factor 17) instead of trimming a little on every turn.
 
 ```yaml
 # prompt-caching-config.yaml
 prompt_caching:
   strategy: prefix_stable
-  min_cacheable_tokens: 4096   # model-dependent: 4096 (Opus 4.x / Haiku 4.5), 2048 (Sonnet 4.6), 1024 (Sonnet 4.5)
+  min_cacheable_tokens: 512    # model-dependent (512-4096 for Anthropic models) — re-check on every model change
 
   # Structure: cached sections first, variable sections last
   sections_order:
@@ -273,9 +282,11 @@ class ConversationStore:
 
     async def append_turn(self, conversation_id: str, role: str, content: str):
         conversation = await self.load(conversation_id)
-        conversation.add_turn(role, content)
-        # Trim to fit context window budget
-        conversation.trim_to_token_budget(max_history_tokens=4000)
+        conversation.add_turn(role, content)   # append-only: never rewrite earlier turns
+        # Over budget? Compact at a checkpoint (one deliberate cache break) rather than
+        # trimming on every turn, which breaks prefix caching each time — see Factor 17
+        if conversation.token_count() > MAX_HISTORY_TOKENS:
+            conversation = await self.compactor.compact(conversation)
         await self.save(conversation_id, conversation)
 ```
 
@@ -294,6 +305,8 @@ block_size: 16                 # tokens per KV page (tune for workload)
 
 When long system prompts or shared knowledge bases are prepended to every request, prefix caching can eliminate 80–90% of redundant prefill computation — the same economics as provider-side prompt caching but at the inference-engine level.
 
+At cluster scale the same idea moves into the router: **llm-d** (a CNCF Sandbox project built on vLLM) and the Kubernetes **Gateway API Inference Extension** route each request to the replica most likely to already hold its prefix in KV cache, instead of round-robin — a single replica's prefix cache is worth little if the load balancer scatters a conversation across the pool. See Factor 14 for disaggregated serving.
+
 ### Speculative Decoding
 
 Speculative decoding uses a small "draft" model to propose token sequences that the larger "target" model verifies in parallel. Because verification is cheaper than generation, this yields 2–6× throughput improvement for output-heavy workloads at no quality cost. EAGLE-3 achieves ~6.5× speedup in benchmark conditions.
@@ -303,7 +316,7 @@ Requirements:
 - Quality is identical to standard decoding (acceptance sampling guarantees this mathematically)
 - Most benefit on long-output tasks (code generation, document summarization); minimal benefit on short-output tasks (classification)
 
-Speculative decoding is built into vLLM, TGI, and TensorRT-LLM as a runtime toggle — evaluate it as an architecture optimization per task type (Factor 14), not a global configuration.
+Speculative decoding is built into vLLM, SGLang, and TensorRT-LLM as a runtime toggle — evaluate it as an architecture optimization per task type (Factor 14), not a global configuration.
 
 ### Multi-Region Cache Replication
 
@@ -322,15 +335,19 @@ AI caches need careful invalidation strategies:
 - **Content-based invalidation**: When source documents change, invalidate cached responses that were generated from those documents.
 - **Model-based invalidation**: When the model version changes, cached responses from the old model should be invalidated.
 - **Feedback-based invalidation**: When a user marks a cached response as unhelpful, remove it from the cache.
+- **Protocol cache hints**: MCP list and read results carry `ttlMs` (freshness) and `cacheScope` (`public` may be cached by shared intermediaries such as a gateway; `private` only by the requesting client). Honor them — a tool list that varies by the caller's authorization must not be served from a shared cache to another caller.
 
 ## Compliance Checklist
 
 - [ ] Application processes are stateless — no in-process state survives a restart
 - [ ] Conversation history and session data are stored in backing services
 - [ ] Semantic caching reduces redundant LLM calls for similar queries
+- [ ] Semantic cache entries are scoped by tenant and data-permission scope; only guardrail-passed responses built from trusted content are cached, and every entry can be traced and purged
 - [ ] Embedding caching avoids recomputation of embeddings for unchanged content
 - [ ] Provider-level prompt caching is enabled and prompts are structured for maximum cache hit rates (stable prefix, variable suffix)
 - [ ] Prompt caching metrics (hit rate, cost savings) are monitored
+- [ ] Conversation history is append-only between deliberate compaction points, and tool definitions are serialized in deterministic order
+- [ ] Cached MCP discovery results honor the server's `ttlMs` and `cacheScope` hints
 - [ ] Cache invalidation strategies account for time, content changes, and model updates
 - [ ] Cache hit rates and cost savings are monitored (Factor 15)
 - [ ] Any process instance can handle any request — no sticky sessions required

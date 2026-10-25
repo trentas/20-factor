@@ -37,7 +37,7 @@ This update retains the immutability principle and extends the pipeline to inclu
 
 ### AI-Native Applications
 - **Prompt compilation**: Prompt templates with variables, includes, and conditional sections are compiled into concrete prompts at build time. This catches template errors before runtime.
-- **Model version pinning**: The build stage resolves model references (e.g., `claude-sonnet-latest`) to specific, immutable model versions and records them in the release manifest.
+- **Model version pinning**: The build stage resolves model references (e.g., a floating alias) to specific, immutable model identifiers and records them in the release manifest — along with the provider API version and protocol versions (MCP, A2A) the release was tested against. What counts as immutable differs by provider; see Factor 16.
 - **Evaluation gates**: Before a release is promoted, automated evaluations run against golden datasets. Releases that fail quality thresholds (accuracy, safety, cost) are blocked.
 - **Artifact composition**: A release artifact includes the application binary, compiled prompts, model version manifest, evaluation results, and deployment configuration — all immutable and tied to a single version.
 
@@ -123,16 +123,22 @@ The release artifact is immutable and self-describing:
 
 ```json
 {
-  "version": "2025.10.15-abc123f",
+  "version": "2026.10.22-abc123f",
   "build_sha": "abc123f",
-  "timestamp": "2025-10-15T14:30:00Z",
+  "timestamp": "2026-10-22T14:30:00Z",
   "artifacts": {
     "container": "registry.example.com/app:abc123f",
-    "prompts": "s3://releases/abc123f/prompts.tar.gz"
+    "prompts": "s3://releases/abc123f/prompts.tar.gz",
+    "skills": "s3://releases/abc123f/skills.tar.gz",
+    "sbom": "s3://releases/abc123f/sbom.cdx.json"
   },
   "models": {
-    "summarization": "claude-sonnet-4-5-20250929",
+    "summarization": { "id": "claude-sonnet-5-5", "effort": "medium", "api_version": "2026-10-21" },
     "embedding": "text-embedding-3-small@v2"
+  },
+  "protocols": {
+    "mcp": "2026-07-28",
+    "mcp_servers": { "knowledge-base": "@company/mcp-kb@2.3.1" }
   },
   "evaluations": {
     "quality_accuracy": 0.94,
@@ -168,7 +174,7 @@ A minimal AIBOM entry per model includes: model identifier and version, weights 
   run: cosign sign-blob dist/aibom.cdx.json --bundle dist/aibom.sig
 ```
 
-The AIBOM travels with the release. Downstream consumers (compliance, procurement, customers) verify it before deployment. Regulators (EU AI Act, NIST profiles — see Factor 7) increasingly require it.
+The AIBOM travels with the release. Downstream consumers (compliance, procurement, customers) verify it before deployment. Regulators (EU AI Act, NIST profiles — see Factor 7) increasingly require it, and the EU Cyber Resilience Act makes a component inventory part of the technical documentation for products on the EU market (obligations from December 2027; vulnerability reporting already since September 2026 — see Factor 3). Keep every release's SBOM and AIBOM queryable, so an advisory can be matched to the releases that ship the affected component within hours.
 
 ### Provenance, Signing, and Reproducibility
 
@@ -209,13 +215,13 @@ For AI applications, progressive delivery is essential because behavior changes 
 - [ ] Build artifacts are immutable — never patched in place
 - [ ] Each release has a unique, traceable version identifier
 - [ ] Prompt templates are compiled and validated during the build stage
-- [ ] Model versions are resolved and pinned at build time, recorded in the release manifest
+- [ ] Model versions are resolved and pinned at build time, recorded in the release manifest together with effort settings, provider API version, and MCP/A2A protocol and server versions
 - [ ] Automated evaluations gate the pipeline — failed evals block the release
 - [ ] Evaluation results (quality, safety, cost) are recorded as part of the release metadata
 - [ ] Container images are scanned for vulnerabilities before release
 - [ ] Rollback is achieved by deploying a previous immutable release
 - [ ] Progressive delivery mechanisms (canary, shadow) are used for AI feature releases
-- [ ] An AI Bill of Materials (CycloneDX 1.6 ML or SPDX 3.0 AI) is emitted as a release artifact and signed
+- [ ] An AI Bill of Materials (CycloneDX 1.6 ML or SPDX 3.0 AI) is emitted as a release artifact and signed, and every supported release's SBOM/AIBOM stays queryable for vulnerability matching
 - [ ] SLSA provenance attestations are generated for container images, prompt bundles, and fine-tuned model weights
 - [ ] Release artifacts are signed (sigstore/cosign) and signatures are verified at deploy time
 - [ ] Builds are reproducible — same inputs produce byte-identical outputs (with documented exceptions for non-deterministic training, where seeds and dataset hashes are captured)

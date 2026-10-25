@@ -39,25 +39,26 @@ This factor *is* the AI change. It addresses:
 # cost-model.yaml — understand your cost drivers
 cost_model:
   models:
-    claude-sonnet-4-5-20250929:
-      input_per_1m_tokens: 3.00
-      output_per_1m_tokens: 15.00
-      cache_read_per_1m_tokens: 0.30
-      typical_use: "Complex reasoning, document analysis"
-
-    claude-opus-4-6:
-      input_per_1m_tokens: 5.00
-      output_per_1m_tokens: 25.00
-      cache_read_per_1m_tokens: 0.50
-      thinking_tokens_per_1m: 25.00    # thinking tokens billed as output
-      typical_use: "Complex reasoning, multi-step analysis, research"
-      note: "Extended thinking can generate 10-100x more thinking tokens than visible output"
-
-    claude-haiku-4-5-20251001:
-      input_per_1m_tokens: 1.00
-      output_per_1m_tokens: 5.00
+    claude-sonnet-5-5:
+      input_per_1m_tokens: 2.00
+      output_per_1m_tokens: 10.00
       cache_read_per_1m_tokens: 0.10
-      typical_use: "Classification, simple Q&A, routing"
+      typical_use: "Complex reasoning, document analysis, agentic coding"
+
+    claude-opus-5-5:
+      input_per_1m_tokens: 4.00
+      output_per_1m_tokens: 20.00
+      cache_read_per_1m_tokens: 0.20
+      thinking_tokens_per_1m: 20.00    # thinking tokens billed as output
+      typical_use: "Complex reasoning, multi-step analysis, research"
+      note: "Reasoning is always on; effort controls how many thinking tokens are spent"
+
+    claude-haiku-5-5:
+      input_per_1m_tokens: 0.10        # prompts up to 100K tokens
+      output_per_1m_tokens: 0.50
+      cache_read_per_1m_tokens: 0.01
+      long_prompt_pricing: { input: 0.50, output: 2.50, cache_read: 0.05 }  # prompts over 100K tokens
+      typical_use: "Classification, simple Q&A, routing, sub-agent reading"
 
     text-embedding-3-small:
       input_per_1m_tokens: 0.02
@@ -68,8 +69,8 @@ cost_model:
     thinking_tokens: "Internal reasoning tokens generated before the visible response"
     cost_impact: "A 500-token response may consume 10,000-30,000 thinking tokens"
     pricing: "Thinking tokens are typically billed at output token rates"
-    optimization: "Budget thinking tokens per task type — not all tasks benefit from extended reasoning"
-    note: "See Factor 17 for reasoning budget configuration per task profile"
+    optimization: "Set reasoning effort per task type — on several current models reasoning cannot be disabled, so effort is the only cost lever"
+    note: "See Factor 17 for reasoning-effort configuration per task profile"
 
   # Multimodal inputs have different token economics
   multimodal:
@@ -82,29 +83,42 @@ cost_model:
     document_summary:
       avg_input_tokens: 4500
       avg_output_tokens: 500
-      model: claude-sonnet-4-5-20250929
-      estimated_cost_per_request: 0.021
+      model: claude-sonnet-5-5
+      estimated_cost_per_request: 0.014
       monthly_volume: 50000
-      estimated_monthly_cost: 1050
+      estimated_monthly_cost: 700
 
     support_chat:
       avg_input_tokens: 2000
       avg_output_tokens: 300
-      model: claude-haiku-4-5-20251001
-      estimated_cost_per_request: 0.0035
+      model: claude-haiku-5-5
+      estimated_cost_per_request: 0.00035
       monthly_volume: 200000
-      estimated_monthly_cost: 700
-      cache_hit_rate: 0.30
-      estimated_monthly_cost_with_cache: 590
+      estimated_monthly_cost: 70
+      cache_hit_rate: 0.30             # provider prompt-cache hits on input (read = 0.1x input)
+      estimated_monthly_cost_with_cache: 59
 
     ticket_classification:
       avg_input_tokens: 500
       avg_output_tokens: 50
-      model: claude-haiku-4-5-20251001
-      estimated_cost_per_request: 0.00075
+      model: claude-haiku-5-5
+      estimated_cost_per_request: 0.000075
       monthly_volume: 100000
-      estimated_monthly_cost: 75
+      estimated_monthly_cost: 7.50
+
+    # Agentic features are priced per completed task, not per request
+    research_agent:
+      model: claude-opus-5-5
+      calls_per_task: 20               # one model call per agent step
+      avg_input_tokens_per_call: 40000 # context grows each step; most of it is a cache hit
+      cache_hit_ratio: 0.85            # uncached remainder is written at the 5-min write price ($5/MTok)
+      avg_output_tokens_per_call: 1500 # includes thinking tokens
+      estimated_cost_per_task: 1.34
+      monthly_volume: 2000
+      estimated_monthly_cost: 2680
 ```
+
+Two things follow from current pricing. First, the spread between tiers is wide — the small tier's input price is 20× below the mid tier's — so pushing high-volume, low-complexity traffic down to it is still the largest single lever. Second, the expensive unit is no longer the request but the **task**: an agent loop that re-reads a growing context on every step costs orders of magnitude more than any single call, and its cost is dominated by loop length, cache hit ratio, and reasoning effort. Model it per completed task, and budget it per task (see Budget Circuit Breakers below and Factor 18's execution budgets).
 
 ### Intelligent Model Routing
 
@@ -121,14 +135,14 @@ class CostAwareRouter:
 
         match complexity:
             case Complexity.SIMPLE:
-                # Simple tasks: cheapest model, no extended thinking
+                # Simple tasks: cheapest model, lowest reasoning effort
                 # Examples: classification, yes/no questions, format conversion
-                return self.get_model("haiku")
+                return self.get_model("haiku", effort="low")
 
             case Complexity.MODERATE:
-                # Moderate tasks: mid-tier model, no extended thinking
+                # Moderate tasks: mid-tier model, low reasoning effort
                 # Examples: summarization, Q&A with context
-                return self.get_model("sonnet")
+                return self.get_model("sonnet", effort="low")
 
             case Complexity.COMPLEX:
                 # Complex tasks: most capable model
@@ -152,6 +166,8 @@ class CostAwareRouter:
         better_model = self.get_next_tier(cheap_model)
         return await better_model.complete(request)
 ```
+
+Before building a multi-model cascade, measure the simpler alternative: the more capable model at a *lower* reasoning effort. On current models, lower effort often matches the previous generation at high effort, and a cascade has a hidden cost — provider prompt caches are scoped per model, so every escalation re-pays the full uncached prompt. Judge both options on cost per *completed* task, not cost per request: a cheaper request that needs retries or extra turns is not cheaper.
 
 ### Budget Circuit Breakers
 
@@ -287,7 +303,7 @@ class CachingROI:
 | **Semantic caching** | 20-40% | Medium | Stale responses possible |
 | **Prompt optimization** (shorter prompts) | 10-30% | Low | May reduce quality |
 | **Batch processing** (batch API discounts) | 50% | Low | Higher latency (24h) |
-| **Provider prompt caching** (Anthropic/OpenAI/Google) | 80-90% on cached input | Low | Requires stable prompt prefixes, min token threshold, ephemeral cache TTL |
+| **Provider prompt caching** (Anthropic/OpenAI/Google) | 80-95% on cached input | Low | Requires stable prompt prefixes, min token threshold, ephemeral cache TTL |
 | **Output length control** (max_tokens) | 10-20% | Low | May truncate useful content |
 | **Reasoning-effort tuning** (lower effort level) | 20-50% | Low | May reduce quality on complex tasks |
 | **Fine-tuning** (smaller fine-tuned model) | 40-70% | High | Training cost, maintenance burden |
@@ -314,7 +330,7 @@ The architectural rule: **no application code calls a model provider directly**.
 gateway:
   routes:
     - name: customer-support
-      pin_model: anthropic/claude-sonnet-5   # mandatory model-pin
+      pin_model: anthropic/claude-sonnet-5-5 # mandatory model-pin
       cache: { semantic: true, similarity_threshold: 0.95 }
       budget:
         per_tenant_daily_usd: 50
@@ -323,27 +339,27 @@ gateway:
       guardrails: [pii_redact_input, content_safety_output]
 
     - name: research-assistant
-      pin_model: anthropic/claude-opus-4-8
+      pin_model: anthropic/claude-opus-5-5
       thinking: { effort: high }
       cache: { semantic: false }
       budget:
         per_request_usd: 5
         on_breach: fallback                    # downgrade to sonnet
       fallback_chain:
-        - anthropic/claude-sonnet-5
+        - anthropic/claude-sonnet-5-5
         - openai/gpt-5.5                       # last resort
 ```
 
 ### Mandatory Model-Pinning per Job
 
-Every scheduled job, every production route, every batch process **must explicitly declare which model it uses**. Implicit "use the latest" or relying on provider aliases is a recipe for silent cost and quality drift.
+Every scheduled job, every production route, every batch process **must explicitly declare which model it uses**. Implicit "use the latest" or relying on provider aliases is a recipe for silent cost and quality drift. Pin an *immutable* identifier — and know which kind your provider issues: some IDs are dated snapshots, some undated IDs are themselves immutable, and some names are floating aliases (see Factor 16).
 
 The 2026 pattern: a release manifest entry per job with model + version + thinking-effort + max-cost. The gateway refuses to dispatch a request that doesn't match the manifest.
 
 ```yaml
 jobs:
   - name: nightly-content-summarization
-    model: anthropic/claude-sonnet-5
+    model: anthropic/claude-sonnet-5-5
     thinking: { effort: low }
     max_cost_per_run_usd: 25
     expected_output_tokens_p99: 4000
@@ -376,7 +392,11 @@ This isn't replacing dollar cost as a concern — it's adding a parallel one. Mo
 
 AI model liability is a financial and legal concern as of 2026, requiring architectural preparation:
 
-**EU AI Act serious-incident reporting (Art. 73)**: Operators of high-risk AI systems must notify competent authorities within 15 business days of a serious incident. This requires an **AI incident log** separate from general application logs, capturing: model version at time of incident, sanitized input/output (where permitted by data minimization rules), safety flag activations, and the timeline of detection and remediation.
+**EU AI Act serious-incident reporting (Art. 73)**: Providers of high-risk AI systems must report a serious incident to the market surveillance authority of the Member State where it occurred — immediately after establishing a causal link (or its reasonable likelihood), and **no later than 15 days** after becoming aware of it. These are calendar days: EU time limits expressed in days include weekends and public holidays unless the text says "working days" (Regulation (EEC, Euratom) No 1182/71). Shorter limits apply: **2 days** for a widespread infringement or a serious disruption of critical infrastructure, and **10 days** where a person has died. An incomplete initial report may be filed first, followed by a complete one. Deployers that identify a serious incident must inform the provider immediately (Art. 26(5)). Because Art. 73 attaches to high-risk systems — whose classification rules apply from 2 Dec 2027 (Annex III) or 2 Aug 2028 (Annex I) under Regulation (EU) 2026/1744 — the duty effectively starts on those dates; build the pipeline before them, since a 2-day window leaves no time to improvise one.
+
+If the product is also a *product with digital elements* under the EU Cyber Resilience Act, actively exploited vulnerabilities and severe security incidents have been reportable since 11 Sep 2026 on a tighter clock (24-hour early warning, 72-hour notification). Run one incident pipeline that can satisfy both regimes (cross-ref Factor 7).
+
+All of this requires an **AI incident log** separate from general application logs, capturing: model version at time of incident, sanitized input/output (where permitted by data minimization rules), safety flag activations, and the timeline of detection and remediation — timestamped well enough to prove when you "became aware".
 
 **Model insurance**: Insurance products from Munich Re, Lloyds, and others now cover financial loss from AI-related incidents — hallucinations causing contract errors, classification errors in insurance or lending decisions, IP infringement from training data. Review coverage options annually as model capabilities and legal precedents evolve.
 
@@ -385,7 +405,16 @@ AI model liability is a financial and legal concern as of 2026, requiring archit
 Architectural implications:
 - Maintain an AI incident log at the application level, distinct from standard observability (Factor 15), to satisfy regulatory reporting cadences
 - Store model version, inference parameters, and sanitized I/O for a minimum retention period aligned with your jurisdiction's AI Act requirements
-- If your application falls in an EU AI Act high-risk category, complete a Conformity Assessment before the August 2, 2026 enforcement deadline
+- If your application falls in an EU AI Act high-risk category, complete the conformity assessment before your application date under Regulation (EU) 2026/1744: 2 Dec 2027 for standalone (Annex III) systems, 2 Aug 2028 for AI in products covered by Annex I legislation
+
+### Agent-Initiated Spend
+
+Tokens are no longer the only money an AI system moves. Agents that can buy — through agentic-commerce and agent-payment protocols (AP2, ACP, UCP, x402; see Factor 8) — open a second spend channel that token budgets don't see. Treat it with the same architecture as token cost, but stricter:
+
+- **Separate ledgers**: token spend and agent-initiated purchases are attributed separately (a $0.40 agent run that books a $90 ticket is a $90.40 event, with very different owners)
+- **Hard per-mandate caps**: every purchase authority carries an amount ceiling, merchant/category scope, and expiry — enforced by the payment layer, not by the prompt
+- **Circuit breakers on money movement**: velocity limits per user, per agent, and per merchant, with a human gate above a threshold (cross-ref Factor 18)
+- **Reconciliation**: every agent purchase is reconciled against the mandate that authorized it, the trace that produced it (Factor 15), and the user who granted it
 
 ### FinOps Maturity for AI
 
@@ -431,5 +460,8 @@ Essential views:
 - [ ] Fallback chains are explicitly defined per route, including a "fail loudly" option for cost-sensitive jobs
 - [ ] FinOps maturity is at least Level 3 (chargeback) before major product expansion involving new AI features
 - [ ] An AI incident log is maintained (separate from general observability) capturing model version, sanitized I/O, and safety activations for potential EU AI Act Art. 73 reporting
+- [ ] The incident runbook meets the EU AI Act Art. 73 limits in calendar days (2 days widespread/critical infrastructure, 10 days death, 15 days otherwise) and, where the Cyber Resilience Act applies, its 24h/72h clock
 - [ ] Vendor MSA liability terms (caps, indemnification, IP coverage) are reviewed annually and documented alongside model registry entries
-- [ ] Applications in EU AI Act high-risk categories have completed or scheduled a Conformity Assessment ahead of the August 2, 2026 enforcement deadline
+- [ ] Applications in EU AI Act high-risk categories have completed or scheduled a conformity assessment ahead of their application date under Regulation (EU) 2026/1744 (2 Dec 2027 for Annex III, 2 Aug 2028 for Annex I)
+- [ ] Features are costed per completed task (calls per task × tokens per call × cache hit ratio), not only per request
+- [ ] Agent-initiated purchases are capped per mandate, rate-limited, attributed separately from token spend, and reconciled against the authorizing mandate

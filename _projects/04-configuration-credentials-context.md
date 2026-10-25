@@ -15,7 +15,7 @@ description: "Store config in the environment, credentials in secrets management
 
 The original factor had one rule: store config in the environment. It drew a clean line between code (which doesn't change between deploys) and config (which does). That principle holds, but AI applications have introduced an entirely new category of configuration that demands its own discipline.
 
-AI systems require configuration that goes beyond traditional environment variables: model selection, temperature and sampling parameters, token limits, cost budgets, safety thresholds, and prompt routing rules. Some of these look like config (model name, temperature), some look like code (prompt templates), and some look like policy (cost limits, safety thresholds). Misclassifying them leads to either unsafe practices (credentials in code) or operational rigidity (behavior that should be tunable locked in source).
+AI systems require configuration that goes beyond traditional environment variables: model selection, reasoning effort, token limits, cost budgets, safety thresholds, and prompt routing rules. Some of these look like config (model name, effort level), some look like code (prompt templates), and some look like policy (cost limits, safety thresholds). Misclassifying them leads to either unsafe practices (credentials in code) or operational rigidity (behavior that should be tunable locked in source).
 
 ## What This Replaces
 
@@ -35,7 +35,7 @@ This update splits the original concept into three distinct categories with diff
 
 ### AI-Native Applications
 - **Model selection as config**: Which model handles which request is a configuration decision, not a code decision. It should be changeable without redeployment.
-- **Inference parameters**: Temperature, top-p, max tokens, stop sequences — these are tunable per environment. A staging environment might use higher temperature for diversity testing; production uses lower values for consistency.
+- **Inference parameters**: Reasoning effort, max tokens, stop sequences, and — only where the model still accepts them — sampling parameters such as temperature and top-p. These are tunable per environment, but the parameter *set* is model-specific: reasoning models increasingly fix sampling (Claude 4.7 and later accept only the default values, and from Anthropic API version `2026-10-21` sending `temperature`, `top_p`, or `top_k` is an error on every Claude model), and effort has become the main quality/cost knob. Validate parameters against what the pinned model supports instead of assuming a universal set.
 - **Cost budgets**: Per-request, per-user, and per-tenant cost limits are configuration values that operators must be able to adjust without code changes.
 - **Safety thresholds**: Content filtering sensitivity, PII detection thresholds, and human-in-the-loop triggers are policy decisions expressed as configuration.
 - **Provider routing**: Rules for routing requests to different model providers (primary, fallback, cost-optimized) are config, not code.
@@ -71,10 +71,10 @@ DATABASE_URL=postgres://db:5432/myapp
 FEATURE_FLAG_NEW_UI=true
 
 # AI-specific config
-AI_DEFAULT_MODEL=claude-sonnet-4-5-20250929
+AI_DEFAULT_MODEL=claude-sonnet-5-5
 AI_EMBEDDING_MODEL=text-embedding-3-small
 AI_MAX_TOKENS=4096
-AI_TEMPERATURE=0.3
+AI_REASONING_EFFORT=medium
 AI_COST_BUDGET_DAILY_USD=500          # see Factor 20 for full budget hierarchy
 AI_RATE_LIMIT_RPM=1000
 ```
@@ -101,19 +101,19 @@ Structured configuration specific to AI behavior. Too complex for flat env vars.
 models:
   summarization:
     provider: anthropic
-    model: claude-sonnet-4-5-20250929
-    temperature: 0.3
+    model: claude-sonnet-5-5
+    effort: medium                    # reasoning depth — the main quality/cost knob
     max_tokens: 1024
     cost_limit_per_request_usd: 0.05  # Factor 20 defines the full budget hierarchy
     timeout_seconds: 30
     fallback:
       provider: anthropic
-      model: claude-haiku-4-5-20251001
+      model: claude-haiku-5-5
 
   classification:
     provider: openai
     model: gpt-5.4-mini
-    temperature: 0.0
+    effort: low
     max_tokens: 100
 
 safety:
@@ -139,7 +139,7 @@ ai-config.local.yaml            # Local overrides (gitignored)
 ### Anti-Patterns to Avoid
 - **API keys in environment variables on disk**: Use mounted secrets or runtime injection from a secrets manager.
 - **Model names hardcoded in source**: Changing a model shouldn't require a code change and redeploy.
-- **Temperature values in application code**: These are tuning parameters, not business logic.
+- **Inference parameters in application code**: Effort levels and sampling values are tuning parameters, not business logic — and they are model-specific, so they belong next to the model pin, where a model change forces you to revisit them.
 - **Cost limits only in code**: Operators need to adjust budgets without developer involvement.
 - **Mixing credentials and configuration**: Don't put API keys in the same config map as feature flags. Different sensitivity levels require different storage.
 
@@ -162,7 +162,7 @@ Most major AI providers (Anthropic, Google, AWS Bedrock) support workload identi
 
 ```python
 client = OpenFeature.get_client()
-model = client.get_string_value("ai.summarization.model", "claude-sonnet-5", ctx)
+model = client.get_string_value("ai.summarization.model", "claude-sonnet-5-5", ctx)
 ```
 
 ### HSM/KMS for AI Context Encryption
@@ -175,16 +175,21 @@ Sensitive AI context — RAG documents containing PII, medical records, or finan
 
 Encryption keys must never coexist with the encrypted context in the same config file or the same environment variable set. Apply envelope encryption: the data key encrypts the context; the master key (HSM/KMS-backed) encrypts the data key.
 
+**Plan for post-quantum crypto-agility.** AI data with a long confidentiality lifetime — agent memory (Factor 19), conversation archives, fine-tuning datasets — is exposed to "harvest now, decrypt later": traffic and ciphertext captured today can be decrypted once large quantum computers exist. Hybrid post-quantum key exchange (X25519 + ML-KEM-768) is already enabled by default in major browsers and supported by mainstream TLS libraries. Inventory where AI data is encrypted and for how long it must stay confidential, keep algorithm choices in configuration rather than code, and adopt the NIST post-quantum standards (ML-KEM for key establishment, ML-DSA for signatures) as your KMS/HSM and TLS stacks support them.
+
 ### Configuration Validation
 Validate AI configuration at startup — fail fast if configuration is invalid:
 
 ```python
 # Validate at startup, not at first request
 def validate_ai_config(config):
-    assert config.temperature >= 0.0 and config.temperature <= 2.0
-    assert config.max_tokens > 0 and config.max_tokens <= model_context_limit
-    assert config.cost_limit_per_request > 0
     assert config.model in SUPPORTED_MODELS
+    caps = SUPPORTED_MODELS[config.model]
+    assert config.effort in caps.effort_levels
+    # Many reasoning models accept no sampling parameters at all
+    assert set(config.sampling_params) <= caps.sampling_params
+    assert config.max_tokens > 0 and config.max_tokens <= caps.max_output_tokens
+    assert config.cost_limit_per_request > 0
     assert config.timeout_seconds > 0
 ```
 
@@ -196,7 +201,7 @@ def validate_ai_config(config):
 - [ ] AI model selection and parameters are externalized configuration, not hardcoded
 - [ ] Cost budgets and rate limits are configurable without code changes
 - [ ] Safety thresholds and content filtering settings are configurable per environment
-- [ ] AI configuration files are validated at application startup
+- [ ] AI configuration files are validated at application startup, including inference parameters against the pinned model's supported set (effort levels; sampling parameters only where the model accepts them)
 - [ ] Configuration changes are auditable (who changed what, when)
 - [ ] Each configuration value is explicitly classified as init-time (immutable for the process lifetime, requires restart to change) or runtime (changeable while the process is live via flag provider, dynamic config service, or hot-reload), and runtime changes are audited with the same rigor as deploys
 - [ ] Local development uses `.env` or equivalent files that are gitignored
@@ -204,3 +209,4 @@ def validate_ai_config(config):
 - [ ] AI service credentials use Workload Identity Federation (OIDC/IRSA/SPIFFE) rather than static API keys wherever the provider supports it
 - [ ] Feature flags for model selection and routing use an OpenFeature-compatible provider, not bespoke flag systems
 - [ ] Sensitive AI context (PII-containing RAG documents, medical/financial data) is encrypted with HSM/KMS-backed keys; encryption keys are never co-located with encrypted data
+- [ ] Encrypted AI data with a long confidentiality lifetime is inventoried, with a crypto-agility plan for post-quantum algorithms (hybrid ML-KEM in transit, PQC-capable KMS/HSM at rest)

@@ -50,7 +50,7 @@ Implement defense in depth — multiple layers, each catching different issues:
 │              MODEL LAYER                     │
 │  System prompt with safety instructions      │
 │  Constrained output schemas                  │
-│  Temperature and sampling controls           │
+│  Least-privilege tool/data scoping           │
 ├──────────────────────────────────────────────┤
 │              OUTPUT GUARDRAILS               │
 │  Content safety classification               │
@@ -101,25 +101,71 @@ rails:
 - **Latency impact**: What overhead does the guardrail layer add? (critical for real-time applications)
 
 ### Prompt Injection Defense
-Protect against attempts to override system instructions:
+Prompt injection cannot be filtered out. Any text the model reads — a user message, a retrieved document, a web page, a tool result, an email the agent is summarizing — can carry instructions, and no classifier catches all of them. Detection still earns its place as one layer, but the primary defense is architectural (Guiding Principle 3): design so that a *successful* injection cannot cause serious harm.
+
+**The lethal trifecta and the Rule of Two.** An agent becomes exploitable when a single session combines three capabilities: (A) access to private or sensitive data, (B) exposure to untrusted content, and (C) the ability to communicate externally or change state. Simon Willison named the combination the "lethal trifecta"; Meta's "Agents Rule of Two" (Oct 2025) turned it into a design rule: until injection can be reliably detected, a session holds at most two of the three, and if it genuinely needs all three, a human approves each consequential step. Make it a design-review check for every agent profile and tool set:
+
+```yaml
+# agent-capability-review.yaml — evaluated in CI for each agent profile
+agent: support-email-triage
+capabilities:
+  private_data: true        # reads the customer's order history
+  untrusted_input: true     # reads inbound emails
+  external_action: false    # cannot send email, call webhooks, or browse
+rule_of_two: pass           # adding any outbound tool requires per-action human approval
+```
+
+**Patterns that hold the line** (choose per use case):
+- **Capability separation**: a privileged agent holds the data and tools; a quarantined one reads untrusted content and returns only schema-validated values (the dual-LLM pattern). CaMeL (Google DeepMind, 2025) extends this: the privileged side plans in code and tracks data provenance, so untrusted values can fill parameters but never steer control flow.
+- **Plan-then-execute**: fix the tool plan before reading untrusted content; content can supply arguments but cannot add steps.
+- **Egress control**: no outbound network by default, allowlisted destinations, and no rendering of model-generated URLs or images that could smuggle data out in a query string.
+- **Secrets never enter context**: credentials are injected out of band at the tool or network layer, never placed in the prompt (Factor 4, Factor 8).
+- **Least-privilege tools**: read-only by default; write tools scoped to the current user and object (Factor 8, Factor 18).
+- **Separate channels**: operator instructions travel in the system channel; untrusted content is delimited and labeled as data. This reduces risk but does not remove it.
+
+Detection remains useful — to log, alert, and raise the attacker's cost:
 
 ```python
-# Multi-layer prompt injection defense
+# Detection layer — useful signal, never the only control
 class InputGuardrail:
-    def check(self, user_input: str) -> GuardrailResult:
-        results = []
-
-        # Layer 1: Pattern matching for known injection patterns
-        results.append(self.pattern_detector.scan(user_input))
-
-        # Layer 2: ML-based injection classifier
-        results.append(self.injection_classifier.classify(user_input))
-
-        # Layer 3: Input/output boundary enforcement
-        results.append(self.boundary_enforcer.check(user_input))
-
-        return GuardrailResult.aggregate(results)
+    def check(self, text: str, source: str) -> GuardrailResult:
+        results = [
+            self.pattern_detector.scan(text),          # known injection patterns
+            self.injection_classifier.classify(text),  # ML-based classifier
+        ]
+        # Check untrusted sources too (web pages, emails, tool output), not only user input
+        return GuardrailResult.aggregate(results, source=source)
 ```
+
+### OWASP Top 10s as the Threat Checklist
+
+Two OWASP GenAI Security Project lists are the common vocabulary for AI threats in reviews and audits: the **Top 10 for LLM Applications (2025)** and the **Top 10 for Agentic Applications (2026)**, published in December 2025. Map each entry to a control and to an adversarial eval (see Red Teaming below):
+
+| OWASP LLM Top 10 (2025) | Primary factors |
+|---|---|
+| LLM01 Prompt Injection | F7 (this factor), F18 |
+| LLM02 Sensitive Information Disclosure | F7 PII handling, F19 |
+| LLM03 Supply Chain | F3, F5 |
+| LLM04 Data and Model Poisoning | F7 data governance, F16 |
+| LLM05 Improper Output Handling | F2 output schemas, F7 |
+| LLM06 Excessive Agency | F8, F18 |
+| LLM07 System Prompt Leakage | F4 (no secrets in prompts), F17 |
+| LLM08 Vector and Embedding Weaknesses | F10, F12, F19 |
+| LLM09 Misinformation | F6, F7 |
+| LLM10 Unbounded Consumption | F14, F20 |
+
+| OWASP Agentic Top 10 (2026) | Primary factors |
+|---|---|
+| ASI01 Agent Goal Hijack | F7 prompt injection, F18 |
+| ASI02 Tool Misuse and Exploitation | F2, F18 |
+| ASI03 Identity and Privilege Abuse | F8 |
+| ASI04 Agentic Supply Chain Vulnerabilities | F3, F5 |
+| ASI05 Unexpected Code Execution | F8 sandboxing |
+| ASI06 Memory & Context Poisoning | F12, F19 |
+| ASI07 Insecure Inter-Agent Communication | F2 (A2A), F8 |
+| ASI08 Cascading Failures | F13, F18 |
+| ASI09 Human-Agent Trust Exploitation | F7 human-in-the-loop, F18 |
+| ASI10 Rogue Agents | F15, F18 |
 
 ### PII Handling
 Detect and handle personally identifiable information at system boundaries:
@@ -242,6 +288,7 @@ AI applications that process personal data must comply with data protection regu
 - **Data Processing Impact Assessment (DPIA)**: High-risk AI features — those that profile users, make automated decisions, or process sensitive data — require a DPIA before launch.
 - **Cross-border data transfers**: When AI models or APIs are hosted in a different jurisdiction than the user's data, ensure adequate transfer mechanisms (SCCs, adequacy decisions) are in place.
 - **Data processor agreements**: Third-party AI providers (model APIs, embedding services) are data processors. Ensure DPAs are signed and their data handling policies are compatible with your obligations.
+- **Brazil beyond LGPD**: the AI bill PL 2338/2023, passed by the Senate in December 2024, was still awaiting a vote in the Chamber of Deputies as of late 2026, so none of it is in force. Its risk-based structure mirrors the EU AI Act, so systems built to the EU structure below will map onto it; track it rather than build to a draft.
 
 ### EU AI Act Compliance
 The EU AI Act establishes a risk-based classification framework that imposes architectural requirements on AI systems. Unlike GDPR (which focuses on data), the AI Act regulates the *AI system itself* — how it's built, tested, deployed, and monitored. Compliance is not optional for systems operating in or affecting EU citizens.
@@ -314,20 +361,29 @@ eu_ai_act:
 
 The AI Act also prohibits certain AI practices outright (social scoring, real-time biometric identification in public spaces with exceptions, manipulation of vulnerable groups). Ensure your system does not fall into the "unacceptable risk" category.
 
-**Enforcement timeline (as of 2026):**
+**Application timeline** — as amended by **Regulation (EU) 2026/1744** (the "Digital Omnibus on AI", published 24 Jul 2026, in force since 27 Jul 2026):
 
 | Date | Milestone |
 |------|-----------|
-| 2 Feb 2025 | Prohibited AI practices became illegal |
-| 2 Aug 2025 | GPAI obligations applied; pre-existing GPAI models must comply by 2 Aug 2027 |
-| **2 Aug 2026** | **EU Commission's enforcement powers activate (fines, recalls, mitigations); Article 50 transparency obligations apply** |
-| 2 Aug 2027 | Pre-2025 GPAI models must reach full compliance |
+| 2 Feb 2025 | Prohibited AI practices (Art. 5) and AI literacy (Art. 4) apply |
+| 2 Aug 2025 | GPAI model obligations apply; models already on the market must comply by 2 Aug 2027 |
+| **2 Aug 2026** | **General application; Article 50 transparency obligations apply; Commission enforcement powers over GPAI providers activate** |
+| 2 Dec 2026 | Art. 50(2) machine-readable marking for generative systems placed on the market before 2 Aug 2026; new prohibitions on non-consensual intimate imagery and child sexual abuse material apply |
+| 2 Aug 2027 | Pre-existing GPAI models reach full compliance; national AI regulatory sandboxes operational |
+| **2 Dec 2027** | **High-risk obligations for standalone systems (Annex III — e.g., employment, credit scoring, education, access to essential services)** |
+| **2 Aug 2028** | **High-risk obligations for AI in products covered by Annex I harmonisation legislation** |
+| 2 Aug 2030 | Legacy high-risk systems used by public authorities must comply |
 
-Treat 2 Aug 2026 as the key near-term milestone for any system serving EU users — but re-verify these dates before relying on them: the Commission's late-2025 "Digital Omnibus" package proposed delaying and simplifying several high-risk and GPAI obligations, so specific timelines may have shifted.
+The Omnibus moved deadlines; it did not remove obligations. High-risk requirements are unchanged in substance, so treat the extra time as build time, not as a reason to postpone design. Other changes worth knowing:
+
+- **AI literacy (Art. 4)** is now an obligation to *support* literacy among staff, not to guarantee a specific level.
+- **Bias detection (new Art. 4a)** gives an explicit legal basis for processing special-category personal data to detect and correct bias, under strict, cumulative conditions — relevant to the Bias Monitoring pattern above.
+- **SMEs and small mid-caps** get simplified technical documentation and quality-management requirements.
+- **Cyber Resilience Act link (Art. 42(3))**: high-risk systems that meet the CRA's essential cybersecurity requirements are presumed to meet the AI Act's cybersecurity requirement (Art. 15).
 
 ### Article 50: Content Provenance and Watermarking
 
-EU AI Act Article 50 imposes **transparency obligations on AI-generated and AI-manipulated content**. By 2 Aug 2026, providers and deployers of generative AI systems must ensure:
+EU AI Act Article 50 imposes **transparency obligations on AI-generated and AI-manipulated content**. Since 2 Aug 2026, providers and deployers of generative AI systems must ensure the following (generative systems already on the market before that date have until 2 Dec 2026 for the machine-readable marking in Art. 50(2)):
 
 - AI-generated images, audio, video, and text are **detectable as AI-generated** through machine-readable signals (watermarks, metadata, cryptographic provenance, or other techniques)
 - Deepfakes are clearly disclosed
@@ -350,7 +406,7 @@ content_provenance:
         - c2pa.created_by: "ExampleApp v2.3"
         - c2pa.actions:
             - action: c2pa.created
-              softwareAgent: "claude-sonnet-5"
+              softwareAgent: "claude-sonnet-5-5"
         - c2pa.training_mining: notAllowed   # opt-out signal for crawlers
 
   watermark:
@@ -371,9 +427,10 @@ Open problem: C2PA-vs-watermark contradictions can arise when content is re-edit
 EU AI Act is the legal layer. The de-facto compliance stack pairs it with two methodological frameworks:
 
 - **ISO/IEC 42001** (AI Management System, AIMS) — certifiable AI management standard, analogous to ISO 27001 for security. Required by an increasing share of enterprise procurement RFPs.
-- **NIST AI RMF** + **NIST GenAI Profile** + **Critical Infrastructure Profile** (Apr 2026 concept note, SP 800-53 AI Control Overlays through 2026) — methodology and controls catalog used by US federal procurement and many regulated industries.
+- **NIST AI RMF** + **NIST GenAI Profile** + **Critical Infrastructure Profile** (Apr 2026 concept note) + **Control Overlays for Securing AI Systems** (COSAiS — SP 800-53 overlays, drafts through 2026, with single- and multi-agent use cases) — methodology and controls catalog used by US federal procurement and many regulated industries.
+- **ISO/IEC 27090** (2026) — guidance on AI-specific security threats (data poisoning, evasion, model theft) across the AI life cycle. It is guidance, not a certifiable standard: it extends ISO/IEC 27001/27002 controls for AI systems, while certification still runs through 27001 and 42001.
 
-The mapping isn't 1:1, but the controls overlap heavily. Build a single internal control set that satisfies all three. Keep evidence in one place; cross-map at audit time.
+The mapping isn't 1:1, but the controls overlap heavily. Build a single internal control set that satisfies all of them. Keep evidence in one place; cross-map at audit time. Use the OWASP Top 10 mappings above as the threat-side index into the same control set.
 
 ```yaml
 compliance_evidence_map:
@@ -458,6 +515,8 @@ red_team_program:
         methods: [demographic_probing, stereotype_elicitation]
     - output_manipulation:            # attempts to generate harmful content
         methods: [indirect_harmful, dual_use, gradual_escalation]
+    - agentic:                        # OWASP Agentic Top 10 scenarios
+        methods: [goal_hijack_via_tool_output, tool_misuse, memory_poisoning, exfiltration_via_rendered_links]
 
   adversarial_eval_dataset:
     source: evals/adversarial.jsonl   # versioned alongside code (Factor 1)
@@ -491,11 +550,27 @@ ai_incident_playbook:
     - within_24h: quantify_impact_and_scope
     - within_1w: implement_mitigation
     - ongoing: enhanced_monitoring
+
+  # Regulatory clocks run in parallel with the technical response, from the moment of awareness
+  regulatory_reporting:
+    eu_ai_act_art_73:                 # serious incidents, high-risk systems; calendar days
+      widespread_or_critical_infrastructure: 2d
+      death_of_a_person: 10d
+      other_serious_incident: 15d
+    eu_cra_art_14:                    # products with digital elements; applies since 11 Sep 2026
+      actively_exploited_vulnerability: { early_warning: 24h, notification: 72h, final_report: "14d after fix available" }
+      severe_security_incident: { early_warning: 24h, notification: 72h, final_report: "1 month" }
+    personal_data_breach:
+      gdpr: 72h                       # to the supervisory authority
+      lgpd: "3 working days"          # to the ANPD (Resolution CD/ANPD 15/2024)
 ```
+
+One incident can trigger several regimes at once — a prompt-injection exfiltration from a high-risk system can be an AI Act serious incident, a CRA severe incident, and a personal-data breach. Decide in advance who owns each clock, and log the moment of awareness with a timestamp you can defend (cross-ref Factor 20's AI incident log).
 
 ## Compliance Checklist
 
-- [ ] Input guardrails detect and handle prompt injection attempts
+- [ ] Prompt injection is mitigated architecturally: every agent profile passes a Rule-of-Two review (private data / untrusted content / external action), with detection classifiers as an additional layer on user input and untrusted sources
+- [ ] OWASP LLM Top 10 (2025) and Agentic Top 10 (2026) risks are mapped to controls and covered by the adversarial eval suite
 - [ ] PII is detected at input and output boundaries with configurable handling policies
 - [ ] Content safety classifiers screen AI outputs before serving to users
 - [ ] Bias monitoring evaluates output quality, refusal rates, and sentiment across demographic segments on a defined cadence
@@ -504,11 +579,11 @@ ai_incident_playbook:
 - [ ] Non-production environments use anonymized data with automated PII scanning to prevent leaks
 - [ ] Regulatory compliance (GDPR/LGPD) is addressed: legal basis, data minimization, right to erasure, and DPIA for high-risk AI features
 - [ ] EU AI Act risk classification is determined and documented for each AI system
-- [ ] High-risk AI systems implement mandatory requirements: risk management, data governance, technical documentation, record-keeping, transparency, human oversight, and accuracy/robustness testing
-- [ ] An AI incident response playbook exists and is practiced
+- [ ] High-risk AI systems implement mandatory requirements — risk management, data governance, technical documentation, record-keeping, transparency, human oversight, and accuracy/robustness testing — before their application date under Regulation (EU) 2026/1744 (2 Dec 2027 for Annex III, 2 Aug 2028 for Annex I)
+- [ ] An AI incident response playbook exists and is practiced, including the regulatory reporting clocks (EU AI Act Art. 73, Cyber Resilience Act, GDPR/LGPD) and an owner for each
 - [ ] Red teaming exercises run on a defined cadence with adversarial eval datasets maintained in CI
-- [ ] AI-generated content carries C2PA Content Credentials and/or SynthID-class watermarks (EU AI Act Article 50, applied 2 Aug 2026)
-- [ ] An ISO/IEC 42001 AIMS or equivalent management system is in place, with cross-mapping to NIST AI RMF and EU AI Act controls
+- [ ] AI-generated content carries C2PA Content Credentials and/or SynthID-class watermarks (EU AI Act Article 50: applies since 2 Aug 2026; 2 Dec 2026 for generative systems already on the market)
+- [ ] An ISO/IEC 42001 AIMS or equivalent management system is in place, with cross-mapping to NIST AI RMF, ISO/IEC 27090, and EU AI Act controls
 - [ ] Training data, fine-tuning data, and RAG corpora carry license declarations captured in the AIBOM (Factor 5)
 - [ ] Crawlers and ingestion pipelines respect AI opt-out signals (robots.txt, noai/noimageai, C2PA training_mining)
 - [ ] EU AI Act Article 50 transparency disclosures (deepfakes, AI-generated public-interest text, system disclosure) are implemented at content-publish boundaries

@@ -92,8 +92,8 @@ prompts/
 ```yaml
 # context-budget.yaml — allocate the context window intentionally
 context_budget:
-  model: claude-sonnet-4-5-20250929
-  max_context_tokens: 200000       # models now support up to 1M+ tokens
+  model: claude-sonnet-5-5
+  max_context_tokens: 1000000      # window capacity — not a target to fill
   max_output_tokens: 4096
 
   allocation:
@@ -121,8 +121,8 @@ context_budget:
 
     conversation_history:
       budget: 4000
-      priority: 3              # Trimmed first when budget is tight
-      strategy: keep_recent    # Keep most recent turns, summarize older ones
+      priority: 3              # Reduced first when budget is tight
+      strategy: compact_at_threshold  # Summarize older turns at a checkpoint; never rewrite turns in place
 
     user_message:
       budget: 2000
@@ -404,14 +404,14 @@ multimodal_outputs:
 
 ### Extended Thinking and Reasoning Models
 
-Reasoning models (Claude's extended thinking, OpenAI's GPT-5 series with reasoning effort, DeepSeek R-series) introduce a fundamentally different token economy: **thinking tokens**. These models generate internal reasoning chains before producing a visible response, and those thinking tokens consume budget, incur cost, and affect latency — but are not shown to the user.
+Reasoning models (Claude's adaptive thinking, OpenAI's GPT-5 series with reasoning effort, DeepSeek R-series) introduce a fundamentally different token economy: **thinking tokens**. These models generate internal reasoning chains before producing a visible response, and those thinking tokens consume budget, incur cost, and affect latency — but are not shown to the user.
 
 This changes context engineering in several ways:
 
 ```yaml
 # reasoning-effort.yaml — control reasoning depth per task with effort levels
 reasoning_effort:
-  model: claude-opus-4-6
+  model: claude-opus-5-5
   thinking:
     type: adaptive                   # model sets thinking depth; no fixed token budget
   # `effort` bounds overall spend: low | medium | high | xhigh | max
@@ -430,17 +430,17 @@ reasoning_effort:
       note: "Research, planning, and multi-step reasoning benefit most"
 
     simple_qa:
-      thinking:
-        type: disabled               # disable extended thinking entirely
-      note: "Disable thinking (or use a lighter model) for simple retrieval"
+      effort: low                    # several current models cannot disable thinking at all
+      note: "Use the lowest effort, or route to a lighter model, for simple retrieval"
 ```
 
 **Key engineering decisions for reasoning models:**
-- **Thinking tokens are invisible but expensive**: A response with 500 output tokens may consume 10,000+ thinking tokens. Factor 20 cost models must account for this — thinking tokens are typically priced differently from output tokens.
+- **Thinking tokens are invisible but expensive**: A response with 500 output tokens may consume 10,000+ thinking tokens. Factor 20 cost models must account for this — thinking tokens are typically billed at output-token rates.
 - **Not all tasks benefit from reasoning**: Classification, simple Q&A, and format conversion see little quality improvement from extended thinking. Use reasoning models selectively — route simple tasks to standard models (Factor 20 model routing).
 - **Effort as a quality lever**: Higher effort generally improves quality for complex tasks, but with diminishing returns. Tune the effort level per task type based on evaluation results (Factor 6).
 - **Streaming considerations**: With reasoning models, the first visible token may take significantly longer to appear (the model is "thinking" first). Design UIs to handle this latency — show a "thinking" indicator rather than an empty response.
-- **Summarized thinking for observability**: Some providers return a summarized version of the thinking process. Log this for debugging and quality analysis (Factor 15), but be aware it's a summary, not the full chain.
+- **Summarized thinking for observability**: Some providers return a summarized version of the thinking process — and on several current models even the summary is omitted unless you request it. Log it for debugging and quality analysis (Factor 15), but be aware it's a summary, not the full chain.
+- **Defaults move between models**: default effort, whether thinking can be turned off, and how thinking blocks must be passed back all differ across model generations. Set effort explicitly per task profile and re-run the effort sweep in your eval suite on every model upgrade (Factor 16).
 
 ### GraphRAG for Knowledge Graph Retrieval
 
@@ -463,6 +463,24 @@ Manual prompt engineering is iterative and doesn't optimize globally across dive
 - **APE** (Automatic Prompt Engineer): searches a candidate instruction space and selects by eval score; useful when you have labeled examples and want to discover better instruction phrasings.
 
 These tools connect directly to Factor 6 (eval suites provide the optimization signal) and Factor 1 (optimized prompts are committed as versioned artifacts). The risk: auto-optimized prompts can overfit to the eval set — always validate on a held-out test partition and production shadow traffic (Factor 11).
+
+### Context Compaction and Editing
+
+Long-running agents outgrow any context window, and quality drops well before the window is full: accuracy degrades as input grows and distractors accumulate ("context rot"), even on easy tasks. Treat the context as a working set curated on every step, not a log that only grows. Four techniques, cheapest first:
+
+| Technique | What it does | Use when |
+|-----------|--------------|----------|
+| **Tool-result clearing** (context editing) | Drops stale tool outputs (file reads, search results) the agent has already acted on, keeping the record that the call happened | Tool-heavy loops where old outputs dominate the window |
+| **Compaction** | Summarizes older history into a compact block and continues from it — server-side on some providers, or your own summarization step | Long conversations and agent runs approaching the window or a cost threshold |
+| **Sub-agent isolation** | Hands a reading-heavy subtask to a sub-agent with its own context; only a short result comes back | Research and fan-out work where the raw material is large but the conclusion is small |
+| **External memory** | Writes durable facts and plans to a memory store and retrieves them on demand (Factor 19) | Facts that must outlive one context window or one session |
+
+Engineering rules:
+
+- **Compact at checkpoints, not continuously.** Every rewrite of earlier context breaks the provider prompt cache from that point (Factor 12) and, on newer reasoning models, can invalidate preserved reasoning state. One deliberate compaction per threshold beats trimming a little on every turn.
+- **Use the provider's mechanism when there is one.** Server-side compaction and context-editing features are built to keep cache and reasoning state consistent; hand-rolled history surgery usually isn't.
+- **Preserve what the summary must not lose**: the task goal, constraints, decisions taken and why, open questions, and identifiers (ticket IDs, file paths, record keys). Test compaction in the eval suite (Factor 6) — a lossy summary silently changes the agent's behavior.
+- **Keep the always-loaded part lean.** Context bloat often starts in the system prompt and agent instruction files rather than in the history, and that part is paid on every call. Move rarely needed detail into skills or reference files loaded on demand (Factor 2).
 
 ### Long-Context Degradation
 
@@ -491,7 +509,8 @@ Models with large context windows (200K–1M+ tokens) can still degrade when rel
 - [ ] Token budgets account for system prompt, context, conversation history, and output reservation
 - [ ] Few-shot examples are curated, versioned, and selected dynamically based on relevance
 - [ ] Prompt templates are validated at build time (variables defined, within budget)
-- [ ] Conversation history management has a defined strategy (truncation, summarization)
+- [ ] Conversation history management has a defined strategy (compaction at checkpoints, tool-result clearing, summarization) that is tested in the eval suite
+- [ ] Long-running agents keep the working context small with context editing, compaction, or sub-agent isolation, and compaction preserves goals, decisions, and identifiers
 - [ ] Prompt effectiveness is measured through evaluations (Factor 6) and production monitoring (Factor 15)
 - [ ] Context assembly strategies handle overflow gracefully (truncation, prioritization)
 - [ ] Reasoning effort (adaptive thinking + effort levels) is configured per task type with cost awareness (Factor 20)

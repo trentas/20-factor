@@ -55,7 +55,7 @@ services:
     primary:
       provider: anthropic
       endpoint: https://api.anthropic.com
-      model: claude-sonnet-4-5-20250929
+      model: claude-sonnet-5-5
       credentials: vault://secrets/anthropic-api-key
       timeout_ms: 30000
       max_retries: 3
@@ -148,6 +148,23 @@ class ResilientLLMProvider:
             return await self.fallback.complete(messages, **kwargs)
 ```
 
+**Refusals are a distinct failure class.** Current frontier models can decline a request inside a *successful* response, with an explicit refusal signal and often a category (for example `stop_reason: "refusal"`), and some providers offer a server-side fallback that re-routes a refused request to a model the provider designates. A failover layer built for 5xx and 429 either misses these (treating a refusal as a valid, empty answer) or mishandles them (blindly retrying on another vendor). Route them by policy:
+
+```python
+async def complete(self, messages, **kwargs):
+    result = await self.primary.complete(messages, **kwargs)
+    if result.stop_reason == "refusal":
+        metrics.increment("llm.refusal", tags={"category": result.refusal_category})
+        if result.refusal_category in self.policy.provider_fallback_categories:
+            # Provider-sanctioned fallback only — never a different vendor
+            # picked to get around the refusal
+            return await self.primary.complete_with_provider_fallback(messages, **kwargs)
+        return self.policy.user_facing_response(result)   # explain; don't retry
+    return result
+```
+
+A refusal is not an outage. Re-sending a refused request to a less restrictive model to get *some* answer is a safety bypass, not resilience. Track refusal rate per category as a quality signal (Factor 15): a jump after a model upgrade usually means false positives on legitimate traffic, which belongs in the eval suite (Factor 6).
+
 ### Attachment and Detachment
 Like traditional backing services, AI backing services should be attachable and detachable:
 
@@ -177,7 +194,7 @@ ai_gateway:
   providers:
     - name: anthropic
       priority: 1
-      models: [claude-sonnet-4-5-*, claude-haiku-4-5-*]
+      models: [claude-sonnet-5-5, claude-haiku-5-5]   # explicit IDs, no wildcards
     - name: openai
       priority: 2
       models: [gpt-5.5, gpt-5.4-mini]
@@ -234,6 +251,7 @@ AI backing services have unique operational characteristics:
 - [ ] Embedding service changes are planned as data migration operations
 - [ ] Failover strategies exist for critical AI backing services (LLM providers, vector DBs)
 - [ ] Circuit breakers protect against cascading failures from AI service outages
+- [ ] Model refusals are detected and routed by policy (provider-sanctioned fallback or a user-facing response), never blindly retried on another provider
 - [ ] Rate limiting is implemented client-side for all AI backing services
 - [ ] Credentials for AI services are managed through secrets management (Factor 4)
 - [ ] Cost, latency, and availability are monitored per backing service

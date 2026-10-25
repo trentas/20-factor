@@ -17,7 +17,7 @@ The 12-factor "stateless processes" rule was written for request handlers — sh
 
 Treating agents as stateless handlers leads to predictable failure modes: lost work on worker preemption, double-billing on tool retry, broken human approval flows, and agents that "forget" what they were doing after a deploy. The fix is not to make the worker stateful — it's to externalize execution state into a **durable runtime** that journals every step and lets the workflow be replayed deterministically.
 
-Durable execution engines (Temporal, Restate, DBOS, Inngest, Dapr Workflows) and agent SDKs (Claude Agent SDK, OpenAI Agents SDK, Google ADK, LangGraph, Pydantic AI) made this the default in 2025–2026. The worker stays stateless; the workflow is durable.
+Durable execution engines (Temporal, Restate, DBOS, Inngest, Dapr Workflows) made this the default in 2025–2026, and agent frameworks increasingly integrate with them. The distinction matters: an agent SDK (Claude Agent SDK, OpenAI Agents SDK, Google ADK) supplies the agent *loop*; durability — journaling every step and resuming after a crash — comes from the engine or persistence layer underneath it. The worker stays stateless; the workflow is durable.
 
 ## What This Replaces
 
@@ -37,7 +37,7 @@ Cross-references: Factor 12 covers stateless workers and caching. Factor 18 cove
 ## How AI Changes This
 
 ### AI-Assisted Development
-- Autonomous coding agents (Claude Code, Devin, Cursor background agents, GitHub Copilot Workspace) run for hours per task. They must survive editor restarts, network disconnects, and human review pauses without losing context.
+- Autonomous coding agents (Claude Code, Codex, Devin, Cursor background agents, GitHub Copilot coding agent) run for hours per task. They must survive editor restarts, network disconnects, and human review pauses without losing context.
 - Background coding agents that open PRs typically execute as durable workflows: each commit, each tool call, each test run is a journaled step. Failures don't restart from zero — they replay from the last successful checkpoint.
 
 ### AI-Native Applications
@@ -60,8 +60,10 @@ Production-grade options as of 2026:
 | **Inngest** | Serverless-first, event-driven, simple developer ergonomics | Event-driven agents, JAMstack/serverless deployments |
 | **Dapr Workflows** | Kubernetes-native, sidecar pattern, multi-language | K8s shops with existing Dapr investment |
 | **Claude Agent SDK / OpenAI Agents SDK** | Agent-loop harness (context, tools, memory) — pair with a durable engine above for journaling and crash-safe resume | Teams building agents on a single provider's stack |
-| **LangGraph** | Python-first, graph-of-state model, integrates with LangChain ecosystem | RAG-heavy and multi-agent supervised workflows |
-| **Pydantic AI** | Type-safe, Pydantic-native, lightweight | Python teams that want strict typing without a workflow cluster |
+| **LangGraph** | Python-first, graph-of-state model, integrates with LangChain ecosystem — durable only when backed by a persistent checkpointer (e.g., Postgres) | RAG-heavy and multi-agent supervised workflows |
+| **Pydantic AI** | Type-safe, Pydantic-native, lightweight — durable execution via its Temporal/DBOS integrations | Python teams that want strict typing on top of an existing engine |
+
+**The test for "durable":** kill the worker mid-step, restart it, and check that the run resumes from its last completed step without re-executing side effects. An engine passes on its own; an agent SDK or framework passes only when it runs on top of an engine or a persistent checkpointer. An SDK running its loop in process memory does not — however good its context and tool handling.
 
 The architectural pattern is the same across all of them: **define a workflow** (deterministic), **call activities/tools** (non-deterministic), **journal every input/output**. On replay, the engine returns journaled results instead of re-executing — making retry safe and resumption fast.
 
@@ -160,6 +162,15 @@ def submit_decision(self, decision: str):
 ```
 
 The approver clicks the link in their email; the API handler emits a workflow signal; the engine resumes the workflow on the next available worker. No worker is held during the wait. This is what makes 24-hour and multi-day approval workflows feasible.
+
+### Long-Running Tools over MCP
+
+The same durability rules apply when the slow step is a *tool* on an MCP server rather than an activity in your own engine. The MCP 2026-07-28 revision gives you two primitives that map directly onto this factor:
+
+- **Tasks** (now the official `io.modelcontextprotocol/tasks` extension): a tool call can return a task handle instead of blocking. The client polls with `tasks/get` and sends follow-up input with `tasks/update`. Store the task handle in the workflow journal like any other activity result, and poll from an activity — never from deterministic workflow code.
+- **Multi round-trip requests (MRTR)**: when a server needs more input (a confirmation, a credential, a form), it returns an `input_required` result; the client retries the original request with the answers, carrying back the server's opaque `requestState`. Treat each round trip as a journaled step and the human answer as a durable signal — the same pattern as the approval above.
+
+Because MCP removed protocol-level sessions and stream resumability, a dropped connection loses the in-flight request and the client must re-issue it with a new request ID. That makes idempotency keys on side-effecting MCP tools mandatory, not optional.
 
 ### Workflow Versioning
 
@@ -269,7 +280,8 @@ Pair with Factor 8 (Identity) for tenant identity, Factor 14 (Adaptive Concurren
 
 ## Compliance Checklist
 
-- [ ] Long-running agent execution state is persisted in a durable runtime (Temporal, Restate, Inngest, Dapr Workflows, or framework SDK)
+- [ ] Long-running agent execution state is persisted in a durable runtime (Temporal, Restate, DBOS, Inngest, Dapr Workflows, or equivalent); an agent SDK or framework counts only when it runs on one of these or on a persistent checkpointer that resumes from the last completed step after a crash
+- [ ] Long-running MCP tool calls (tasks, multi round-trip requests) are journaled and polled from activities, and side-effecting MCP tools carry idempotency keys
 - [ ] Workflow definitions are deterministic — no direct I/O, no `datetime.now()`, no random IDs in workflow code
 - [ ] Tool calls are idempotent or guarded by deterministic idempotency keys derived from the workflow run
 - [ ] Human-in-the-loop gates are implemented as durable interrupts (signals/events), not synchronous blocks

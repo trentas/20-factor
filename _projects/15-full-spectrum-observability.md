@@ -52,12 +52,13 @@ This merged and updated factor creates a unified observability strategy that cov
   "trace_id": "abc123",
   "span_id": "def456",
   "event": "llm_completion",
-  "model": "claude-sonnet-4-5-20250929",
+  "model": "claude-sonnet-5-5",
   "provider": "anthropic",
   "input_tokens": 1250,
   "output_tokens": 340,
   "total_tokens": 1590,
-  "cost_usd": 0.012,
+  "cost_usd": 0.006,
+  "stop_reason": "end_turn",
   "latency_ms": 2340,
   "cache_hit": false,
   "quality_score": 0.91,
@@ -89,11 +90,11 @@ This merged and updated factor creates a unified observability strategy that cov
 │   └── total_context_tokens: 3200
 │
 ├── [Span: llm-generation] 2340ms
-│   ├── model: claude-sonnet-4-5-20250929
+│   ├── model: claude-sonnet-5-5
 │   ├── input_tokens: 4450
 │   ├── output_tokens: 340
 │   ├── cache_hit: prefix (3200 tokens cached)
-│   └── cost: $0.012
+│   └── cost: $0.006
 │
 ├── [Span: safety-check] 50ms
 │   ├── content_safety: pass
@@ -153,6 +154,11 @@ metrics:
     type: counter
     labels: [provider, error_type]
     description: "AI provider errors (rate limit, timeout, 5xx)"
+
+  - name: ai_refusal_total
+    type: counter
+    labels: [model, category, feature]
+    description: "Model refusals returned inside successful responses, by category (cross-ref Factor 10)"
 
   - name: ai_rate_limit_remaining
     type: gauge
@@ -217,6 +223,11 @@ alerts:
     condition: ai_rate_limit_remaining < 100
     severity: warning
     message: "Approaching AI provider rate limit"
+
+  - name: refusal_rate_spike
+    condition: rate(ai_refusal_total[1h]) / rate(ai_request_duration_seconds_count[1h]) > 2 * baseline
+    severity: warning
+    message: "Refusal rate doubled — check for false positives after a model or prompt change"
 ```
 
 ### Business Observability
@@ -317,26 +328,30 @@ SLOs turn metrics into actionable contracts. When an error budget burns down, th
 
 ### OpenTelemetry GenAI Semantic Conventions
 
-The **OpenTelemetry GenAI semantic conventions** are converging (still partly experimental as of 2026) toward a common contract for AI telemetry. Adopt them, but expect some attributes to keep evolving. They make traces and metrics portable across observability stacks (Langfuse, LangSmith, Arize Phoenix, Helicone, W&B Weave, Datadog, Honeycomb) and across teams.
+The **OpenTelemetry GenAI semantic conventions** are the common contract for AI telemetry. In June 2026 they moved to their own repository (`open-telemetry/semantic-conventions-genai`), and the `gen_ai.*` attributes are still at *Development* stability — adopt them, pin the convention version your instrumentation emits, and expect renames (`gen_ai.system`, for example, became `gen_ai.provider.name`). They make traces and metrics portable across observability stacks (Langfuse, LangSmith, Arize Phoenix, Helicone, W&B Weave, Datadog, Honeycomb) and across teams.
 
-Span attributes (subset):
+Agent work is modeled as a span tree: an `invoke_agent` span parents the `chat` and `execute_tool` spans of each step. Span attributes (subset):
 
 ```text
-gen_ai.system                 = "anthropic" | "openai" | "google" | ...
-gen_ai.request.model          = "claude-sonnet-5"
-gen_ai.request.temperature    = 0.7
-gen_ai.usage.input_tokens     = 1250
-gen_ai.usage.output_tokens    = 340
-gen_ai.usage.cached_tokens    = 980
-gen_ai.usage.thinking_tokens  = 5800
-gen_ai.response.finish_reason = "end_turn"
-gen_ai.tool.name              = "search_knowledge_base"
-gen_ai.tool.call.id           = "tool_call_abc123"
-gen_ai.agent.id               = "research-agent-v3"
-gen_ai.agent.step             = 4
+gen_ai.operation.name                  = "chat" | "invoke_agent" | "execute_tool" | ...
+gen_ai.provider.name                   = "anthropic" | "openai" | "gcp.vertex_ai" | ...
+gen_ai.request.model                   = "claude-sonnet-5-5"
+gen_ai.request.max_tokens              = 4096
+gen_ai.usage.input_tokens              = 1250
+gen_ai.usage.output_tokens             = 340
+gen_ai.usage.cache_read.input_tokens   = 980
+gen_ai.usage.reasoning.output_tokens   = 5800
+gen_ai.response.finish_reasons         = ["end_turn"]
+gen_ai.conversation.id                 = "conv_7f3a"
+gen_ai.tool.name                       = "search_knowledge_base"
+gen_ai.tool.call.id                    = "tool_call_abc123"
+gen_ai.agent.id                        = "research-agent-v3"
+gen_ai.agent.name                      = "research-agent"
 ```
 
 Metric names follow the same convention (e.g., `gen_ai.client.token.usage`). Treat the OTel GenAI spec as an inbound contract (cross-ref Factor 2) — your telemetry conforms to it.
+
+**Trace context across MCP.** The MCP 2026-07-28 revision standardizes W3C trace context (`traceparent`, `tracestate`, `baggage`) in each request's `_meta`, so a tool call on a remote MCP server joins the same trace as the model call that requested it. Propagate it from your harness and extract it in your servers; otherwise every remote tool call starts an orphan trace.
 
 ### Carbon and Energy as a Standard Metric
 
@@ -353,12 +368,14 @@ Source the carbon factor from a regional grid intensity API (e.g., Electricity M
 
 ### New Signal Surfaces (2026)
 
-Beyond model calls, four signal classes need first-class observability now:
+Beyond model calls, these signal classes need first-class observability now:
 
 - **Thinking-token ratio**: `thinking_tokens / output_tokens` per route. Sudden rise = harder task or prompt regression. Cross-ref Factor 14, Factor 17, Factor 20.
 - **Computer-use action traces**: per-session traces of the actions a browser/desktop agent took (click, type, navigate), with screenshot redaction. Required to debug bad agent behavior and to satisfy audit obligations under EU AI Act high-risk classifications. Cross-ref Factor 8, Factor 18.
 - **Voice / realtime latency** (when applicable): time-to-first-token, time-to-first-audio-byte, end-of-turn detection latency, barge-in latency, audio packet loss. Sub-300ms TTFT is the user-perceptible threshold for voice.
 - **Memory read/write events**: per-identity counts of memory writes, recall hits, recall above-threshold hits, forget operations, poisoning blocks. Cross-ref Factor 19.
+- **Steps and cost per completed agent task**: how many model calls and tool calls a task took, and what it cost end to end (cross-ref Factor 20). A rising step count for the same task mix is often the first visible sign of a harness, prompt, or model regression.
+- **Refusals**: refusal rate per category and model (cross-ref Factor 10). A jump after a model upgrade usually means false positives on legitimate traffic.
 
 ### Fallback-Drift Detection
 
@@ -398,11 +415,13 @@ Make the sampling rule explicit in code, not in the observability vendor's UI �
 - [ ] Prompt and completion logging respects PII policies (redacted or hashed)
 - [ ] Business outcomes (adoption, task completion, revenue impact) are tracked per AI feature
 - [ ] Observability data is retained long enough to support trend analysis and incident investigation
-- [ ] Telemetry conforms to OpenTelemetry GenAI semantic conventions (`gen_ai.*` attributes and metrics)
+- [ ] Telemetry conforms to a pinned version of the OpenTelemetry GenAI semantic conventions (`gen_ai.*` attributes and metrics), and trace context propagates into MCP tool calls via `_meta`
 - [ ] Carbon-per-request and energy-per-request are tracked as standard metrics, with regional grid factors
 - [ ] Thinking-token ratio is monitored per route as a saturation signal
 - [ ] Computer-use action traces are captured (with screenshot redaction) when computer-use agents are deployed
 - [ ] Voice/realtime workloads track TTFT, end-of-turn latency, and barge-in latency
 - [ ] Agent memory read/write/forget operations are emitted as observable events (cross-ref Factor 19)
 - [ ] Fallback-drift detection alerts when multi-provider fallback rate exceeds baseline
+- [ ] Model refusals are counted per category and alert on spikes after model or prompt changes
+- [ ] Agent runs report steps and cost per completed task, not only per call
 - [ ] Trace sampling is explicitly defined in code (100% on errors/guardrails/HITL; statistical sample on normal traffic)
