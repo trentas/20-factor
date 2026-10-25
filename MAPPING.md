@@ -53,7 +53,7 @@ In 2011, "export services via port binding" was a meaningful architectural princ
 **Status**: Retired — subsumed by other factors.
 
 The original factor advised running admin/management tasks as one-off processes in the same environment. In 2025:
-- Database migrations are CI/CD pipeline steps (Factor 5: Immutable Build Pipeline)
+- Database migrations and backfills run as jobs from the same release and configuration, with expand/contract compatibility and resumable batches (Factor 5: Immutable Build Pipeline — Data Migrations and Backfills)
 - Infrastructure changes are IaC/GitOps operations (Factor 1: Declarative Codebase)
 - Data backfills are declarative jobs defined in code (Factor 1)
 - Console/REPL access is replaced by observability tooling (Factor 15)

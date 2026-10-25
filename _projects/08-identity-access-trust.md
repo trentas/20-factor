@@ -184,6 +184,10 @@ Treat each computer-use session as a **scoped impersonation**:
 
 The architectural rule: **the agent's effective permissions are the intersection of the user's permissions and the action policy** — never broader than either. This is the same principle as Factor 8's general delegation model, applied to the high-risk surface of computer use.
 
+### Conventional Application Security
+
+Agent-specific controls sit on top of ordinary application security, not in place of it. Select requirements from the [OWASP Application Security Verification Standard (ASVS)](https://asvs.owasp.org/) by the application's surface and risk — authentication and sessions, object-level access control, input handling and injection, output encoding wherever model output is rendered, file uploads, and secrets — and verify them in tests and reviews. A top-ten list names threats; ASVS gives requirements you can check.
+
 ### Confidential Compute and TEE Attestation
 
 When the threat model includes the infrastructure operator or a compromised host — common for regulated or highly sensitive data in healthcare, finance, and defense — running inference on a generic GPU host is no longer sufficient evidence of confidentiality. **GPU Trusted Execution Environments** matured into a deployment-ready primitive in 2025–2026:
@@ -227,3 +231,4 @@ Attestation is also identity: a TEE-attested endpoint is a *verifiable identity*
 - [ ] Cross-organization agents are trusted only after verifying signed A2A Agent Cards against trusted issuers
 - [ ] Agent purchases run under user-signed, scoped, expiring mandates that the payment layer enforces
 - [ ] Agent workload identity is grounded in SPIFFE/SPIRE or platform workload-identity, not long-lived secrets
+- [ ] Conventional application security requirements are selected from OWASP ASVS by surface and risk and verified (authentication and sessions, access control, injection, output encoding, file uploads)

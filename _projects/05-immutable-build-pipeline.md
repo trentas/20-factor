@@ -125,6 +125,16 @@ Further reading: [SLSA 1.2 — Build track basics](https://slsa.dev/spec/v1.2/bu
 - **Evaluation results are part of the release**. They're not just CI output — they're the evidence that this release meets quality standards.
 - **Rollback is deployment of a previous release**, not manual surgery on a running system.
 
+### Data Migrations and Backfills
+
+The original twelve-factor rule for admin processes still holds: run one-off tasks against the same release and configuration as the app ([12-Factor: Admin Processes](https://12factor.net/admin-processes)). Schema migrations and backfills are part of the release:
+
+- **Same artifact, narrow identity.** A migration runs as a job built from the release artifact and its configuration (Factor 4), under an identity that can change the schema and little else (Factor 8).
+- **Expand, then contract.** During a rolling or canary deployment, old and new code run against the same data. Add new structures first, ship code that works with both shapes, backfill, and remove the old structures only in a later release — so rolling back the application never requires rolling back the schema.
+- **Resumable, idempotent backfills.** Process in batches with a recorded checkpoint, throttle against production load, and make re-running a batch harmless (Factor 13).
+- **One runner at a time.** A lock, or the migration tool's own bookkeeping, keeps two runners from applying the same migration concurrently.
+- **Verify before depending on it.** Check counts, constraints, and invariants after a backfill, before the code that relies on it ships. Re-embedding a vector index after an embedding-model change follows the same pattern: build the new index next to the old one, verify, then switch (Factor 17).
+
 ### Progressive Delivery
 For AI applications, progressive delivery is essential because behavior changes are harder to predict:
 
@@ -148,3 +158,4 @@ For AI applications, progressive delivery is essential because behavior changes 
 - [ ] SLSA provenance attestations are generated for container images, prompt bundles, and fine-tuned model weights
 - [ ] Release artifacts are signed (sigstore/cosign) and signatures are verified at deploy time
 - [ ] Builds are reproducible — same inputs produce byte-identical outputs (with documented exceptions for non-deterministic training, where seeds and dataset hashes are captured)
+- [ ] Schema migrations and backfills run as jobs from the same release, stay backward-compatible during rollout (expand/contract), and are resumable and verified before dependent code ships
