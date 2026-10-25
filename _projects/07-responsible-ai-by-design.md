@@ -50,7 +50,7 @@ Implement defense in depth — multiple layers, each catching different issues:
 │              MODEL LAYER                     │
 │  System prompt with safety instructions      │
 │  Constrained output schemas                  │
-│  Temperature and sampling controls           │
+│  Least-privilege tool/data scoping           │
 ├──────────────────────────────────────────────┤
 │              OUTPUT GUARDRAILS               │
 │  Content safety classification               │
@@ -314,20 +314,29 @@ eu_ai_act:
 
 The AI Act also prohibits certain AI practices outright (social scoring, real-time biometric identification in public spaces with exceptions, manipulation of vulnerable groups). Ensure your system does not fall into the "unacceptable risk" category.
 
-**Enforcement timeline (as of 2026):**
+**Application timeline** — as amended by **Regulation (EU) 2026/1744** (the "Digital Omnibus on AI", published 24 Jul 2026, in force since 27 Jul 2026):
 
 | Date | Milestone |
 |------|-----------|
-| 2 Feb 2025 | Prohibited AI practices became illegal |
-| 2 Aug 2025 | GPAI obligations applied; pre-existing GPAI models must comply by 2 Aug 2027 |
-| **2 Aug 2026** | **EU Commission's enforcement powers activate (fines, recalls, mitigations); Article 50 transparency obligations apply** |
-| 2 Aug 2027 | Pre-2025 GPAI models must reach full compliance |
+| 2 Feb 2025 | Prohibited AI practices (Art. 5) and AI literacy (Art. 4) apply |
+| 2 Aug 2025 | GPAI model obligations apply; models already on the market must comply by 2 Aug 2027 |
+| **2 Aug 2026** | **General application; Article 50 transparency obligations apply; Commission enforcement powers over GPAI providers activate** |
+| 2 Dec 2026 | Art. 50(2) machine-readable marking for generative systems placed on the market before 2 Aug 2026; new prohibitions on non-consensual intimate imagery and child sexual abuse material apply |
+| 2 Aug 2027 | Pre-existing GPAI models reach full compliance; national AI regulatory sandboxes operational |
+| **2 Dec 2027** | **High-risk obligations for standalone systems (Annex III — e.g., employment, credit scoring, education, access to essential services)** |
+| **2 Aug 2028** | **High-risk obligations for AI in products covered by Annex I harmonisation legislation** |
+| 2 Aug 2030 | Legacy high-risk systems used by public authorities must comply |
 
-Treat 2 Aug 2026 as the key near-term milestone for any system serving EU users — but re-verify these dates before relying on them: the Commission's late-2025 "Digital Omnibus" package proposed delaying and simplifying several high-risk and GPAI obligations, so specific timelines may have shifted.
+The Omnibus moved deadlines; it did not remove obligations. High-risk requirements are unchanged in substance, so treat the extra time as build time, not as a reason to postpone design. Other changes worth knowing:
+
+- **AI literacy (Art. 4)** is now an obligation to *support* literacy among staff, not to guarantee a specific level.
+- **Bias detection (new Art. 4a)** gives an explicit legal basis for processing special-category personal data to detect and correct bias, under strict, cumulative conditions — relevant to the Bias Monitoring pattern above.
+- **SMEs and small mid-caps** get simplified technical documentation and quality-management requirements.
+- **Cyber Resilience Act link (Art. 42(3))**: high-risk systems that meet the CRA's essential cybersecurity requirements are presumed to meet the AI Act's cybersecurity requirement (Art. 15).
 
 ### Article 50: Content Provenance and Watermarking
 
-EU AI Act Article 50 imposes **transparency obligations on AI-generated and AI-manipulated content**. By 2 Aug 2026, providers and deployers of generative AI systems must ensure:
+EU AI Act Article 50 imposes **transparency obligations on AI-generated and AI-manipulated content**. Since 2 Aug 2026, providers and deployers of generative AI systems must ensure the following (generative systems already on the market before that date have until 2 Dec 2026 for the machine-readable marking in Art. 50(2)):
 
 - AI-generated images, audio, video, and text are **detectable as AI-generated** through machine-readable signals (watermarks, metadata, cryptographic provenance, or other techniques)
 - Deepfakes are clearly disclosed
@@ -350,7 +359,7 @@ content_provenance:
         - c2pa.created_by: "ExampleApp v2.3"
         - c2pa.actions:
             - action: c2pa.created
-              softwareAgent: "claude-sonnet-5"
+              softwareAgent: "claude-sonnet-5-5"
         - c2pa.training_mining: notAllowed   # opt-out signal for crawlers
 
   watermark:
@@ -504,10 +513,10 @@ ai_incident_playbook:
 - [ ] Non-production environments use anonymized data with automated PII scanning to prevent leaks
 - [ ] Regulatory compliance (GDPR/LGPD) is addressed: legal basis, data minimization, right to erasure, and DPIA for high-risk AI features
 - [ ] EU AI Act risk classification is determined and documented for each AI system
-- [ ] High-risk AI systems implement mandatory requirements: risk management, data governance, technical documentation, record-keeping, transparency, human oversight, and accuracy/robustness testing
+- [ ] High-risk AI systems implement mandatory requirements — risk management, data governance, technical documentation, record-keeping, transparency, human oversight, and accuracy/robustness testing — before their application date under Regulation (EU) 2026/1744 (2 Dec 2027 for Annex III, 2 Aug 2028 for Annex I)
 - [ ] An AI incident response playbook exists and is practiced
 - [ ] Red teaming exercises run on a defined cadence with adversarial eval datasets maintained in CI
-- [ ] AI-generated content carries C2PA Content Credentials and/or SynthID-class watermarks (EU AI Act Article 50, applied 2 Aug 2026)
+- [ ] AI-generated content carries C2PA Content Credentials and/or SynthID-class watermarks (EU AI Act Article 50: applies since 2 Aug 2026; 2 Dec 2026 for generative systems already on the market)
 - [ ] An ISO/IEC 42001 AIMS or equivalent management system is in place, with cross-mapping to NIST AI RMF and EU AI Act controls
 - [ ] Training data, fine-tuning data, and RAG corpora carry license declarations captured in the AIBOM (Factor 5)
 - [ ] Crawlers and ingestion pipelines respect AI opt-out signals (robots.txt, noai/noimageai, C2PA training_mining)

@@ -40,6 +40,7 @@ This update retains the core principle and extends it for AI workloads:
 - **GPU resource management**: GPU memory must be explicitly managed. A process that crashes without releasing GPU memory can leave resources stranded until the GPU is reset.
 - **Request draining**: LLM inference requests can take 5-30+ seconds (especially with streaming). Graceful shutdown must drain in-flight requests, not drop them.
 - **Warm-up probes**: A process with a loaded model needs distinct health checks: readiness (model loaded, ready to serve) vs. liveness (process is alive but may still be loading).
+- **Disposable tool servers**: Since the MCP 2026-07-28 revision removed protocol-level sessions, remote MCP servers can be ordinary disposable processes behind a load balancer — any replica serves any request. The flip side: a dropped stream loses the in-flight request and the client must re-issue it, so side-effecting tools need idempotency keys (Factor 13), and a server shutting down should finish or explicitly fail in-flight calls rather than cut the stream.
 
 ## In Practice
 
@@ -233,3 +234,4 @@ class RequestHandler:
 - [ ] Kubernetes PodDisruptionBudgets protect inference pods during node drain; GPU memory is explicitly released on shutdown
 - [ ] Spot/preemptible GPU instance handling is tested: SIGTERM mid-inference triggers graceful drain and checkpoint before exit
 - [ ] CRIU checkpoint-restore is evaluated for model-serving pods with startup times exceeding readiness SLO targets
+- [ ] Remote MCP servers run as stateless, load-balanced replicas that finish or explicitly fail in-flight calls on shutdown

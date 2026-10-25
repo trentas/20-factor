@@ -161,12 +161,12 @@ class EmbeddingCache:
 
 ### Provider-Level Prompt Caching
 
-Major LLM providers (Anthropic, OpenAI, Google) now offer **native prompt caching** as a first-class feature. When the prefix of a request matches a previously cached prefix, the provider reuses cached computation — reducing input token costs by up to 90% and latency by up to 85%. This is one of the highest-leverage cost optimizations available.
+Major LLM providers (Anthropic, OpenAI, Google) now offer **native prompt caching** as a first-class feature. When the prefix of a request matches a previously cached prefix, the provider reuses cached computation — reducing input token costs by up to 90–95% and latency by up to 85%. This is one of the highest-leverage cost optimizations available.
 
 ```python
 # Anthropic prompt caching — mark stable content with cache_control
 response = await client.messages.create(
-    model="claude-sonnet-4-5-20250929",
+    model="claude-sonnet-5-5",
     system=[
         {
             "type": "text",
@@ -185,7 +185,7 @@ response = await client.messages.create(
 )
 
 # Result: first request pays full price + small cache write fee
-# Subsequent requests with same prefix: 90% discount on cached tokens
+# Subsequent requests with same prefix: cached tokens bill at 5-10% of the input price
 # response.usage.cache_creation_input_tokens → tokens written to cache
 # response.usage.cache_read_input_tokens → tokens read from cache (discounted)
 ```
@@ -193,15 +193,16 @@ response = await client.messages.create(
 **Design patterns that maximize provider cache hit rates:**
 - **Stable prefix, variable suffix**: Put system prompts, knowledge bases, and few-shot examples *before* the variable user content. The prefix must match byte-for-byte.
 - **Order matters**: Rearranging content invalidates the cache. Keep the order of system prompt sections consistent across requests.
-- **Minimum cacheable length**: Providers require a minimum prefix to activate caching, and it varies by model — for Anthropic, ~4096 tokens on Opus 4.x and Haiku 4.5, ~2048 on Sonnet 4.6, ~1024 on Sonnet 4.5. Below the threshold, caching silently no-ops.
+- **Minimum cacheable length**: Providers require a minimum prefix to activate caching, and it varies by model — for Anthropic it ranges from 512 tokens on the newest models to 4096 on some older ones, and it is not monotonic across generations. Below the threshold, caching silently no-ops, so re-check it whenever you change the pinned model.
 - **Cache lifetime**: Provider caches are ephemeral — a default 5-minute TTL, with a 1-hour TTL available (at a higher write cost) for bursty or low-traffic endpoints. High-traffic endpoints benefit most.
 - **Multi-turn conversations**: In chat applications, the conversation history grows but the system prompt prefix stays the same — naturally benefiting from prefix caching.
+- **Deterministic tool lists**: Tool definitions render at the very start of the prompt, so a tool list whose order changes between requests invalidates everything after it. The MCP 2026-07-28 revision asks servers to return `tools/list` in deterministic order for exactly this reason; sort tool definitions in your own harness as well.
 
 ```yaml
 # prompt-caching-config.yaml
 prompt_caching:
   strategy: prefix_stable
-  min_cacheable_tokens: 4096   # model-dependent: 4096 (Opus 4.x / Haiku 4.5), 2048 (Sonnet 4.6), 1024 (Sonnet 4.5)
+  min_cacheable_tokens: 512    # model-dependent (512-4096 for Anthropic models) — re-check on every model change
 
   # Structure: cached sections first, variable sections last
   sections_order:
@@ -303,7 +304,7 @@ Requirements:
 - Quality is identical to standard decoding (acceptance sampling guarantees this mathematically)
 - Most benefit on long-output tasks (code generation, document summarization); minimal benefit on short-output tasks (classification)
 
-Speculative decoding is built into vLLM, TGI, and TensorRT-LLM as a runtime toggle — evaluate it as an architecture optimization per task type (Factor 14), not a global configuration.
+Speculative decoding is built into vLLM, SGLang, and TensorRT-LLM as a runtime toggle — evaluate it as an architecture optimization per task type (Factor 14), not a global configuration.
 
 ### Multi-Region Cache Replication
 
@@ -322,6 +323,7 @@ AI caches need careful invalidation strategies:
 - **Content-based invalidation**: When source documents change, invalidate cached responses that were generated from those documents.
 - **Model-based invalidation**: When the model version changes, cached responses from the old model should be invalidated.
 - **Feedback-based invalidation**: When a user marks a cached response as unhelpful, remove it from the cache.
+- **Protocol cache hints**: MCP list and read results carry `ttlMs` (freshness) and `cacheScope` (`public` may be cached by shared intermediaries such as a gateway; `private` only by the requesting client). Honor them — a tool list that varies by the caller's authorization must not be served from a shared cache to another caller.
 
 ## Compliance Checklist
 
@@ -331,6 +333,7 @@ AI caches need careful invalidation strategies:
 - [ ] Embedding caching avoids recomputation of embeddings for unchanged content
 - [ ] Provider-level prompt caching is enabled and prompts are structured for maximum cache hit rates (stable prefix, variable suffix)
 - [ ] Prompt caching metrics (hit rate, cost savings) are monitored
+- [ ] Cached MCP discovery results honor the server's `ttlMs` and `cacheScope` hints
 - [ ] Cache invalidation strategies account for time, content changes, and model updates
 - [ ] Cache hit rates and cost savings are monitored (Factor 15)
 - [ ] Any process instance can handle any request — no sticky sessions required

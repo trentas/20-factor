@@ -24,7 +24,7 @@ AI applications amplify the parity problem. A prompt that works well with one mo
 This update retains the core parity principle and extends it to cover:
 
 - Model version parity across environments
-- AI service configuration parity (temperature, token limits, safety settings)
+- AI service configuration parity (reasoning effort, token limits, safety settings)
 - Vector database data representativeness in non-production environments
 - Evaluation benchmark consistency across environments
 - Cost and rate limit simulation in development
@@ -36,9 +36,9 @@ This update retains the core parity principle and extends it to cover:
 - **Autonomous coding agents** (Claude Code, Devin, Codex) amplify the need for ephemeral environments. An agent generating code on a branch cannot manually verify "it works on staging" — it needs an automated, production-parity environment that spins up, validates, and reports results. See the Ephemeral Environments section below.
 
 ### AI-Native Applications
-- **Model behavior parity**: If production uses `claude-sonnet-4-5-20250929`, staging should use the same model version, not `claude-haiku-4-5-20251001` to save costs. Behavior differences between models are the most common source of staging-vs-production surprises.
+- **Model behavior parity**: If production uses `claude-sonnet-5-5`, staging should use the same model version, not `claude-haiku-5-5` to save costs. Behavior differences between models are the most common source of staging-vs-production surprises.
 - **Data representativeness**: Production vector databases contain millions of documents with real-world messiness. Staging vector databases with 100 curated documents don't surface the same retrieval challenges.
-- **Configuration drift**: If staging uses `temperature=0.7` while production uses `temperature=0.3`, you're testing different systems.
+- **Configuration drift**: If staging runs at `effort: low` while production runs at `effort: high`, you're testing different systems — effort changes answer quality, latency, tool-call patterns, and cost.
 - **Safety and guardrail parity**: If content safety filters are disabled in staging "to make development easier," you won't catch safety issues until production.
 
 ## In Practice
@@ -48,7 +48,7 @@ This update retains the core parity principle and extends it to cover:
 | Dimension | Anti-Pattern | Best Practice |
 |-----------|-------------|---------------|
 | Model version | Staging uses a cheaper model | Same model version across all environments |
-| Model config | Different temperature/tokens per env | Same inference parameters, or intentional and documented differences |
+| Model config | Different effort/tokens per env | Same inference parameters, or intentional and documented differences |
 | Vector DB data | Staging has 100 docs, prod has 1M | Staging has a representative sample (10K+) with real-world data characteristics |
 | Safety filters | Disabled in dev for convenience | Enabled in all environments; dev has a bypass for specific test cases |
 | Rate limits | No limits in dev | Simulated limits in dev that match production constraints |
@@ -89,8 +89,8 @@ vector_db_staging:
 # base-ai-config.yaml (shared)
 models:
   summarization:
-    model: claude-sonnet-4-5-20250929
-    temperature: 0.3
+    model: claude-sonnet-5-5
+    effort: medium
     max_tokens: 1024
 
 # staging-overrides.yaml (minimal differences, documented)
@@ -105,7 +105,7 @@ overrides:
 
 # NEVER override in staging:
 # - model version
-# - temperature
+# - reasoning effort and other inference parameters
 # - safety settings
 # - prompt templates
 ```
@@ -173,7 +173,7 @@ ephemeral_environments:
 
   parity:
     model_versions: production   # same model versions as prod
-    inference_config: production # same temperature, tokens, safety
+    inference_config: production # same effort, tokens, safety
     vector_db: staging_snapshot  # representative data sample
     safety_filters: enabled      # never skip guardrails
 
@@ -218,9 +218,9 @@ Traffic mirroring (shadow traffic, dark launch) runs new model versions or promp
 # AI Gateway shadow routing config
 routes:
   - name: document-summary
-    primary: anthropic/claude-sonnet-5
+    primary: anthropic/claude-sonnet-5-5
     shadow:
-      model: anthropic/claude-opus-4-8   # evaluate new model on live traffic
+      model: anthropic/claude-opus-5-5   # evaluate new model on live traffic
       sample_rate: 0.10                  # mirror 10% of requests
       log_responses: true
       evaluate_quality: true             # run Factor 6 eval on shadow responses
@@ -240,7 +240,7 @@ Some differences are intentional and acceptable if documented:
 
 What should **never** diverge:
 - Model versions (unless explicitly testing a model upgrade)
-- Inference parameters (temperature, top-p, etc.)
+- Inference parameters (reasoning effort, max tokens, and any sampling parameters the model accepts)
 - Safety and guardrail settings
 - Prompt template content
 - Embedding model (requires re-embedding to change)
@@ -248,7 +248,7 @@ What should **never** diverge:
 ## Compliance Checklist
 
 - [ ] Production and staging use the same model versions for all AI services
-- [ ] Inference parameters (temperature, max tokens, etc.) are consistent across environments
+- [ ] Inference parameters (reasoning effort, max tokens, and any sampling parameters the model accepts) are consistent across environments
 - [ ] Safety filters and guardrails are enabled in all environments, including development
 - [ ] Staging vector databases contain representative samples of production data
 - [ ] Embedding models are consistent across environments

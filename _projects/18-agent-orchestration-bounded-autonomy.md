@@ -103,7 +103,7 @@ User → Supervisor Agent → Worker Agent 1 ─┐
 agents:
   research-assistant:
     purpose: "Research topics using web search and knowledge base"
-    model: claude-sonnet-4-5-20250929
+    model: claude-sonnet-5-5
 
     tools:
       - name: web_search
@@ -356,12 +356,13 @@ The **Model Context Protocol (MCP)** standardizes how agents discover and invoke
 agents:
   research-assistant:
     purpose: "Research topics using web search and knowledge base"
-    model: claude-sonnet-5
+    model: claude-sonnet-5-5
 
     # Tools provided via MCP servers (Factor 10 backing services)
     mcp_servers:
       - name: web-search
-        transport: sse
+        transport: streamable_http       # HTTP+SSE is deprecated
+        protocol_version: "2026-07-28"
         endpoint: https://mcp.example.com/web-search
         tool_permissions:
           web_search: autonomous
@@ -369,7 +370,7 @@ agents:
 
       - name: knowledge-base
         transport: stdio
-        command: "npx @company/mcp-kb"
+        command: "npx @company/mcp-kb@2.3.1"   # pinned version, scoped package (Factor 3)
         tool_permissions:
           search_documents: autonomous
           update_document: human_approval
@@ -386,6 +387,7 @@ MCP enables key capabilities for agent orchestration:
 - **Swappable tool providers**: Replace an MCP server without changing agent code — the agent discovers the new server's tools automatically (Factor 10).
 - **Permission layering**: MCP defines what tools *exist*; the agent's permission model (above) defines what tools it's *allowed to use*. These are separate concerns.
 - **Resource access**: Beyond tools, MCP servers can expose resources (files, data) and prompt templates that agents can use contextually.
+- **Human input through the protocol**: since 2026-07-28, a server that needs a confirmation or a credential returns an `input_required` result and the client retries with the answer (multi round-trip requests). Route those requests through the same approval gates as any other human-in-the-loop decision, and persist them durably (Factor 13).
 
 ### A2A for Multi-Agent Interoperability
 
@@ -402,8 +404,10 @@ class A2AOrchestrator:
     async def delegate_task(self, agent_name: str, task: str) -> A2ATaskResult:
         endpoint = self.agents[agent_name]
 
-        # Discover agent capabilities via Agent Card
+        # Discover agent capabilities via Agent Card; verify its signature (A2A v1.0)
+        # before trusting what it claims — see Factor 8
         card = await self.fetch_agent_card(endpoint)
+        self.verify_card_signature(card, trusted_issuers=self.trusted_issuers)
 
         # Submit task via A2A protocol
         task_id = await self.submit_task(endpoint, task)
@@ -418,6 +422,11 @@ class A2AOrchestrator:
                 # Agent needs human input — escalate
                 response = await self.request_human_input(update)
                 await self.send_input(endpoint, task_id, response)
+            elif update.status == "auth_required":
+                # Agent needs a credential — obtain a scoped, delegated token (Factor 8)
+                await self.send_input(endpoint, task_id, await self.delegate_auth(update))
+            elif update.status in ("failed", "canceled", "rejected"):
+                raise AgentTaskError(agent_name, task_id, update.status)
 
         raise AgentTimeoutError(agent_name, task_id)
 ```
@@ -465,12 +474,13 @@ agents:
 
 ### The Skills Primitive
 
-A **Skill** is a named, versioned, composable unit of agent capability — a bundle of a prompt template, one or more tool definitions, and an execution policy. Skills are a higher-level abstraction than raw tools: a tool is a single function; a skill encodes the *context* for using it correctly.
+A **Skill** is a packaged unit of agent capability — instructions plus optional scripts, references, and assets — in the open Agent Skills format (`SKILL.md`; see Factor 2). Skills sit above raw tools: a tool is a single function; a skill encodes the *procedure and context* for using tools correctly, and is loaded only when relevant (progressive disclosure).
 
-Skills are versioned artifacts committed to version control (Factor 1) and registered via MCP tool schemas (Factor 2). An agent's capability manifest declares a list of skill names + versions, not a loose bag of tool definitions. This enables:
-- Skill reuse across agents without copy-pasting tool definitions
-- Independent versioning and A/B testing of skill implementations
-- Skill discovery via agent directory services (cross-ref Factor 2)
+For orchestration, this means:
+- **Breadth without context bloat**: each skill costs roughly its name and description (~100 tokens) until activated, so an agent can carry a broad repertoire without a huge system prompt (Factor 17).
+- **Skills are not permissions**: activating a skill must not widen what the agent can do. Tool permissions and execution budgets stay in the agent definition and are enforced in code. Treat a third-party skill's experimental `allowed-tools` field as something to review, not a grant your harness honors automatically.
+- **Versioned, evaluated, and supply-chain-checked**: skills are committed (Factor 1), validated in CI, and evaluated like prompts (Factor 6). Third-party skills are dependencies that can carry scripts and instructions someone else wrote (Factor 3).
+- **Reuse and discovery**: the same skill directory works across agents and across tools that support the standard, and can be published to agent directory services (Factor 2).
 
 ### Voice and Realtime Agents
 
@@ -538,7 +548,9 @@ Swarm frameworks accelerate prototyping but require explicit budget enforcement 
 - [ ] Multi-agent communication uses standardized protocols (A2A) for cross-team and cross-framework interoperability
 - [ ] Computer use agents run in sandboxed environments with tighter budgets and confirmation gates for GUI actions
 - [ ] Agent execution patterns and budget usage are monitored for optimization
-- [ ] Skills are versioned, registered artifacts — agents declare capabilities as skill-name + version, not inline tool definitions
+- [ ] Skills follow the Agent Skills format and are versioned, reviewed artifacts; activating a skill never widens tool permissions or budgets
+- [ ] MCP servers are pinned to versions from verified publishers; remote servers use Streamable HTTP, and MCP input requests route through the same approval gates as other human-in-the-loop decisions
+- [ ] Cross-organization A2A agents are trusted only after verifying their signed Agent Cards, and all terminal task states (failed, canceled, rejected) are handled
 - [ ] Voice/realtime agents have TTFA SLOs configured, VAD barge-in handling implemented, and session state persisted via Factor 13
 - [ ] Reflexion / self-critique loops are gated on task complexity with token budget tracked separately; quality improvement is validated against the eval suite before broad enablement
 - [ ] Agent swarms (CrewAI, Microsoft Agent Framework, MetaGPT, etc.) have aggregate swarm-level budgets and circuit breakers in addition to per-agent limits

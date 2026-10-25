@@ -86,9 +86,9 @@ models:
 
   generation:
     provider: anthropic
-    model: claude-sonnet-4-5-20250929
+    model: claude-sonnet-5-5
     pinned: true
-    fallback: claude-haiku-4-5-20251001
+    fallback: claude-haiku-5-5
 
   reranker:
     registry: internal

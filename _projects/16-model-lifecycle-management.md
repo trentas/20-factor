@@ -41,27 +41,30 @@ Maintain a registry of all models used in the application:
 models:
   summarization-primary:
     provider: anthropic
-    model_id: claude-sonnet-4-5-20250929
-    api_version: "2025-01-01"
+    model_id: claude-sonnet-5
+    id_semantics: immutable           # immutable snapshot | dated snapshot | floating alias
+    api_version: "2023-06-01"         # pinned API version — see "Platform and protocol deprecations"
     purpose: "Document summarization"
     status: active
-    deployed_date: "2025-03-15"
+    deployed_date: "2026-03-15"
     eval_scores:
       accuracy: 0.94
       relevance: 0.91
-      cost_per_1k_requests: 12.50
+      cost_per_1k_requests: 8.10
     owner: team-ai-platform
 
   summarization-candidate:
     provider: anthropic
-    model_id: claude-sonnet-5  # newer version
+    model_id: claude-sonnet-5-5  # newer version
+    id_semantics: immutable
+    api_version: "2026-10-21"
     purpose: "Document summarization — evaluation candidate"
     status: evaluating
     eval_scores:
       accuracy: 0.95
       relevance: 0.93
-      cost_per_1k_requests: 11.80
-    notes: "5% quality improvement, 6% cost reduction. A/B test started 2025-06-10."
+      cost_per_1k_requests: 7.60
+    notes: "+5% quality, -6% cost at the same list price (shorter outputs). Request shape changes: no sampling parameters. A/B test started 2026-10-12."
 
   classification-v2:
     type: fine-tuned
@@ -119,23 +122,27 @@ class ModelSelector:
 ```yaml
 # Version pinning levels
 pinning:
-  # Level 1: Pin to specific model version (strictest)
+  # Level 1: Pin to an immutable model identifier (strictest)
   strict:
-    model: claude-sonnet-4-5-20250929
-    note: "Exact version — behavior is fully reproducible"
+    model: claude-sonnet-5-5
+    note: "Immutable ID — the provider will not change the model behind it"
 
-  # Level 2: Pin to model family (moderate)
-  family:
-    model: claude-sonnet-4-5-*
-    note: "Allows minor updates within the same model family"
+  # Level 2: Floating alias (moderate)
+  alias:
+    model: "<provider alias that tracks the newest snapshot>"
+    note: "Follows provider updates automatically — behavior can change without a deploy"
 
   # Level 3: Pin to capability tier (loosest)
   tier:
-    model: claude-sonnet-*
+    model: "any Sonnet-class model"
     note: "Allows model generation changes — requires eval gates"
 
   # Recommended: Use strict pinning in production with eval-gated upgrades
 ```
+
+**Know what kind of identifier you hold.** "Pinned" means different things at different providers, and sometimes across generations at the same provider. Some IDs are dated snapshots with an undated alias that moves (Anthropic's `claude-sonnet-4-5-20250929` behind the `claude-sonnet-4-5` alias); some current IDs carry no date yet are themselves immutable (`claude-sonnet-5-5`); and some names float by design (`-latest`-style aliases, or a hyperscaler deployment set to auto-update). Read the provider's model-ID semantics before deciding what counts as pinned, and record it in the registry (`id_semantics` above).
+
+**Pin the request surface, not just the model.** Newer models can remove parameters or change defaults: sampling parameters rejected on reasoning models, forced tool choice or assistant prefill no longer accepted, a different default reasoning effort. A model upgrade is a code change whenever the request shape must change — run it through the same eval gate and release process (Factor 5, Factor 6), and set every behavior-relevant parameter explicitly instead of inheriting a default that the next model may change.
 
 ### A/B Testing Models
 
@@ -173,7 +180,7 @@ class ModelABTest:
 
 ```yaml
 # Model deprecation timeline
-deprecation_plan:
+deprecation_plan:                   # illustrative timeline
   model: claude-3-sonnet-20240229
   status: deprecated
   timeline:
@@ -181,7 +188,7 @@ deprecation_plan:
     soft_deadline: "2025-06-01"     # Warnings in logs
     hard_deadline: "2025-09-01"      # Model removed by provider
   migration:
-    target: claude-sonnet-4-5-20250929
+    target: claude-sonnet-4-20250514
     eval_status: passed              # New model passed eval suite
     migration_steps:
       - "Update model-registry.yaml"
@@ -202,17 +209,17 @@ Distillation uses a larger, more capable model (the "teacher") to generate train
 # distillation-pipeline.yaml
 distillation:
   teacher:
-    model: claude-opus-4-6
+    model: claude-opus-5-5
     purpose: "Generate high-quality labeled data for student training"
 
   student:
-    base_model: claude-haiku-4-5-20251001   # or open-source base model
+    base_model: open-weights-8b-instruct    # small open-weights base, pinned to a commit hash
     purpose: "Production inference at 10-20x lower cost than teacher"
 
   pipeline:
     - step: generate_training_data
       source: production_inputs             # real production queries
-      teacher_model: claude-opus-4-6
+      teacher_model: claude-opus-5-5
       output_format: jsonl
       sample_size: 50000
       quality_filter:
@@ -334,6 +341,7 @@ fine_tuning:
 - [ ] Model A/B testing infrastructure enables controlled rollout of model changes
 - [ ] Deprecation plans exist for every model in use, with migration timelines
 - [ ] Provider model deprecation notices are tracked and acted on proactively
+- [ ] The registry records each model ID's semantics (immutable snapshot, dated snapshot, or floating alias) and the pinned API version
 - [ ] Fine-tuned models follow a versioned pipeline (data → train → eval → deploy)
 - [ ] Model distillation pipelines (teacher → student) are evaluated for quality gap vs. cost reduction
 - [ ] Model changes are tracked in the same release process as code changes (Factor 5)

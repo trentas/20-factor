@@ -55,7 +55,7 @@ services:
     primary:
       provider: anthropic
       endpoint: https://api.anthropic.com
-      model: claude-sonnet-4-5-20250929
+      model: claude-sonnet-5-5
       credentials: vault://secrets/anthropic-api-key
       timeout_ms: 30000
       max_retries: 3
@@ -177,7 +177,7 @@ ai_gateway:
   providers:
     - name: anthropic
       priority: 1
-      models: [claude-sonnet-4-5-*, claude-haiku-4-5-*]
+      models: [claude-sonnet-5-5, claude-haiku-5-5]   # explicit IDs, no wildcards
     - name: openai
       priority: 2
       models: [gpt-5.5, gpt-5.4-mini]

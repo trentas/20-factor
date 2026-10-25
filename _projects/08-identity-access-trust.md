@@ -52,7 +52,7 @@ This update retains all traditional security requirements and extends them to co
 agents:
   document-summarizer:
     type: ai-agent
-    model: claude-sonnet-4-5-20250929
+    model: claude-sonnet-5-5
     identity:
       id: "agent:document-summarizer:v2"
       certificates: ["x509:agents/doc-summarizer.pem"]
@@ -75,7 +75,7 @@ agents:
 
   customer-support-agent:
     type: ai-agent
-    model: claude-sonnet-4-5-20250929
+    model: claude-sonnet-5-5
     identity:
       id: "agent:customer-support:v3"
     permissions:
@@ -166,9 +166,9 @@ Every agent action must be auditable:
     "response": "Your refund has been processed..."
   },
   "authorization": "auto_approved",
-  "model": "claude-sonnet-4-5-20250929",
+  "model": "claude-sonnet-5-5",
   "token_usage": {"input": 1250, "output": 340},
-  "cost_usd": 0.012,
+  "cost_usd": 0.006,
   "session_id": "sess_abc123"
 }
 ```
@@ -180,6 +180,7 @@ When agents interact with external services:
 - Rotate agent credentials automatically and frequently.
 - Use service accounts for agent identity, not shared user accounts.
 - Implement token downscoping — agent tokens should have the minimum scope needed for the current task.
+- For MCP specifically (2026-07-28 authorization): register clients with Client ID Metadata Documents rather than Dynamic Client Registration, validate the `iss` parameter on every authorization response (RFC 9207), and bind stored credentials to the issuer that minted them (cross-ref Factor 2).
 
 ### Zero Trust for AI Agents
 Apply zero trust principles to agent-to-agent and agent-to-service communication:
@@ -279,5 +280,5 @@ Attestation is also identity: a TEE-attested endpoint is a *verifiable identity*
 - [ ] Computer-use / browser-agent sessions run in per-session sandboxes with no inherited cookies, scoped action policy, and out-of-band confirmation for irreversible actions
 - [ ] Screenshots from computer-use sessions are redacted server-side and treated as PII at rest
 - [ ] GPU TEE attestation (H100/H200/Blackwell Confidential Computing or equivalent) is required for inference on regulated/sensitive data, with attestation verified before submitting data
-- [ ] MCP authorization uses OAuth 2.1 with scoped, short-lived tokens (cross-ref Factor 2)
+- [ ] MCP authorization uses OAuth 2.1 with scoped, short-lived tokens, Client ID Metadata Documents for registration, and issuer (`iss`) validation (cross-ref Factor 2)
 - [ ] Agent workload identity is grounded in SPIFFE/SPIRE or platform workload-identity, not long-lived secrets

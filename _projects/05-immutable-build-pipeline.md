@@ -37,7 +37,7 @@ This update retains the immutability principle and extends the pipeline to inclu
 
 ### AI-Native Applications
 - **Prompt compilation**: Prompt templates with variables, includes, and conditional sections are compiled into concrete prompts at build time. This catches template errors before runtime.
-- **Model version pinning**: The build stage resolves model references (e.g., `claude-sonnet-latest`) to specific, immutable model versions and records them in the release manifest.
+- **Model version pinning**: The build stage resolves model references (e.g., a floating alias) to specific, immutable model identifiers and records them in the release manifest — along with the provider API version and protocol versions (MCP, A2A) the release was tested against. What counts as immutable differs by provider; see Factor 16.
 - **Evaluation gates**: Before a release is promoted, automated evaluations run against golden datasets. Releases that fail quality thresholds (accuracy, safety, cost) are blocked.
 - **Artifact composition**: A release artifact includes the application binary, compiled prompts, model version manifest, evaluation results, and deployment configuration — all immutable and tied to a single version.
 
@@ -123,16 +123,22 @@ The release artifact is immutable and self-describing:
 
 ```json
 {
-  "version": "2025.10.15-abc123f",
+  "version": "2026.10.22-abc123f",
   "build_sha": "abc123f",
-  "timestamp": "2025-10-15T14:30:00Z",
+  "timestamp": "2026-10-22T14:30:00Z",
   "artifacts": {
     "container": "registry.example.com/app:abc123f",
-    "prompts": "s3://releases/abc123f/prompts.tar.gz"
+    "prompts": "s3://releases/abc123f/prompts.tar.gz",
+    "skills": "s3://releases/abc123f/skills.tar.gz",
+    "sbom": "s3://releases/abc123f/sbom.cdx.json"
   },
   "models": {
-    "summarization": "claude-sonnet-4-5-20250929",
+    "summarization": { "id": "claude-sonnet-5-5", "effort": "medium", "api_version": "2026-10-21" },
     "embedding": "text-embedding-3-small@v2"
+  },
+  "protocols": {
+    "mcp": "2026-07-28",
+    "mcp_servers": { "knowledge-base": "@company/mcp-kb@2.3.1" }
   },
   "evaluations": {
     "quality_accuracy": 0.94,
@@ -209,7 +215,7 @@ For AI applications, progressive delivery is essential because behavior changes 
 - [ ] Build artifacts are immutable — never patched in place
 - [ ] Each release has a unique, traceable version identifier
 - [ ] Prompt templates are compiled and validated during the build stage
-- [ ] Model versions are resolved and pinned at build time, recorded in the release manifest
+- [ ] Model versions are resolved and pinned at build time, recorded in the release manifest together with effort settings, provider API version, and MCP/A2A protocol and server versions
 - [ ] Automated evaluations gate the pipeline — failed evals block the release
 - [ ] Evaluation results (quality, safety, cost) are recorded as part of the release metadata
 - [ ] Container images are scanned for vulnerabilities before release

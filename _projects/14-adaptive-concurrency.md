@@ -244,13 +244,15 @@ By 2026 the per-call configuration shifted from raw `budget_tokens` to **effort 
 ```python
 # Anthropic Claude 4.6+ (and similar APIs from other providers)
 response = await client.messages.create(
-    model="claude-sonnet-5",
+    model="claude-sonnet-5-5",
     thinking={"type": "adaptive"},              # adaptive thinking; model sets depth
     output_config={"effort": "high"},           # low | medium | high | xhigh | max
     messages=[...],
 )
 # Adaptive thinking lets the model set depth per request; `effort` bounds overall
 # spend. Explicit effort levels give predictable cost and latency for production routing.
+# On several current models thinking cannot be turned off at all, and default effort
+# differs by model — always set it explicitly per route.
 ```
 
 Production patterns:
@@ -285,7 +287,7 @@ For self-hosted inference, the **inference engine** choice has compounding effec
 |--------|----------|---------------------|
 | **vLLM** | Mature general-purpose serving | PagedAttention, continuous batching, prefix caching, speculative decoding |
 | **TensorRT-LLM** | Maximum NVIDIA GPU throughput | NVFP4 (Blackwell), fused MoE kernels, custom CUDA |
-| **TGI** (HuggingFace) | Easy operationalization | Streaming, watermarking hooks, simple deployment |
+| **TGI** (HuggingFace) | *Maintenance mode since Dec 2025* — Hugging Face now recommends vLLM or SGLang | Plan a migration for existing deployments; don't start new ones |
 | **SGLang** | Programmable serving with structured outputs | Constrained decoding, control flow in serving |
 
 The compounding effect comes from stacking optimizations:
@@ -325,6 +327,6 @@ Go beyond CPU and memory for auto-scaling decisions:
 - [ ] Scaling decisions and cost impact are observable (Factor 15)
 - [ ] Thinking-token budgets are configured per route (adaptive thinking + effort levels low/medium/high/xhigh/max) and rate-limited separately from output tokens
 - [ ] Inference placement (edge/NPU vs GPU vs cloud) is a routing decision, not hardcoded
-- [ ] Inference-engine choice (vLLM / TensorRT-LLM / TGI / SGLang) is pinned per release and measured in tokens/sec/dollar and tokens/sec/watt
+- [ ] Inference-engine choice (vLLM / SGLang / TensorRT-LLM) is pinned per release and measured in tokens/sec/dollar and tokens/sec/watt; deployments on maintenance-mode engines (e.g., TGI) have a migration plan
 - [ ] Inference optimizations (speculative decoding, FP4/INT4 quantization, continuous batching, PagedAttention) are evaluated as architectural levers, not runtime knobs
 - [ ] Spot/preemptible GPU usage is tested for graceful drain and recovery (cross-ref Factor 9, Factor 13)

@@ -90,8 +90,8 @@ prompts/
 ```yaml
 # context-budget.yaml — allocate the context window intentionally
 context_budget:
-  model: claude-sonnet-4-5-20250929
-  max_context_tokens: 200000       # models now support up to 1M+ tokens
+  model: claude-sonnet-5-5
+  max_context_tokens: 1000000      # window capacity — not a target to fill
   max_output_tokens: 4096
 
   allocation:
@@ -402,14 +402,14 @@ multimodal_outputs:
 
 ### Extended Thinking and Reasoning Models
 
-Reasoning models (Claude's extended thinking, OpenAI's GPT-5 series with reasoning effort, DeepSeek R-series) introduce a fundamentally different token economy: **thinking tokens**. These models generate internal reasoning chains before producing a visible response, and those thinking tokens consume budget, incur cost, and affect latency — but are not shown to the user.
+Reasoning models (Claude's adaptive thinking, OpenAI's GPT-5 series with reasoning effort, DeepSeek R-series) introduce a fundamentally different token economy: **thinking tokens**. These models generate internal reasoning chains before producing a visible response, and those thinking tokens consume budget, incur cost, and affect latency — but are not shown to the user.
 
 This changes context engineering in several ways:
 
 ```yaml
 # reasoning-effort.yaml — control reasoning depth per task with effort levels
 reasoning_effort:
-  model: claude-opus-4-6
+  model: claude-opus-5-5
   thinking:
     type: adaptive                   # model sets thinking depth; no fixed token budget
   # `effort` bounds overall spend: low | medium | high | xhigh | max
@@ -428,17 +428,17 @@ reasoning_effort:
       note: "Research, planning, and multi-step reasoning benefit most"
 
     simple_qa:
-      thinking:
-        type: disabled               # disable extended thinking entirely
-      note: "Disable thinking (or use a lighter model) for simple retrieval"
+      effort: low                    # several current models cannot disable thinking at all
+      note: "Use the lowest effort, or route to a lighter model, for simple retrieval"
 ```
 
 **Key engineering decisions for reasoning models:**
-- **Thinking tokens are invisible but expensive**: A response with 500 output tokens may consume 10,000+ thinking tokens. Factor 20 cost models must account for this — thinking tokens are typically priced differently from output tokens.
+- **Thinking tokens are invisible but expensive**: A response with 500 output tokens may consume 10,000+ thinking tokens. Factor 20 cost models must account for this — thinking tokens are typically billed at output-token rates.
 - **Not all tasks benefit from reasoning**: Classification, simple Q&A, and format conversion see little quality improvement from extended thinking. Use reasoning models selectively — route simple tasks to standard models (Factor 20 model routing).
 - **Effort as a quality lever**: Higher effort generally improves quality for complex tasks, but with diminishing returns. Tune the effort level per task type based on evaluation results (Factor 6).
 - **Streaming considerations**: With reasoning models, the first visible token may take significantly longer to appear (the model is "thinking" first). Design UIs to handle this latency — show a "thinking" indicator rather than an empty response.
-- **Summarized thinking for observability**: Some providers return a summarized version of the thinking process. Log this for debugging and quality analysis (Factor 15), but be aware it's a summary, not the full chain.
+- **Summarized thinking for observability**: Some providers return a summarized version of the thinking process — and on several current models even the summary is omitted unless you request it. Log it for debugging and quality analysis (Factor 15), but be aware it's a summary, not the full chain.
+- **Defaults move between models**: default effort, whether thinking can be turned off, and how thinking blocks must be passed back all differ across model generations. Set effort explicitly per task profile and re-run the effort sweep in your eval suite on every model upgrade (Factor 16).
 
 ### GraphRAG for Knowledge Graph Retrieval
 

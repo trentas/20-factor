@@ -29,7 +29,7 @@ The closest analogue is the general practice of testing, but EDD is fundamentall
 
 This factor *is* the AI change. It exists because AI systems introduced non-determinism at the application layer. Specifically:
 
-- **LLM outputs are non-deterministic**: Even at temperature 0, outputs can vary across provider infrastructure changes.
+- **LLM outputs are non-deterministic**: Even with fixed settings — and many reasoning models no longer expose sampling controls at all — outputs vary from run to run and across provider infrastructure changes.
 - **Quality is subjective and multi-dimensional**: A response can be accurate but not concise, helpful but not safe, fluent but factually wrong.
 - **Regression is subtle**: A prompt change that improves one dimension may degrade another. Only broad evaluation suites catch these trade-offs.
 - **Model updates change behavior**: When a provider updates a model, your application's behavior changes without any code change on your part.
@@ -184,7 +184,7 @@ Autonomous coding agents (Claude Code, Devin, Codex) make evaluation gates *more
 Golden datasets are bottlenecked by the availability of human-labeled examples. Synthetic data generation unlocks scale: use a capable model to generate adversarial examples, edge cases, and realistic inputs, then filter for quality before adding to the eval set.
 
 ```python
-generator = LLM("claude-opus-4-8")
+generator = LLM("claude-opus-5-5")
 for category in ["edge_cases", "adversarial_inputs", "rare_language_patterns"]:
     candidates = generator.generate_eval_examples(
         task_description=task.description,
@@ -279,4 +279,4 @@ The methodology is tool-agnostic — what matters is that evaluations exist, run
 - [ ] Online evaluation continuously monitors production output quality
 - [ ] Synthetic eval data generation pipelines exist to scale coverage beyond human-labeled examples
 - [ ] LLM-as-judge calibration is tracked against a locked human anchor set, with alerts for calibration drift
-- [ ] Public benchmarks (MMLU, SWE-bench, HumanEval, etc.) are used as reference points during model selection, not as primary eval gates
+- [ ] Public benchmarks (GPQA Diamond, SWE-bench Verified, Terminal-Bench, etc.) are used as reference points during model selection, not as primary eval gates
