@@ -201,6 +201,25 @@ deprecation_plan:                   # illustrative timeline
     quality_impact: "+3% accuracy"
 ```
 
+#### Platform and Protocol Deprecations
+
+Models are not the only dependencies that get retired. Platform features, API versions, and protocol versions follow the same lifecycle — and they often break more code than a model swap, because they change request shapes and remove whole capabilities:
+
+```yaml
+platform_deprecations:
+  - item: "OpenAI Evals platform (hosted evals, graders)"
+    impact: "read-only from 31 Oct 2026; dashboard and API shut down 30 Nov 2026"
+    action: "keep eval datasets and graders in the repo; run them with an open harness (Factor 6)"
+  - item: "Anthropic Messages API version 2026-10-21"
+    impact: "temperature, top_p, and top_k rejected on every model"
+    action: "remove sampling parameters; tune reasoning effort instead (Factor 4)"
+  - item: "MCP Roots, Sampling, and Logging (deprecated in 2026-07-28)"
+    impact: "removal after the protocol's minimum 12-month deprecation window"
+    action: "pass paths as tool parameters; call model providers directly; log via OpenTelemetry"
+```
+
+Track these in the same registry as models, with an owner and a date for each, and subscribe to every provider's deprecation feed. A hosted feature you depend on is a model-like dependency: plan the exit before you adopt it.
+
 ### Model Distillation
 
 Distillation uses a larger, more capable model (the "teacher") to generate training data for a smaller, cheaper model (the "student"). Unlike fine-tuning on human-labeled data, distillation leverages the teacher model's capabilities to create high-quality training data at scale — then produces a student model that approximates the teacher's quality at a fraction of the inference cost.
@@ -342,6 +361,7 @@ fine_tuning:
 - [ ] Deprecation plans exist for every model in use, with migration timelines
 - [ ] Provider model deprecation notices are tracked and acted on proactively
 - [ ] The registry records each model ID's semantics (immutable snapshot, dated snapshot, or floating alias) and the pinned API version
+- [ ] Platform features, API versions, and protocol versions in use are tracked with deprecation dates and owners, alongside models
 - [ ] Fine-tuned models follow a versioned pipeline (data → train → eval → deploy)
 - [ ] Model distillation pipelines (teacher → student) are evaluated for quality gap vs. cost reduction
 - [ ] Model changes are tracked in the same release process as code changes (Factor 5)

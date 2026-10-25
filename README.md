@@ -111,7 +111,7 @@ See [MAPPING.md](MAPPING.md) for a detailed mapping of every original factor to 
 
 ## Maturity Assessment
 
-Use the interactive **[Maturity Assessment Tool](assessment.html)** to evaluate your applications against all 20 factors (270+ checklist items). Features:
+Use the interactive **[Maturity Assessment Tool](assessment.html)** to evaluate your applications against all 20 factors (320+ checklist items). Features:
 
 - **Radar chart** updates in real time as you check off compliance items
 - **Maturity scoring** (0–5 per factor) based on percentage of applicable items completed
@@ -127,6 +127,8 @@ Use the interactive **[Maturity Assessment Tool](assessment.html)** to evaluate 
 **For teams building traditional cloud-native apps**: Tiers 1-3 (Factors 1-15) apply directly. Tier 4 factors become relevant when you add AI capabilities.
 
 **For teams building AI-native applications**: All 20 factors apply. Start with the Foundation tier and build upward.
+
+**For disposable and short-lived applications** (internal tools, prototypes, and one-off apps generated largely by AI): scale rigor with lifetime and blast radius, not with how the code was written. A minimum applies regardless — version control (F1), no credentials in code (F4), scoped identity and permissions for anything the app or its agents can touch (F8), and the data-protection rules of F7 when real personal data is involved. The rest becomes mandatory as soon as the app outlives its first purpose, gains users beyond its author, or handles production data.
 
 **For each factor**, the document covers:
 - **Motivation**: Why this factor exists

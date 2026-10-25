@@ -173,6 +173,8 @@ A user can prompt-inject content that, if persisted, biases future responses —
 5. **Explicit user provenance label**: every memory carries `source=user_input` vs `source=agent_inference` vs `source=system`. Recall ranking can down-weight `user_input` when content is sensitive.
 6. **Treat tool output and retrieved web content as untrusted writers**: an agent that summarizes a malicious page or email can carry its instructions into memory just as a user can. Label those memories `source=external`, never let them write to shared or system-scoped memory, and apply the same classification before persisting (OWASP ASI06: Memory & Context Poisoning).
 
+Memory has a longer confidentiality lifetime than almost anything else an agent stores — personal facts can stay sensitive for decades. Encrypt it at rest with KMS/HSM-backed keys and include it in your post-quantum crypto-agility plan (Factor 4), since ciphertext captured today may be decryptable later.
+
 ### Distinguishing Memory from Cache and RAG
 
 ```
@@ -236,6 +238,7 @@ Alert on: memory recall latency p95 spiking (often a sign of unbounded growth); 
 - [ ] Memory provenance is auditable — every record carries origin, author, source, and timestamp
 - [ ] Cross-session persistent memory is clearly distinguished from ephemeral cache (Factor 12) and from RAG knowledge stores (Factor 17)
 - [ ] Memory write paths defend against poisoning (classify, summarize, quarantine, provenance-label), including writes derived from tool output and retrieved web content
+- [ ] Long-lived memory stores are encrypted with KMS/HSM-backed keys and covered by the post-quantum crypto-agility plan (Factor 4)
 - [ ] Memory access latency is monitored alongside generation latency (Factor 15)
 - [ ] A memory inspection / replay tool exists to debug agent behavior and answer user queries about what the agent remembers
 - [ ] The agent's "forget me" UX path exists and is reachable by end users without a support ticket

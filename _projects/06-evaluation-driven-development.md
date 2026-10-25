@@ -291,7 +291,7 @@ Key selection criteria:
 - **LLM-as-judge**: Does it support model-graded evaluations? (all of the above)
 - **RAG-specific**: Does it have built-in RAG metrics? (RAGAS, DeepEval)
 
-The methodology is tool-agnostic — what matters is that evaluations exist, run in CI, and gate releases. Pick the tool that fits your stack.
+The methodology is tool-agnostic — what matters is that evaluations exist, run in CI, and gate releases. Pick the tool that fits your stack, but keep the datasets and graders in your repository. Hosted eval platforms get retired like models do — OpenAI's hosted Evals platform goes read-only on 31 Oct 2026 and shuts down on 30 Nov 2026 — and an eval suite that lives only in a vendor's UI leaves with it (Factor 16).
 
 ## Compliance Checklist
 
@@ -310,3 +310,4 @@ The methodology is tool-agnostic — what matters is that evaluations exist, run
 - [ ] LLM-as-judge calibration is tracked against a locked human anchor set, with alerts for calibration drift
 - [ ] Public benchmarks (GPQA Diamond, SWE-bench Verified, Terminal-Bench, etc.) are used as reference points during model selection, not as primary eval gates
 - [ ] Agents are evaluated on full trajectories — end-state verification, tool selection and arguments, step and cost budgets — with repeated trials reporting pass^k
+- [ ] Eval datasets and graders live in the repository, not only in a hosted eval platform

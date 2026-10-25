@@ -288,6 +288,7 @@ AI applications that process personal data must comply with data protection regu
 - **Data Processing Impact Assessment (DPIA)**: High-risk AI features — those that profile users, make automated decisions, or process sensitive data — require a DPIA before launch.
 - **Cross-border data transfers**: When AI models or APIs are hosted in a different jurisdiction than the user's data, ensure adequate transfer mechanisms (SCCs, adequacy decisions) are in place.
 - **Data processor agreements**: Third-party AI providers (model APIs, embedding services) are data processors. Ensure DPAs are signed and their data handling policies are compatible with your obligations.
+- **Brazil beyond LGPD**: the AI bill PL 2338/2023, passed by the Senate in December 2024, was still awaiting a vote in the Chamber of Deputies as of late 2026, so none of it is in force. Its risk-based structure mirrors the EU AI Act, so systems built to the EU structure below will map onto it; track it rather than build to a draft.
 
 ### EU AI Act Compliance
 The EU AI Act establishes a risk-based classification framework that imposes architectural requirements on AI systems. Unlike GDPR (which focuses on data), the AI Act regulates the *AI system itself* — how it's built, tested, deployed, and monitored. Compliance is not optional for systems operating in or affecting EU citizens.
@@ -426,9 +427,10 @@ Open problem: C2PA-vs-watermark contradictions can arise when content is re-edit
 EU AI Act is the legal layer. The de-facto compliance stack pairs it with two methodological frameworks:
 
 - **ISO/IEC 42001** (AI Management System, AIMS) — certifiable AI management standard, analogous to ISO 27001 for security. Required by an increasing share of enterprise procurement RFPs.
-- **NIST AI RMF** + **NIST GenAI Profile** + **Critical Infrastructure Profile** (Apr 2026 concept note, SP 800-53 AI Control Overlays through 2026) — methodology and controls catalog used by US federal procurement and many regulated industries.
+- **NIST AI RMF** + **NIST GenAI Profile** + **Critical Infrastructure Profile** (Apr 2026 concept note) + **Control Overlays for Securing AI Systems** (COSAiS — SP 800-53 overlays, drafts through 2026, with single- and multi-agent use cases) — methodology and controls catalog used by US federal procurement and many regulated industries.
+- **ISO/IEC 27090** (2026) — guidance on AI-specific security threats (data poisoning, evasion, model theft) across the AI life cycle. It is guidance, not a certifiable standard: it extends ISO/IEC 27001/27002 controls for AI systems, while certification still runs through 27001 and 42001.
 
-The mapping isn't 1:1, but the controls overlap heavily. Build a single internal control set that satisfies all three. Keep evidence in one place; cross-map at audit time.
+The mapping isn't 1:1, but the controls overlap heavily. Build a single internal control set that satisfies all of them. Keep evidence in one place; cross-map at audit time. Use the OWASP Top 10 mappings above as the threat-side index into the same control set.
 
 ```yaml
 compliance_evidence_map:
@@ -581,7 +583,7 @@ One incident can trigger several regimes at once — a prompt-injection exfiltra
 - [ ] An AI incident response playbook exists and is practiced, including the regulatory reporting clocks (EU AI Act Art. 73, Cyber Resilience Act, GDPR/LGPD) and an owner for each
 - [ ] Red teaming exercises run on a defined cadence with adversarial eval datasets maintained in CI
 - [ ] AI-generated content carries C2PA Content Credentials and/or SynthID-class watermarks (EU AI Act Article 50: applies since 2 Aug 2026; 2 Dec 2026 for generative systems already on the market)
-- [ ] An ISO/IEC 42001 AIMS or equivalent management system is in place, with cross-mapping to NIST AI RMF and EU AI Act controls
+- [ ] An ISO/IEC 42001 AIMS or equivalent management system is in place, with cross-mapping to NIST AI RMF, ISO/IEC 27090, and EU AI Act controls
 - [ ] Training data, fine-tuning data, and RAG corpora carry license declarations captured in the AIBOM (Factor 5)
 - [ ] Crawlers and ingestion pipelines respect AI opt-out signals (robots.txt, noai/noimageai, C2PA training_mining)
 - [ ] EU AI Act Article 50 transparency disclosures (deepfakes, AI-generated public-interest text, system disclosure) are implemented at content-publish boundaries

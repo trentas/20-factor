@@ -305,6 +305,8 @@ block_size: 16                 # tokens per KV page (tune for workload)
 
 When long system prompts or shared knowledge bases are prepended to every request, prefix caching can eliminate 80–90% of redundant prefill computation — the same economics as provider-side prompt caching but at the inference-engine level.
 
+At cluster scale the same idea moves into the router: **llm-d** (a CNCF Sandbox project built on vLLM) and the Kubernetes **Gateway API Inference Extension** route each request to the replica most likely to already hold its prefix in KV cache, instead of round-robin — a single replica's prefix cache is worth little if the load balancer scatters a conversation across the pool. See Factor 14 for disaggregated serving.
+
 ### Speculative Decoding
 
 Speculative decoding uses a small "draft" model to propose token sequences that the larger "target" model verifies in parallel. Because verification is cheaper than generation, this yields 2–6× throughput improvement for output-heavy workloads at no quality cost. EAGLE-3 achieves ~6.5× speedup in benchmark conditions.

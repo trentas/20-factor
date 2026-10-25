@@ -63,6 +63,7 @@ repo/
 │   └── eval-config.yaml
 ├── tools/                  # Agent tool schemas
 │   └── tool-definitions.json
+├── specs/                  # Feature specs for spec-driven development
 ├── AGENTS.md               # AI coding assistant context (cross-tool)
 ├── CLAUDE.md               # AI coding assistant context (Claude Code)
 ├── .cursor/rules/          # AI coding assistant context (Cursor)
@@ -98,6 +99,25 @@ rendered = prompt.render(
 ```
 
 Use pull requests for prompt changes — diffs are meaningful and reviewable. Tag prompt versions that correspond to production deployments.
+
+### Specs as Source Artifacts (Spec-Driven Development)
+
+When coding agents write most of the implementation, the durable, reviewable artifact moves upstream to the **spec**. Spec-driven development (SDD), popularized in 2025–2026 by GitHub Spec Kit, AWS Kiro, and OpenSpec, has the human and the agent agree on requirements, a technical design, and a task breakdown *before* code is generated. The agent implements against that spec, and the spec stays in the repository.
+
+```
+specs/
+└── 0042-refund-agent/
+    ├── requirements.md   # user stories + acceptance criteria ("WHEN … THE SYSTEM SHALL …")
+    ├── design.md         # architecture, interfaces (links to Factor 2 contracts), data model
+    └── tasks.md          # ordered implementation steps the agent executes and checks off
+```
+
+Treat specs like every other declarative artifact in this factor:
+
+- **Reviewed before implementation**: the spec PR is where design review happens; the implementation PR is checked against it. Reviewers who cannot read every generated line can still verify behavior against an agreed spec.
+- **Versioned with the code**: a behavior change starts as a spec change, so the history explains *why* the code changed.
+- **Traceable**: acceptance criteria map to tests and eval cases (Factor 6); interface sections link to the contracts they produce (Factor 2).
+- **Kept honest**: a spec that drifts from the code is worse than none. Update it in the same PR as the behavior change, or delete it.
 
 ### CI Validation for AI Artifacts
 Validate prompts and schemas in the CI pipeline, just like application code:
@@ -162,6 +182,7 @@ The original factor's "one codebase, many deploys" still applies. Whether using 
 - [ ] Agent tool definitions and schemas are in the repository
 - [ ] Evaluation datasets and benchmarks are versioned artifacts
 - [ ] AI coding assistant context files are maintained and versioned
+- [ ] Feature specs (requirements, design, tasks) that drive coding agents are versioned in the repository and updated in the same change as the behavior they describe
 - [ ] AI authorship is tracked in commit metadata or PR labels (not in source comments) so contribution metrics — AI contribution rate, review cycle deltas, defect rates by authorship class — can be measured
 - [ ] Model configuration (selection, parameters) is declared in config files
 - [ ] Every production deployment is traceable to a specific commit

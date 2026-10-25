@@ -207,8 +207,11 @@ A "data must stay in EU" requirement violated in staging creates gaps that only 
 - **AI provider region**: Anthropic, OpenAI, Google all offer EU-based API endpoints — ensure staging and production call the same one
 - **Vector database region**: embeddings of user data must co-locate with the data residency requirements of the source documents
 - **Object store region**: multimodal assets (images, documents) must be stored in the required geography
+- **Inference geography**: where the model actually *runs* can differ from where the API endpoint lives. Where providers expose an inference-location control (for example, a per-request geography parameter, or a regional deployment on a hyperscaler), set it explicitly and identically in every environment, and log the location the provider reports back
 
 Document region assignments in the environment config alongside model versions.
+
+Sovereignty requirements are widening beyond data location to *who operates* the stack — sovereign-cloud offerings, in-jurisdiction inference, and open-weights models self-hosted under your own control (Factor 16). If production must run on a sovereign deployment, staging must too: the model build, safety filters, and feature availability on sovereign or regional deployments often lag the global endpoint, and that gap is exactly what parity testing exists to catch.
 
 ### Traffic Mirroring / Shadow Mode
 

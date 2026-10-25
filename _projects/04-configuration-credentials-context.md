@@ -175,6 +175,8 @@ Sensitive AI context — RAG documents containing PII, medical records, or finan
 
 Encryption keys must never coexist with the encrypted context in the same config file or the same environment variable set. Apply envelope encryption: the data key encrypts the context; the master key (HSM/KMS-backed) encrypts the data key.
 
+**Plan for post-quantum crypto-agility.** AI data with a long confidentiality lifetime — agent memory (Factor 19), conversation archives, fine-tuning datasets — is exposed to "harvest now, decrypt later": traffic and ciphertext captured today can be decrypted once large quantum computers exist. Hybrid post-quantum key exchange (X25519 + ML-KEM-768) is already enabled by default in major browsers and supported by mainstream TLS libraries. Inventory where AI data is encrypted and for how long it must stay confidential, keep algorithm choices in configuration rather than code, and adopt the NIST post-quantum standards (ML-KEM for key establishment, ML-DSA for signatures) as your KMS/HSM and TLS stacks support them.
+
 ### Configuration Validation
 Validate AI configuration at startup — fail fast if configuration is invalid:
 
@@ -207,3 +209,4 @@ def validate_ai_config(config):
 - [ ] AI service credentials use Workload Identity Federation (OIDC/IRSA/SPIFFE) rather than static API keys wherever the provider supports it
 - [ ] Feature flags for model selection and routing use an OpenFeature-compatible provider, not bespoke flag systems
 - [ ] Sensitive AI context (PII-containing RAG documents, medical/financial data) is encrypted with HSM/KMS-backed keys; encryption keys are never co-located with encrypted data
+- [ ] Encrypted AI data with a long confidentiality lifetime is inventoried, with a crypto-agility plan for post-quantum algorithms (hybrid ML-KEM in transit, PQC-capable KMS/HSM at rest)

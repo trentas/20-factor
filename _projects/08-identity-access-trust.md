@@ -180,16 +180,28 @@ When agents interact with external services:
 - Rotate agent credentials automatically and frequently.
 - Use service accounts for agent identity, not shared user accounts.
 - Implement token downscoping — agent tokens should have the minimum scope needed for the current task.
+- For delegation chains (user → orchestrator agent → sub-agent → tool), use **OAuth 2.0 Token Exchange (RFC 8693)** to mint a new, narrower token at each hop that names both the user (`sub`) and the acting agent (`act`). Never forward the user's original token down the chain.
 - For MCP specifically (2026-07-28 authorization): register clients with Client ID Metadata Documents rather than Dynamic Client Registration, validate the `iss` parameter on every authorization response (RFC 9207), and bind stored credentials to the issuer that minted them (cross-ref Factor 2).
 
 ### Zero Trust for AI Agents
 Apply zero trust principles to agent-to-agent and agent-to-service communication:
 
 - Verify agent identity on every request, not just at session start.
-- Encrypt agent-to-service communication.
+- Encrypt agent-to-service communication (TLS 1.3, with hybrid post-quantum key exchange where your stack supports it — see Factor 4).
 - Validate that agent requests are consistent with their declared purpose and permissions.
 - Rate-limit agent actions independently from user actions.
 - Where possible, ground agent identity in **SPIFFE/SPIRE workload identity** (or a workload-identity equivalent in your platform), so agent identity is verifiable and rotatable without long-lived secrets.
+- Verify **signed A2A Agent Cards** against a list of trusted issuers before delegating to a cross-organization agent; an unsigned card is a claim, not an identity.
+
+### Agent Identity Standards (2026)
+
+Agent identity is converging on existing standards rather than a new one — but the composition is still being worked out, so build on the stable pieces and keep the rest swappable:
+
+- **NIST NCCoE** published a concept paper in February 2026, *Accelerating the Adoption of Software and AI Agent Identity and Authorization*, organized around four concerns — identification, authorization, access delegation, and logging — and naming MCP, OAuth 2.0/2.1, OIDC, SPIFFE/SPIRE, and SCIM as the candidate building blocks, ahead of a demonstration project.
+- **IETF**: individual drafts in and around the WIMSE (Workload Identity in Multi-System Environments) working group apply workload identity to agents (for example the AIMS draft). None is a standard yet; track them, but don't hard-wire to a draft.
+- **Gap to design around**: OAuth handles one hop of delegation well; multi-hop chains, asynchronous cross-domain flows, and mapping OAuth scopes to agent capabilities are still application-level problems. Token exchange per hop (above), short lifetimes, and audit records that capture the full chain are the practical answer today.
+
+Gartner's Top Strategic Technology Trends for 2027 list *AI agent identity* as a trend of its own — a signal that procurement and audit questions about "which agent did this, on whose behalf, with what authority" are arriving now.
 
 ### Sandboxed Execution for Agents
 
@@ -209,6 +221,22 @@ Whatever the substrate:
 - **Egress allowlist by default**; untrusted code gets no general internet access.
 - **No secrets inside the sandbox**: credentials are injected at an egress proxy or by the tool layer, so code running in the sandbox — or a prompt-injected agent — cannot read them.
 - **Resource and time limits** (CPU, memory, disk, wall clock) enforced by the runtime, aligned with the agent's execution budget (Factor 18).
+
+### Delegated Authority for Agent Payments
+
+When an agent can *pay*, delegated identity becomes delegated spending authority. A family of protocols emerged in 2025–2026 for agentic commerce, each at a different layer:
+
+| Protocol | Layer | Core idea |
+|----------|-------|-----------|
+| **AP2** (Agent Payments Protocol, Google and partners) | Authorization evidence | Purchases are backed by signed *mandates* — the user's intent, the cart the agent assembled, and the payment — as verifiable credentials |
+| **ACP** (Agentic Commerce Protocol, OpenAI and Stripe) | Checkout | A merchant-facing checkout flow for agents, with payment credentials scoped to the transaction |
+| **UCP** (Universal Commerce Protocol, Google and Shopify, Jan 2026) | Discovery and checkout | A common way for agents to find products and complete purchases across merchants |
+| **x402** (x402 Foundation) | Settlement | Pay-per-request over HTTP 402, typically in stablecoins — machine-to-machine micropayments |
+
+These are young and still shifting, so design the identity model, not the vendor integration:
+- **The agent holds a mandate, never the card.** A mandate is user-approved, signed, and scoped: merchant or category, maximum amount, currency, and expiry.
+- **The payment layer enforces the mandate.** Amount caps, velocity limits, and scope checks happen where the money moves, not in the agent's prompt (Factor 18).
+- **Every purchase is attributable**: user, agent identity, mandate, and trace ID together in the audit log (Factor 15), and reconciled against spend (Factor 20).
 
 ### Computer Use and Browser-Agent Delegated Identity
 
@@ -300,5 +328,8 @@ Attestation is also identity: a TEE-attested endpoint is a *verifiable identity*
 - [ ] Screenshots from computer-use sessions are redacted server-side and treated as PII at rest
 - [ ] GPU TEE attestation (H100/H200/Blackwell Confidential Computing or equivalent) is required for inference on regulated/sensitive data, with attestation verified before submitting data
 - [ ] MCP authorization uses OAuth 2.1 with scoped, short-lived tokens, Client ID Metadata Documents for registration, and issuer (`iss`) validation (cross-ref Factor 2)
+- [ ] Multi-hop delegation uses token exchange (RFC 8693) so each hop carries a downscoped token naming both the user and the acting agent
 - [ ] Agents that execute code, shell commands, or browsers run in per-session sandboxes with kernel-level isolation (gVisor, microVM, or VM), egress allowlists, and no secrets inside the sandbox
+- [ ] Cross-organization agents are trusted only after verifying signed A2A Agent Cards against trusted issuers
+- [ ] Agent purchases run under user-signed, scoped, expiring mandates that the payment layer enforces
 - [ ] Agent workload identity is grounded in SPIFFE/SPIRE or platform workload-identity, not long-lived secrets

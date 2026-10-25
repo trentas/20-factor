@@ -36,6 +36,7 @@ This update broadens the principle from HTTP APIs to all interface boundaries:
 - AI coding tools can generate server stubs, client SDKs, and test harnesses from contract definitions (OpenAPI, protobuf, AsyncAPI).
 - Contract-first design gives AI assistants clear constraints, producing more accurate generated code.
 - Schema definitions serve as unambiguous specifications that AI tools can reason about.
+- **Spec-driven development** (GitHub Spec Kit, Kiro, OpenSpec) extends contract-first upstream of the interface: requirements, design, and task specs are written and reviewed before a coding agent implements them, and the interface contracts in this factor are one of the spec's outputs. See Factor 1 for keeping specs as versioned source artifacts.
 
 ### AI-Native Applications
 - **Tool schemas as contracts**: When an LLM uses function calling, the JSON Schema defining each tool *is* the contract. Poorly defined schemas lead to hallucinated parameters, type mismatches, and security vulnerabilities. The **Model Context Protocol (MCP)** standardizes this contract, providing a universal protocol for tool discovery and invocation across any model or agent framework.

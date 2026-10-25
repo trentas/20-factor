@@ -105,7 +105,20 @@ cost_model:
       estimated_cost_per_request: 0.000075
       monthly_volume: 100000
       estimated_monthly_cost: 7.50
+
+    # Agentic features are priced per completed task, not per request
+    research_agent:
+      model: claude-opus-5-5
+      calls_per_task: 20               # one model call per agent step
+      avg_input_tokens_per_call: 40000 # context grows each step; most of it is a cache hit
+      cache_hit_ratio: 0.85            # uncached remainder is written at the 5-min write price ($5/MTok)
+      avg_output_tokens_per_call: 1500 # includes thinking tokens
+      estimated_cost_per_task: 1.34
+      monthly_volume: 2000
+      estimated_monthly_cost: 2680
 ```
+
+Two things follow from current pricing. First, the spread between tiers is wide — the small tier's input price is 20× below the mid tier's — so pushing high-volume, low-complexity traffic down to it is still the largest single lever. Second, the expensive unit is no longer the request but the **task**: an agent loop that re-reads a growing context on every step costs orders of magnitude more than any single call, and its cost is dominated by loop length, cache hit ratio, and reasoning effort. Model it per completed task, and budget it per task (see Budget Circuit Breakers below and Factor 18's execution budgets).
 
 ### Intelligent Model Routing
 
@@ -394,6 +407,15 @@ Architectural implications:
 - Store model version, inference parameters, and sanitized I/O for a minimum retention period aligned with your jurisdiction's AI Act requirements
 - If your application falls in an EU AI Act high-risk category, complete the conformity assessment before your application date under Regulation (EU) 2026/1744: 2 Dec 2027 for standalone (Annex III) systems, 2 Aug 2028 for AI in products covered by Annex I legislation
 
+### Agent-Initiated Spend
+
+Tokens are no longer the only money an AI system moves. Agents that can buy — through agentic-commerce and agent-payment protocols (AP2, ACP, UCP, x402; see Factor 8) — open a second spend channel that token budgets don't see. Treat it with the same architecture as token cost, but stricter:
+
+- **Separate ledgers**: token spend and agent-initiated purchases are attributed separately (a $0.40 agent run that books a $90 ticket is a $90.40 event, with very different owners)
+- **Hard per-mandate caps**: every purchase authority carries an amount ceiling, merchant/category scope, and expiry — enforced by the payment layer, not by the prompt
+- **Circuit breakers on money movement**: velocity limits per user, per agent, and per merchant, with a human gate above a threshold (cross-ref Factor 18)
+- **Reconciliation**: every agent purchase is reconciled against the mandate that authorized it, the trace that produced it (Factor 15), and the user who granted it
+
 ### FinOps Maturity for AI
 
 The 2026 State of FinOps shows real-time AI cost visibility as the top tooling request. Practical maturity model:
@@ -441,3 +463,5 @@ Essential views:
 - [ ] The incident runbook meets the EU AI Act Art. 73 limits in calendar days (2 days widespread/critical infrastructure, 10 days death, 15 days otherwise) and, where the Cyber Resilience Act applies, its 24h/72h clock
 - [ ] Vendor MSA liability terms (caps, indemnification, IP coverage) are reviewed annually and documented alongside model registry entries
 - [ ] Applications in EU AI Act high-risk categories have completed or scheduled a conformity assessment ahead of their application date under Regulation (EU) 2026/1744 (2 Dec 2027 for Annex III, 2 Aug 2028 for Annex I)
+- [ ] Features are costed per completed task (calls per task × tokens per call × cache hit ratio), not only per request
+- [ ] Agent-initiated purchases are capped per mandate, rate-limited, attributed separately from token spend, and reconciled against the authorizing mandate

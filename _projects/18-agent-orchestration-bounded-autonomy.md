@@ -61,7 +61,9 @@ A production harness is commonly described as five layers, each of which maps on
 
 The harness is also where execution must survive interruption — see **Factor 13 (Durable Agent Runtime)** for journaling, idempotent tool calls, and resumable human-in-the-loop interrupts.
 
-The empirical case for treating the harness as a first-class artifact: in 2026 the LangChain team moved a coding agent from 30th to 5th place on Terminal Bench 2.0 *without changing the underlying model* — the entire gain came from harness optimization. A decent model with a strong harness beats a strong model with a weak one. This is the same claim this factor makes from the safety side: agent behavior is determined architecturally, not by asking the model nicely (Guiding Principle 3). Harness engineering is that principle applied to the whole agent loop.
+Harnesses now come in three deployment shapes: a loop you write yourself; a harness-only SDK you host (Claude Agent SDK, OpenAI Agents SDK, Google ADK); and managed agent platforms that run both the loop and the tool sandbox for you (for example Claude Managed Agents, Amazon Bedrock AgentCore, Vertex AI Agent Engine). The properties in this factor apply to all three. With a managed platform, the question becomes whether it exposes the controls you need — budgets, permission policies, approval hooks, traces — for you to set and observe, rather than whether you have to build them.
+
+The empirical case for treating the harness as a first-class artifact: in 2026 the LangChain team moved a coding agent from 30th to 5th place on Terminal Bench 2.0 *without changing the underlying model* — the entire gain came from harness optimization. A decent model with a strong harness beats a strong model with a weak one. This is the same claim this factor makes from the safety side: agent behavior is determined architecturally, not by asking the model nicely (Guiding Principle 3). Harness engineering is that principle applied to the whole agent loop. The industry has noticed: Gartner's Top Strategic Technology Trends for 2027 (October 2026) list the *AI coding agent harness* and *AI agent identity* as trends in their own right — the same two concerns this factor and Factor 8 treat as architecture.
 
 ### Agent Architecture Patterns
 
@@ -484,6 +486,10 @@ For orchestration, this means:
 - **Versioned, evaluated, and supply-chain-checked**: skills are committed (Factor 1), validated in CI, and evaluated like prompts (Factor 6). Third-party skills are dependencies that can carry scripts and instructions someone else wrote (Factor 3).
 - **Reuse and discovery**: the same skill directory works across agents and across tools that support the standard, and can be published to agent directory services (Factor 2).
 
+### Agents That Transact
+
+Agentic commerce turns "bounded autonomy" into a question about money. Protocols for agent-initiated checkout and payment (AP2, ACP, UCP, x402; see Factor 8) let an agent buy on a user's behalf — a ticket, a subscription, an API call. Apply the bounded-autonomy model with the strictest settings: purchases run only under an explicit, scoped, expiring mandate from the user; amount and velocity limits are enforced by the payment layer, not the prompt; anything above a threshold, or outside the mandate's merchant or category scope, goes to a human gate; and every purchase is reconciled against the mandate and the agent trace (Factor 15, Factor 20).
+
 ### Voice and Realtime Agents
 
 Real-time speech agents (OpenAI Realtime API, Pipecat, LiveKit Agents, AWS Bedrock AgentCore, Hume AI) operate under engineering constraints that differ from standard request/response agents:
@@ -556,6 +562,7 @@ Swarm frameworks accelerate prototyping but require explicit budget enforcement 
 - [ ] Every agent profile passes a Rule-of-Two capability review (private data / untrusted input / external action) before deployment (Factor 7)
 - [ ] MCP servers are pinned to versions from verified publishers; remote servers use Streamable HTTP, and MCP input requests route through the same approval gates as other human-in-the-loop decisions
 - [ ] Cross-organization A2A agents are trusted only after verifying their signed Agent Cards, and all terminal task states (failed, canceled, rejected) are handled
+- [ ] Agents that can initiate purchases act only under scoped, expiring user mandates with payment-layer amount and velocity limits (Factor 8, Factor 20)
 - [ ] Voice/realtime agents have TTFA SLOs configured, VAD barge-in handling implemented, and session state persisted via Factor 13
 - [ ] Reflexion / self-critique loops are gated on task complexity with token budget tracked separately; quality improvement is validated against the eval suite before broad enablement
 - [ ] Agent swarms (CrewAI, Microsoft Agent Framework, MetaGPT, etc.) have aggregate swarm-level budgets and circuit breakers in addition to per-agent limits

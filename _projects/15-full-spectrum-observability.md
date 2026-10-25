@@ -155,6 +155,11 @@ metrics:
     labels: [provider, error_type]
     description: "AI provider errors (rate limit, timeout, 5xx)"
 
+  - name: ai_refusal_total
+    type: counter
+    labels: [model, category, feature]
+    description: "Model refusals returned inside successful responses, by category (cross-ref Factor 10)"
+
   - name: ai_rate_limit_remaining
     type: gauge
     labels: [provider, limit_type]
@@ -218,6 +223,11 @@ alerts:
     condition: ai_rate_limit_remaining < 100
     severity: warning
     message: "Approaching AI provider rate limit"
+
+  - name: refusal_rate_spike
+    condition: rate(ai_refusal_total[1h]) / rate(ai_request_duration_seconds_count[1h]) > 2 * baseline
+    severity: warning
+    message: "Refusal rate doubled â€” check for false positives after a model or prompt change"
 ```
 
 ### Business Observability
@@ -364,6 +374,8 @@ Beyond model calls, these signal classes need first-class observability now:
 - **Computer-use action traces**: per-session traces of the actions a browser/desktop agent took (click, type, navigate), with screenshot redaction. Required to debug bad agent behavior and to satisfy audit obligations under EU AI Act high-risk classifications. Cross-ref Factor 8, Factor 18.
 - **Voice / realtime latency** (when applicable): time-to-first-token, time-to-first-audio-byte, end-of-turn detection latency, barge-in latency, audio packet loss. Sub-300ms TTFT is the user-perceptible threshold for voice.
 - **Memory read/write events**: per-identity counts of memory writes, recall hits, recall above-threshold hits, forget operations, poisoning blocks. Cross-ref Factor 19.
+- **Steps and cost per completed agent task**: how many model calls and tool calls a task took, and what it cost end to end (cross-ref Factor 20). A rising step count for the same task mix is often the first visible sign of a harness, prompt, or model regression.
+- **Refusals**: refusal rate per category and model (cross-ref Factor 10). A jump after a model upgrade usually means false positives on legitimate traffic.
 
 ### Fallback-Drift Detection
 
@@ -410,4 +422,6 @@ Make the sampling rule explicit in code, not in the observability vendor's UI â€
 - [ ] Voice/realtime workloads track TTFT, end-of-turn latency, and barge-in latency
 - [ ] Agent memory read/write/forget operations are emitted as observable events (cross-ref Factor 19)
 - [ ] Fallback-drift detection alerts when multi-provider fallback rate exceeds baseline
+- [ ] Model refusals are counted per category and alert on spikes after model or prompt changes
+- [ ] Agent runs report steps and cost per completed task, not only per call
 - [ ] Trace sampling is explicitly defined in code (100% on errors/guardrails/HITL; statistical sample on normal traffic)

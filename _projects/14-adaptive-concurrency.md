@@ -300,6 +300,21 @@ The compounding effect comes from stacking optimizations:
 
 These choices belong at architectural decision time, not as runtime tuning. Pin the engine version, measure tokens-per-second-per-watt and tokens-per-second-per-dollar, and make the choice explicit in the release manifest (Factor 5).
 
+### Distributed Inference: Disaggregation and KV-Aware Routing
+
+Above a handful of replicas, the engine is no longer the whole story — the *routing and serving topology* is. Two 2026 patterns have moved into the mainstream Kubernetes stack:
+
+- **Prefill/decode disaggregation**: prompt processing (prefill) is compute-bound and bursty; token generation (decode) is memory-bandwidth-bound and steady. Running them on separate pools, with the KV cache transferred between them, lets each scale on its own signal and stops long prompts from stalling everyone else's token stream.
+- **KV-cache-aware routing**: the router sends each request to the replica that already holds its prefix in cache (see Factor 12), weighed against queue depth and load — instead of round-robin, which throws prefix-cache hits away.
+
+| Building block | Role |
+|----------------|------|
+| **Gateway API Inference Extension** (Kubernetes SIG Network) | Model-aware routing on standard Gateway API: an `InferencePool` groups model-server pods, and an endpoint picker chooses the replica per request |
+| **llm-d** (CNCF Sandbox) | Kubernetes-native distributed serving on vLLM + the Inference Extension: prefix-cache-aware scheduling, prefill/decode disaggregation, multi-accelerator support |
+| **NVIDIA Dynamo** | Distributed serving framework with disaggregation and KV-cache transfer, aimed at large NVIDIA deployments |
+
+Adopt these when a single engine replica can no longer hold your traffic or when long-context workloads dominate; below that scale, a well-tuned engine behind a plain load balancer is simpler and usually enough.
+
 ### Scaling Signals
 Go beyond CPU and memory for auto-scaling decisions:
 
@@ -328,5 +343,6 @@ Go beyond CPU and memory for auto-scaling decisions:
 - [ ] Thinking-token budgets are configured per route (adaptive thinking + effort levels low/medium/high/xhigh/max) and rate-limited separately from output tokens
 - [ ] Inference placement (edge/NPU vs GPU vs cloud) is a routing decision, not hardcoded
 - [ ] Inference-engine choice (vLLM / SGLang / TensorRT-LLM) is pinned per release and measured in tokens/sec/dollar and tokens/sec/watt; deployments on maintenance-mode engines (e.g., TGI) have a migration plan
+- [ ] Multi-replica self-hosted inference uses KV-cache-aware routing (e.g., Gateway API Inference Extension, llm-d) rather than round-robin, and prefill/decode disaggregation is evaluated for long-context workloads
 - [ ] Inference optimizations (speculative decoding, FP4/INT4 quantization, continuous batching, PagedAttention) are evaluated as architectural levers, not runtime knobs
 - [ ] Spot/preemptible GPU usage is tested for graceful drain and recovery (cross-ref Factor 9, Factor 13)
