@@ -186,15 +186,21 @@ The architectural rule: **the agent's effective permissions are the intersection
 
 ### Confidential Compute and TEE Attestation
 
-For workloads handling regulated or highly sensitive data (healthcare, finance, defense), running inference on a generic GPU host is no longer sufficient evidence of confidentiality. **GPU Trusted Execution Environments** matured into a deployment-ready primitive in 2025–2026:
+When the threat model includes the infrastructure operator or a compromised host — common for regulated or highly sensitive data in healthcare, finance, and defense — running inference on a generic GPU host is no longer sufficient evidence of confidentiality. **GPU Trusted Execution Environments** matured into a deployment-ready primitive in 2025–2026:
 
-- **NVIDIA Confidential Computing** on H100/H200 (and extended on Blackwell): GPU isolation, AES-256-GCM HBM encryption, cryptographic attestation. ~3% overhead on transformer inference per NVIDIA benchmarks.
+- **NVIDIA Confidential Computing** on H100/H200 (and extended on Blackwell): the GPU is assigned to a confidential VM, CPU–GPU transfers are encrypted, and the GPU produces a signed attestation of its mode and firmware. On-package HBM is *not* encrypted — it is protected by the GPU's isolation and access controls, which is why the threat model matters. Compute and memory bandwidth run at full speed; the overhead comes from the encrypted CPU–GPU transfers.
 - **Apple Private Cloud Compute**: consumer-grade reference for verifiable, attestable enclave-based inference.
 - **Confidential containers** (OpenShift / Kata Containers + GPU TEE): production deployment shape.
 
-The architectural pattern is **attestation as a deployment gate**: before sensitive data is forwarded to an inference endpoint, the endpoint produces a cryptographic attestation of (a) the GPU's TEE state, (b) the model weights' hash, (c) the runtime image's hash. The caller verifies the attestation against an expected policy and only then submits the data.
+The architectural pattern is **attestation as a deployment gate**: before sensitive data reaches an inference endpoint, a verifier checks the endpoint's evidence against an expected policy, and only then is the data — or the key that decrypts it — released. The evidence has three parts, and no part implies the others:
 
-- **Verify before sending, by sensitivity**: for data above a set sensitivity level, fetch the endpoint's attestation and check all three measurements against the expected values for that model and runtime.
+| Evidence | What it shows | What it does not show |
+|----------|---------------|-----------------------|
+| GPU attestation | The GPU is in confidential mode with known firmware | Anything about the VM or the code that uses the GPU |
+| CPU / VM attestation (e.g., AMD SEV-SNP, Intel TDX) | The confidential VM launched with known firmware and initial image | Which application and model weights were loaded afterward |
+| Workload measurement | The runtime image and model weights actually loaded, recorded by a measured boot-and-load chain inside the VM | Anything, unless that chain is itself anchored in the VM attestation |
+
+- **Verify all three, then release**: the verifier checks GPU, VM, and workload evidence together and releases data or keys only to the endpoint that presented it (a key-release policy), for data above a set sensitivity level.
 - **Fail closed**: if the attestation is missing, stale, or does not match, the data is not sent.
 - **Keep expected values under change control**: the known-good model and runtime hashes ship with the release (Factor 5), so a model update changes them deliberately, not silently.
 
@@ -214,7 +220,7 @@ Attestation is also identity: a TEE-attested endpoint is a *verifiable identity*
 - [ ] Agent permission policies are reviewed regularly and follow least-privilege principles
 - [ ] Computer-use / browser-agent sessions run in per-session sandboxes with no inherited cookies, scoped action policy, and out-of-band confirmation for irreversible actions
 - [ ] Screenshots from computer-use sessions are redacted server-side and treated as PII at rest
-- [ ] GPU TEE attestation (H100/H200/Blackwell Confidential Computing or equivalent) is required for inference on regulated/sensitive data, with attestation verified before submitting data
+- [ ] Where the threat model requires protecting data in use from the infrastructure operator, inference runs in a GPU TEE (H100/H200/Blackwell Confidential Computing or equivalent), and GPU, VM, and workload attestation are verified before data is released
 - [ ] MCP authorization uses OAuth 2.1 with scoped, short-lived tokens, Client ID Metadata Documents for registration, and issuer (`iss`) validation (cross-ref Factor 2)
 - [ ] Multi-hop delegation uses token exchange (RFC 8693) so each hop carries a downscoped token naming both the user and the acting agent
 - [ ] Agents that execute code, shell commands, or browsers run in per-session sandboxes with kernel-level isolation (gVisor, microVM, or VM), egress allowlists, and no secrets inside the sandbox

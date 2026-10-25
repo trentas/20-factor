@@ -284,5 +284,5 @@ Essential views:
 - [ ] The incident runbook meets the EU AI Act Art. 73 limits in calendar days (2 days widespread/critical infrastructure, 10 days death, 15 days otherwise) and, where the Cyber Resilience Act applies, its 24h/72h clock
 - [ ] Vendor MSA liability terms (caps, indemnification, IP coverage) are reviewed annually and documented alongside model registry entries
 - [ ] Applications in EU AI Act high-risk categories have completed or scheduled a conformity assessment ahead of their application date under Regulation (EU) 2026/1744 (2 Dec 2027 for Annex III, 2 Aug 2028 for Annex I)
-- [ ] Features are costed per completed task (calls per task × tokens per call × cache hit ratio), not only per request
+- [ ] Features are costed per completed task — every billable call, including retries and failed attempts, plus human review, divided by tasks completed successfully (see Cost Model) — not only per request
 - [ ] Agent-initiated purchases are capped per mandate, rate-limited, attributed separately from token spend, and reconciled against the authorizing mandate
