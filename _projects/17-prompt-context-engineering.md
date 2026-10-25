@@ -5,6 +5,8 @@ category: "Tier 4: Intelligence"
 title: "17. Prompt and Context Engineering"
 nav_order: 2
 description: "Prompt versioning, context window management, RAG pipeline design, token budgeting."
+# Prompt examples use {{variable}} placeholders; keep Liquid from rendering them away.
+render_with_liquid: false
 ---
 
 # Factor 17: Prompt and Context Engineering
