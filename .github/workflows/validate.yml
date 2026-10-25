@@ -1,8 +1,8 @@
 name: Validate pull request
 
+# Every pull request, including ones stacked on another branch.
 on:
   pull_request:
-    branches: ["main"]
 
 permissions:
   contents: read
