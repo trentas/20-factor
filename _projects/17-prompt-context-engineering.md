@@ -119,8 +119,8 @@ context_budget:
 
     conversation_history:
       budget: 4000
-      priority: 3              # Trimmed first when budget is tight
-      strategy: keep_recent    # Keep most recent turns, summarize older ones
+      priority: 3              # Reduced first when budget is tight
+      strategy: compact_at_threshold  # Summarize older turns at a checkpoint; never rewrite turns in place
 
     user_message:
       budget: 2000
@@ -462,6 +462,24 @@ Manual prompt engineering is iterative and doesn't optimize globally across dive
 
 These tools connect directly to Factor 6 (eval suites provide the optimization signal) and Factor 1 (optimized prompts are committed as versioned artifacts). The risk: auto-optimized prompts can overfit to the eval set — always validate on a held-out test partition and production shadow traffic (Factor 11).
 
+### Context Compaction and Editing
+
+Long-running agents outgrow any context window, and quality drops well before the window is full: accuracy degrades as input grows and distractors accumulate ("context rot"), even on easy tasks. Treat the context as a working set curated on every step, not a log that only grows. Four techniques, cheapest first:
+
+| Technique | What it does | Use when |
+|-----------|--------------|----------|
+| **Tool-result clearing** (context editing) | Drops stale tool outputs (file reads, search results) the agent has already acted on, keeping the record that the call happened | Tool-heavy loops where old outputs dominate the window |
+| **Compaction** | Summarizes older history into a compact block and continues from it — server-side on some providers, or your own summarization step | Long conversations and agent runs approaching the window or a cost threshold |
+| **Sub-agent isolation** | Hands a reading-heavy subtask to a sub-agent with its own context; only a short result comes back | Research and fan-out work where the raw material is large but the conclusion is small |
+| **External memory** | Writes durable facts and plans to a memory store and retrieves them on demand (Factor 19) | Facts that must outlive one context window or one session |
+
+Engineering rules:
+
+- **Compact at checkpoints, not continuously.** Every rewrite of earlier context breaks the provider prompt cache from that point (Factor 12) and, on newer reasoning models, can invalidate preserved reasoning state. One deliberate compaction per threshold beats trimming a little on every turn.
+- **Use the provider's mechanism when there is one.** Server-side compaction and context-editing features are built to keep cache and reasoning state consistent; hand-rolled history surgery usually isn't.
+- **Preserve what the summary must not lose**: the task goal, constraints, decisions taken and why, open questions, and identifiers (ticket IDs, file paths, record keys). Test compaction in the eval suite (Factor 6) — a lossy summary silently changes the agent's behavior.
+- **Keep the always-loaded part lean.** Context bloat often starts in the system prompt and agent instruction files rather than in the history, and that part is paid on every call. Move rarely needed detail into skills or reference files loaded on demand (Factor 2).
+
 ### Long-Context Degradation
 
 Models with large context windows (200K–1M+ tokens) can still degrade when relevant information is buried in the middle of a long context — the "lost in the middle" effect. Mitigations:
@@ -489,7 +507,8 @@ Models with large context windows (200K–1M+ tokens) can still degrade when rel
 - [ ] Token budgets account for system prompt, context, conversation history, and output reservation
 - [ ] Few-shot examples are curated, versioned, and selected dynamically based on relevance
 - [ ] Prompt templates are validated at build time (variables defined, within budget)
-- [ ] Conversation history management has a defined strategy (truncation, summarization)
+- [ ] Conversation history management has a defined strategy (compaction at checkpoints, tool-result clearing, summarization) that is tested in the eval suite
+- [ ] Long-running agents keep the working context small with context editing, compaction, or sub-agent isolation, and compaction preserves goals, decisions, and identifiers
 - [ ] Prompt effectiveness is measured through evaluations (Factor 6) and production monitoring (Factor 15)
 - [ ] Context assembly strategies handle overflow gracefully (truncation, prioritization)
 - [ ] Reasoning effort (adaptive thinking + effort levels) is configured per task type with cost awareness (Factor 20)

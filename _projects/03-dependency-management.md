@@ -33,6 +33,8 @@ This update retains the core principle and extends it to cover:
 
 ### AI-Assisted Development
 - AI coding assistants may suggest dependencies. Review these carefully — AI models are trained on historical data and may suggest outdated, deprecated, or vulnerable packages.
+- **Hallucinated packages ("slopsquatting")**: models sometimes recommend packages that don't exist — a 2025 USENIX Security study measured roughly 5% of suggested packages from commercial models and over 20% from open models as non-existent, often repeatably. Attackers register those names with malicious code. A coding agent that installs packages on its own turns a hallucination into code execution. Check that a new dependency exists, has history and a real maintainer, and is approved before it is installed — and route installs through a proxy registry or allowlist.
+- **MCP servers and Agent Skills are dependencies too.** A server launched with `npx` or `uvx` is code running with the agent's permissions, and a skill can bundle scripts. In 2026, squatted MCP server packages appeared on npm under unscoped names imitating official servers (for example `mcp-server-figma`), running install-time scripts that sent host details to an attacker. Pin exact versions, prefer scoped packages from verified publishers, and disable install scripts where you can.
 - Use lockfiles and version pinning to ensure deterministic builds regardless of who (or what) added the dependency.
 - AI tools can help audit dependency trees for vulnerabilities, license compliance, and bloat.
 
@@ -103,6 +105,10 @@ models:
 - **Vendor API compatibility**: When using hosted model APIs (OpenAI, Anthropic, Google), pin API versions in headers or configuration, not just SDK versions.
 - **Abstraction layers**: Consider thin abstraction layers over vendor SDKs to make provider switching feasible without rewriting application code.
 
+### Lockfiles for Python AI Stacks
+
+Most AI stacks are Python, and Python's lockfile story finally converged. **PEP 751** (accepted 2025) defines a standard lockfile format, `pylock.toml`, with growing tool support, and **uv** has become a common default for fast, reproducible resolution (`uv.lock`, exportable to `pylock.toml`). Whichever you use: commit the lockfile, install from it with hashes in CI and in container builds (`uv sync --frozen`, or a hash-checked install), and treat a lockfile change as a reviewable diff — it is where a malicious or hallucinated dependency first becomes visible.
+
 ### SLSA Provenance and sigstore for AI Artifacts
 
 Beyond checksums, supply-chain security for AI artifacts requires provenance attestations that prove a model came from a known source and wasn't tampered with in transit. **SLSA provenance** records link a model artifact to its build pipeline. [sigstore/cosign](https://github.com/sigstore/cosign) can sign model weights and prompt artifacts at publish time and verify signatures at deploy time — blocking unsigned or tampered artifacts.
@@ -130,10 +136,23 @@ Containers targeting specific accelerators use different base images and runtime
 - Run vulnerability scans on AI-specific dependencies — ML libraries have had supply-chain attacks (malicious model files, compromised pip packages).
 - Audit transitive dependencies — AI SDKs pull in large dependency trees.
 - Monitor for model provenance — ensure model weights come from trusted sources with verified checksums.
+- Prefer `safetensors` over pickle-based model formats, which can execute arbitrary code on load; scan any pickle-based artifact you can't avoid.
+- Include MCP servers, Agent Skills, and model artifacts in the SBOM/AIBOM, so a vulnerability or compromise in any of them can be matched to the releases that ship it.
+
+### EU Cyber Resilience Act: Dependencies Become Obligations
+
+The **Cyber Resilience Act (CRA)** makes dependency hygiene a legal duty for anyone placing software on the EU market. Its reporting obligations have applied since **11 September 2026**: manufacturers must report actively exploited vulnerabilities and severe security incidents through ENISA's single reporting platform — a 24-hour early warning, a 72-hour notification, and a final report (14 days after a fix is available for vulnerabilities; one month for incidents). This applies to products already on the market, not only new ones. Most other obligations — including documenting components in an SBOM, handling vulnerabilities for the support period, and shipping security updates — apply from **11 December 2027**. Open-source stewards have a lighter regime, but a company shipping open-source components commercially is a manufacturer.
+
+Architecturally, a 24-hour clock means you must be able to answer "do any of our shipped releases contain this component?" within hours, not days:
+
+- Generate an SBOM (and AIBOM) per release and keep it queryable (Factor 5).
+- Match new advisories against every supported release continuously, not only at build time.
+- Cover the AI-specific components — ML libraries, model files, MCP servers, skills — in the same pipeline.
+- For high-risk AI systems, meeting the CRA's essential requirements also creates a presumption of conformity with the EU AI Act's cybersecurity requirement (Factor 7).
 
 ## Compliance Checklist
 
-- [ ] All language-level dependencies are declared in manifest files with lockfiles for deterministic resolution
+- [ ] All language-level dependencies are declared in manifest files with lockfiles for deterministic resolution (for Python, `uv.lock` or PEP 751 `pylock.toml`), installed with hash verification
 - [ ] No dependency relies on implicit system-wide installation
 - [ ] AI/ML SDKs are pinned to exact versions, not ranges
 - [ ] Native ML dependencies (CUDA, cuDNN, etc.) are declared in container definitions or environment specs
@@ -146,3 +165,7 @@ Containers targeting specific accelerators use different base images and runtime
 - [ ] SLSA provenance attestations are generated and verified for model artifacts; cosign signatures block unsigned weights at deploy time
 - [ ] Model cards and dataset cards are versioned alongside model-dependency manifests, including license and intended-use records
 - [ ] AI accelerator dependencies (CUDA, ROCm, Neuron SDK, TPU runtimes) are declared per container variant with fallback paths documented
+- [ ] New dependencies proposed or installed by AI tools are checked for existence, history, and maintainer before install (slopsquatting defense), via an allowlist or proxy registry
+- [ ] MCP servers and Agent Skills are pinned to exact versions from verified publishers and included in the SBOM/AIBOM
+- [ ] Model artifacts use `safetensors` (or are scanned) rather than unscanned pickle-based formats
+- [ ] Products on the EU market can identify affected releases and meet the Cyber Resilience Act's 24h/72h vulnerability reporting clock

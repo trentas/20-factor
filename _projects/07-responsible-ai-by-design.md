@@ -101,25 +101,71 @@ rails:
 - **Latency impact**: What overhead does the guardrail layer add? (critical for real-time applications)
 
 ### Prompt Injection Defense
-Protect against attempts to override system instructions:
+Prompt injection cannot be filtered out. Any text the model reads — a user message, a retrieved document, a web page, a tool result, an email the agent is summarizing — can carry instructions, and no classifier catches all of them. Detection still earns its place as one layer, but the primary defense is architectural (Guiding Principle 3): design so that a *successful* injection cannot cause serious harm.
+
+**The lethal trifecta and the Rule of Two.** An agent becomes exploitable when a single session combines three capabilities: (A) access to private or sensitive data, (B) exposure to untrusted content, and (C) the ability to communicate externally or change state. Simon Willison named the combination the "lethal trifecta"; Meta's "Agents Rule of Two" (Oct 2025) turned it into a design rule: until injection can be reliably detected, a session holds at most two of the three, and if it genuinely needs all three, a human approves each consequential step. Make it a design-review check for every agent profile and tool set:
+
+```yaml
+# agent-capability-review.yaml — evaluated in CI for each agent profile
+agent: support-email-triage
+capabilities:
+  private_data: true        # reads the customer's order history
+  untrusted_input: true     # reads inbound emails
+  external_action: false    # cannot send email, call webhooks, or browse
+rule_of_two: pass           # adding any outbound tool requires per-action human approval
+```
+
+**Patterns that hold the line** (choose per use case):
+- **Capability separation**: a privileged agent holds the data and tools; a quarantined one reads untrusted content and returns only schema-validated values (the dual-LLM pattern). CaMeL (Google DeepMind, 2025) extends this: the privileged side plans in code and tracks data provenance, so untrusted values can fill parameters but never steer control flow.
+- **Plan-then-execute**: fix the tool plan before reading untrusted content; content can supply arguments but cannot add steps.
+- **Egress control**: no outbound network by default, allowlisted destinations, and no rendering of model-generated URLs or images that could smuggle data out in a query string.
+- **Secrets never enter context**: credentials are injected out of band at the tool or network layer, never placed in the prompt (Factor 4, Factor 8).
+- **Least-privilege tools**: read-only by default; write tools scoped to the current user and object (Factor 8, Factor 18).
+- **Separate channels**: operator instructions travel in the system channel; untrusted content is delimited and labeled as data. This reduces risk but does not remove it.
+
+Detection remains useful — to log, alert, and raise the attacker's cost:
 
 ```python
-# Multi-layer prompt injection defense
+# Detection layer — useful signal, never the only control
 class InputGuardrail:
-    def check(self, user_input: str) -> GuardrailResult:
-        results = []
-
-        # Layer 1: Pattern matching for known injection patterns
-        results.append(self.pattern_detector.scan(user_input))
-
-        # Layer 2: ML-based injection classifier
-        results.append(self.injection_classifier.classify(user_input))
-
-        # Layer 3: Input/output boundary enforcement
-        results.append(self.boundary_enforcer.check(user_input))
-
-        return GuardrailResult.aggregate(results)
+    def check(self, text: str, source: str) -> GuardrailResult:
+        results = [
+            self.pattern_detector.scan(text),          # known injection patterns
+            self.injection_classifier.classify(text),  # ML-based classifier
+        ]
+        # Check untrusted sources too (web pages, emails, tool output), not only user input
+        return GuardrailResult.aggregate(results, source=source)
 ```
+
+### OWASP Top 10s as the Threat Checklist
+
+Two OWASP GenAI Security Project lists are the common vocabulary for AI threats in reviews and audits: the **Top 10 for LLM Applications (2025)** and the **Top 10 for Agentic Applications (2026)**, published in December 2025. Map each entry to a control and to an adversarial eval (see Red Teaming below):
+
+| OWASP LLM Top 10 (2025) | Primary factors |
+|---|---|
+| LLM01 Prompt Injection | F7 (this factor), F18 |
+| LLM02 Sensitive Information Disclosure | F7 PII handling, F19 |
+| LLM03 Supply Chain | F3, F5 |
+| LLM04 Data and Model Poisoning | F7 data governance, F16 |
+| LLM05 Improper Output Handling | F2 output schemas, F7 |
+| LLM06 Excessive Agency | F8, F18 |
+| LLM07 System Prompt Leakage | F4 (no secrets in prompts), F17 |
+| LLM08 Vector and Embedding Weaknesses | F10, F12, F19 |
+| LLM09 Misinformation | F6, F7 |
+| LLM10 Unbounded Consumption | F14, F20 |
+
+| OWASP Agentic Top 10 (2026) | Primary factors |
+|---|---|
+| ASI01 Agent Goal Hijack | F7 prompt injection, F18 |
+| ASI02 Tool Misuse and Exploitation | F2, F18 |
+| ASI03 Identity and Privilege Abuse | F8 |
+| ASI04 Agentic Supply Chain Vulnerabilities | F3, F5 |
+| ASI05 Unexpected Code Execution | F8 sandboxing |
+| ASI06 Memory & Context Poisoning | F12, F19 |
+| ASI07 Insecure Inter-Agent Communication | F2 (A2A), F8 |
+| ASI08 Cascading Failures | F13, F18 |
+| ASI09 Human-Agent Trust Exploitation | F7 human-in-the-loop, F18 |
+| ASI10 Rogue Agents | F15, F18 |
 
 ### PII Handling
 Detect and handle personally identifiable information at system boundaries:
@@ -467,6 +513,8 @@ red_team_program:
         methods: [demographic_probing, stereotype_elicitation]
     - output_manipulation:            # attempts to generate harmful content
         methods: [indirect_harmful, dual_use, gradual_escalation]
+    - agentic:                        # OWASP Agentic Top 10 scenarios
+        methods: [goal_hijack_via_tool_output, tool_misuse, memory_poisoning, exfiltration_via_rendered_links]
 
   adversarial_eval_dataset:
     source: evals/adversarial.jsonl   # versioned alongside code (Factor 1)
@@ -500,11 +548,27 @@ ai_incident_playbook:
     - within_24h: quantify_impact_and_scope
     - within_1w: implement_mitigation
     - ongoing: enhanced_monitoring
+
+  # Regulatory clocks run in parallel with the technical response, from the moment of awareness
+  regulatory_reporting:
+    eu_ai_act_art_73:                 # serious incidents, high-risk systems; calendar days
+      widespread_or_critical_infrastructure: 2d
+      death_of_a_person: 10d
+      other_serious_incident: 15d
+    eu_cra_art_14:                    # products with digital elements; applies since 11 Sep 2026
+      actively_exploited_vulnerability: { early_warning: 24h, notification: 72h, final_report: "14d after fix available" }
+      severe_security_incident: { early_warning: 24h, notification: 72h, final_report: "1 month" }
+    personal_data_breach:
+      gdpr: 72h                       # to the supervisory authority
+      lgpd: "3 working days"          # to the ANPD (Resolution CD/ANPD 15/2024)
 ```
+
+One incident can trigger several regimes at once — a prompt-injection exfiltration from a high-risk system can be an AI Act serious incident, a CRA severe incident, and a personal-data breach. Decide in advance who owns each clock, and log the moment of awareness with a timestamp you can defend (cross-ref Factor 20's AI incident log).
 
 ## Compliance Checklist
 
-- [ ] Input guardrails detect and handle prompt injection attempts
+- [ ] Prompt injection is mitigated architecturally: every agent profile passes a Rule-of-Two review (private data / untrusted content / external action), with detection classifiers as an additional layer on user input and untrusted sources
+- [ ] OWASP LLM Top 10 (2025) and Agentic Top 10 (2026) risks are mapped to controls and covered by the adversarial eval suite
 - [ ] PII is detected at input and output boundaries with configurable handling policies
 - [ ] Content safety classifiers screen AI outputs before serving to users
 - [ ] Bias monitoring evaluates output quality, refusal rates, and sentiment across demographic segments on a defined cadence
@@ -514,7 +578,7 @@ ai_incident_playbook:
 - [ ] Regulatory compliance (GDPR/LGPD) is addressed: legal basis, data minimization, right to erasure, and DPIA for high-risk AI features
 - [ ] EU AI Act risk classification is determined and documented for each AI system
 - [ ] High-risk AI systems implement mandatory requirements — risk management, data governance, technical documentation, record-keeping, transparency, human oversight, and accuracy/robustness testing — before their application date under Regulation (EU) 2026/1744 (2 Dec 2027 for Annex III, 2 Aug 2028 for Annex I)
-- [ ] An AI incident response playbook exists and is practiced
+- [ ] An AI incident response playbook exists and is practiced, including the regulatory reporting clocks (EU AI Act Art. 73, Cyber Resilience Act, GDPR/LGPD) and an owner for each
 - [ ] Red teaming exercises run on a defined cadence with adversarial eval datasets maintained in CI
 - [ ] AI-generated content carries C2PA Content Credentials and/or SynthID-class watermarks (EU AI Act Article 50: applies since 2 Aug 2026; 2 Dec 2026 for generative systems already on the market)
 - [ ] An ISO/IEC 42001 AIMS or equivalent management system is in place, with cross-mapping to NIST AI RMF and EU AI Act controls

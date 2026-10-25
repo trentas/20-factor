@@ -129,6 +129,7 @@ agents:
       max_retries: 3                # Maximum retries on failure
 
     safety:
+      capability_review: rule_of_two  # private data / untrusted input / external action — at most two (Factor 7)
       require_reasoning: true       # Agent must explain its plan before acting
       checkpoint_interval: 5        # Checkpoint state every 5 steps
       rollback_on_failure: true     # Revert partial actions if agent fails
@@ -388,6 +389,7 @@ MCP enables key capabilities for agent orchestration:
 - **Permission layering**: MCP defines what tools *exist*; the agent's permission model (above) defines what tools it's *allowed to use*. These are separate concerns.
 - **Resource access**: Beyond tools, MCP servers can expose resources (files, data) and prompt templates that agents can use contextually.
 - **Human input through the protocol**: since 2026-07-28, a server that needs a confirmation or a credential returns an `input_required` result and the client retries with the answer (multi round-trip requests). Route those requests through the same approval gates as any other human-in-the-loop decision, and persist them durably (Factor 13).
+- **Servers are dependencies you execute or trust**: pin each server's version, install from verified publishers under scoped package names, and review updates like any other dependency (Factor 3). An MCP server's tool descriptions go straight into the model's context, so a malicious or compromised server is a prompt-injection vector as well as a code-execution one.
 
 ### A2A for Multi-Agent Interoperability
 
@@ -468,7 +470,7 @@ agents:
 
 **Key design principles for computer use agents:**
 - **Prefer structured tools over computer use**: If an API or MCP server exists for the task, use it. Computer use should be the last resort for systems that don't expose programmatic interfaces.
-- **Sandbox the environment**: Run computer use agents in isolated browser sessions or VMs. Never give them access to the host system.
+- **Sandbox the environment**: Run computer use agents in isolated browser sessions or VMs. Never give them access to the host system. The same applies to any agent that executes code or shell commands — see Factor 8 for sandbox isolation levels.
 - **Tighter budgets**: Computer use consumes far more tokens (screenshots) and has higher risk per action. Apply stricter execution budgets than for structured tool agents.
 - **Visual confirmation gates**: Show the human what the agent sees (screenshot) and what it plans to do before executing high-risk GUI actions.
 
@@ -531,6 +533,8 @@ Swarm frameworks accelerate prototyping but require explicit budget enforcement 
 - **NIH orchestration**: Building custom agent loops, retry logic, and tracing when a standard Agent SDK handles it correctly. Use frameworks for infrastructure; focus custom code on business logic and boundaries.
 - **Hardcoded tool sets**: Defining tools inline instead of using MCP for dynamic discovery. Hardcoded tools create tight coupling and prevent tool reuse across agents.
 - **Computer use for API-available tasks**: Using screenshot-based computer use when a structured API or MCP server exists. Computer use is slower, more expensive, and less reliable than structured tool calls.
+- **The lethal trifecta by accident**: giving one agent session private data, untrusted input, and an outbound channel at once — usually by adding "just one more" tool or MCP server (Factor 7).
+- **Floating tool servers**: launching MCP servers with unpinned `npx`/`latest` commands, so whatever was published last runs with the agent's permissions.
 
 ## Compliance Checklist
 
@@ -549,6 +553,7 @@ Swarm frameworks accelerate prototyping but require explicit budget enforcement 
 - [ ] Computer use agents run in sandboxed environments with tighter budgets and confirmation gates for GUI actions
 - [ ] Agent execution patterns and budget usage are monitored for optimization
 - [ ] Skills follow the Agent Skills format and are versioned, reviewed artifacts; activating a skill never widens tool permissions or budgets
+- [ ] Every agent profile passes a Rule-of-Two capability review (private data / untrusted input / external action) before deployment (Factor 7)
 - [ ] MCP servers are pinned to versions from verified publishers; remote servers use Streamable HTTP, and MCP input requests route through the same approval gates as other human-in-the-loop decisions
 - [ ] Cross-organization A2A agents are trusted only after verifying their signed Agent Cards, and all terminal task states (failed, canceled, rejected) are handled
 - [ ] Voice/realtime agents have TTFA SLOs configured, VAD barge-in handling implemented, and session state persisted via Factor 13

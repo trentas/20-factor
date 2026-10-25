@@ -191,6 +191,25 @@ Apply zero trust principles to agent-to-agent and agent-to-service communication
 - Rate-limit agent actions independently from user actions.
 - Where possible, ground agent identity in **SPIFFE/SPIRE workload identity** (or a workload-identity equivalent in your platform), so agent identity is verifiable and rotatable without long-lived secrets.
 
+### Sandboxed Execution for Agents
+
+Any agent that runs code, shell commands, or a browser executes instructions that may have come from untrusted content (Factor 7). Isolation is the control that bounds the blast radius when that goes wrong, and plain containers share the host kernel — a weak boundary for untrusted code.
+
+| Isolation level | Boundary | Use for |
+|-----------------|----------|---------|
+| Process / plain container | Shared host kernel | Trusted, first-party code only |
+| **gVisor** (user-space kernel) | Syscalls intercepted by a sandbox kernel | Agent code execution at scale with low overhead |
+| **MicroVM** (Firecracker, Kata Containers) | Hardware virtualization, minimal VM | Untrusted or multi-tenant code execution; computer use |
+| Full VM | Hypervisor, full guest OS | Long-lived desktop/browser agents needing a complete OS |
+
+On Kubernetes, SIG Apps' **Agent Sandbox** project (`kubernetes-sigs/agent-sandbox`) adds a `Sandbox` resource for stateful, single-tenant agent runtimes, with gVisor or Kata Containers as the runtime class and pre-warmed pools to hide startup latency. Managed sandbox services and model providers' hosted code-execution tools are the alternative when you don't want to run this layer yourself.
+
+Whatever the substrate:
+- **One sandbox per session or task**, destroyed afterwards — no shared filesystem, cookies, or credentials between sessions.
+- **Egress allowlist by default**; untrusted code gets no general internet access.
+- **No secrets inside the sandbox**: credentials are injected at an egress proxy or by the tool layer, so code running in the sandbox — or a prompt-injected agent — cannot read them.
+- **Resource and time limits** (CPU, memory, disk, wall clock) enforced by the runtime, aligned with the agent's execution budget (Factor 18).
+
 ### Computer Use and Browser-Agent Delegated Identity
 
 By 2026, **computer-use agents** crossed the production threshold (Claude computer use, OpenAI's ChatGPT agent, Gemini Computer Use, Manus, and others). When an agent operates a browser or desktop on behalf of a user — clicking, typing, navigating across sites the user is logged into — it inherits a fraction of the user's identity. This is a categorically different trust model from API tool use.
@@ -281,4 +300,5 @@ Attestation is also identity: a TEE-attested endpoint is a *verifiable identity*
 - [ ] Screenshots from computer-use sessions are redacted server-side and treated as PII at rest
 - [ ] GPU TEE attestation (H100/H200/Blackwell Confidential Computing or equivalent) is required for inference on regulated/sensitive data, with attestation verified before submitting data
 - [ ] MCP authorization uses OAuth 2.1 with scoped, short-lived tokens, Client ID Metadata Documents for registration, and issuer (`iss`) validation (cross-ref Factor 2)
+- [ ] Agents that execute code, shell commands, or browsers run in per-session sandboxes with kernel-level isolation (gVisor, microVM, or VM), egress allowlists, and no secrets inside the sandbox
 - [ ] Agent workload identity is grounded in SPIFFE/SPIRE or platform workload-identity, not long-lived secrets

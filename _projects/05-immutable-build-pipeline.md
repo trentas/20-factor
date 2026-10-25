@@ -174,7 +174,7 @@ A minimal AIBOM entry per model includes: model identifier and version, weights 
   run: cosign sign-blob dist/aibom.cdx.json --bundle dist/aibom.sig
 ```
 
-The AIBOM travels with the release. Downstream consumers (compliance, procurement, customers) verify it before deployment. Regulators (EU AI Act, NIST profiles — see Factor 7) increasingly require it.
+The AIBOM travels with the release. Downstream consumers (compliance, procurement, customers) verify it before deployment. Regulators (EU AI Act, NIST profiles — see Factor 7) increasingly require it, and the EU Cyber Resilience Act makes a component inventory part of the technical documentation for products on the EU market (obligations from December 2027; vulnerability reporting already since September 2026 — see Factor 3). Keep every release's SBOM and AIBOM queryable, so an advisory can be matched to the releases that ship the affected component within hours.
 
 ### Provenance, Signing, and Reproducibility
 
@@ -221,7 +221,7 @@ For AI applications, progressive delivery is essential because behavior changes 
 - [ ] Container images are scanned for vulnerabilities before release
 - [ ] Rollback is achieved by deploying a previous immutable release
 - [ ] Progressive delivery mechanisms (canary, shadow) are used for AI feature releases
-- [ ] An AI Bill of Materials (CycloneDX 1.6 ML or SPDX 3.0 AI) is emitted as a release artifact and signed
+- [ ] An AI Bill of Materials (CycloneDX 1.6 ML or SPDX 3.0 AI) is emitted as a release artifact and signed, and every supported release's SBOM/AIBOM stays queryable for vulnerability matching
 - [ ] SLSA provenance attestations are generated for container images, prompt bundles, and fine-tuned model weights
 - [ ] Release artifacts are signed (sigstore/cosign) and signatures are verified at deploy time
 - [ ] Builds are reproducible — same inputs produce byte-identical outputs (with documented exceptions for non-deterministic training, where seeds and dataset hashes are captured)

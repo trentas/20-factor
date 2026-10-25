@@ -108,6 +108,35 @@ human_eval_config:
   escalation_threshold: 0.3     # Disagreement triggers review
 ```
 
+**5. Agent Trajectory Evaluations**
+For agents, a correct-looking final answer can hide a bad run: the wrong tool, a mutated record, forty wasted steps. Grade the *path* as well as the outcome, from the full transcript of each trial — every model call, tool call, argument, and result:
+
+```python
+# Grade an agent run from its transcript — deterministic checks first, judge last
+def eval_trajectory(transcript, case):
+    checks = {
+        # Outcome: verified against the environment, not the agent's own claim
+        "task_completed": case.verify_end_state(transcript.environment),
+        # Path: right tools, valid arguments, nothing forbidden
+        "required_tools_called": case.required_tools <= transcript.tool_names(),
+        "no_forbidden_actions": not (case.forbidden_tools & transcript.tool_names()),
+        "tool_args_valid": all(case.validate_args(call) for call in transcript.tool_calls),
+        # Efficiency: within the steps and cost the task should take
+        "within_step_budget": transcript.step_count <= case.max_steps,
+        "within_cost_budget": transcript.cost_usd <= case.max_cost_usd,
+    }
+    if case.needs_judgment:
+        checks["plan_quality"] = judge.score(transcript, rubric=case.rubric) >= 4
+    return checks
+```
+
+Practices that matter for agents:
+- **Verify the end state, not the report.** Check the database row, the file, the ticket — the environment — rather than trusting the agent's final message.
+- **Run each case several times.** Agents vary across runs. Report pass@k (succeeded at least once in k trials) for capability and pass^k (succeeded in all k) for reliability. Per-step reliability compounds: a 95%-per-step agent over eight steps succeeds end to end only about two-thirds of the time.
+- **Deterministic checks before judges.** Tool choice, argument validity, ordering, and budgets are cheap to check in code; reserve LLM-as-judge for plan quality and other calls code can't make.
+- **Evaluate the harness, not just the model.** The same model scores very differently under different harnesses (Factor 18). Record the harness version with every result and re-run the suite when either side changes.
+- **Build cases from production failures.** Every bad trajectory found in traces (Factor 15) becomes a regression case.
+
 ### Golden Datasets
 Maintain curated evaluation datasets:
 
@@ -280,3 +309,4 @@ The methodology is tool-agnostic — what matters is that evaluations exist, run
 - [ ] Synthetic eval data generation pipelines exist to scale coverage beyond human-labeled examples
 - [ ] LLM-as-judge calibration is tracked against a locked human anchor set, with alerts for calibration drift
 - [ ] Public benchmarks (GPQA Diamond, SWE-bench Verified, Terminal-Bench, etc.) are used as reference points during model selection, not as primary eval gates
+- [ ] Agents are evaluated on full trajectories — end-state verification, tool selection and arguments, step and cost budgets — with repeated trials reporting pass^k

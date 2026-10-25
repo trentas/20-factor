@@ -61,7 +61,9 @@ class AIRequestHandler:
         conversation = await self.load_conversation(request.conversation_id)
 
         # Check semantic cache before calling LLM
-        cached = await self.cache.semantic_lookup(request.message, conversation.context)
+        cached = await self.cache.semantic_lookup(
+            request.message, conversation.context, scope=request.cache_scope  # tenant + data permissions
+        )
         if cached and cached.similarity > 0.95:
             return cached.response
 
@@ -72,7 +74,7 @@ class AIRequestHandler:
         await self.save_conversation(request.conversation_id, conversation)
 
         # Cache the response for future similar queries
-        await self.cache.store(request.message, conversation.context, response)
+        await self.cache.store(request.message, conversation.context, response, scope=request.cache_scope)
 
         return response
 ```
@@ -89,7 +91,7 @@ class SemanticCache:
         self.vector_store = vector_store
         self.response_store = response_store
 
-    async def lookup(self, query: str, context: str) -> CacheResult | None:
+    async def lookup(self, query: str, context: str, scope: str) -> CacheResult | None:
         # Embed the query
         query_embedding = await self.embed(query)
 
@@ -97,7 +99,7 @@ class SemanticCache:
         results = await self.vector_store.query(
             vector=query_embedding,
             top_k=1,
-            filter={"context_hash": hash(context)},  # Same context
+            filter={"context_hash": hash(context), "scope": scope},  # Same context, same tenant/permissions
             threshold=0.95,  # High similarity required
         )
 
@@ -110,17 +112,22 @@ class SemanticCache:
             )
         return None
 
-    async def store(self, query: str, context: str, response: str):
+    async def store(self, query: str, context: str, response: str, scope: str):
         query_embedding = await self.embed(query)
         cache_id = generate_id()
 
         await self.vector_store.upsert([Vector(
             id=cache_id,
             values=query_embedding,
-            metadata={"context_hash": hash(context), "timestamp": now()},
+            metadata={"context_hash": hash(context), "scope": scope, "timestamp": now()},
         )])
         await self.response_store.set(cache_id, response, ttl=3600)
 ```
+
+**Scope the cache, or it becomes a leak and an attack surface.** A semantic cache serves an answer that was generated for someone else, which brings two failure modes:
+
+- **Cross-tenant and cross-permission leakage**: a response generated from tenant A's documents, or from data only an admin may see, is served to tenant B or a less-privileged user whose question happens to be similar. Key every entry by tenant *and* by the permission scope of the data that produced it, and bypass the cache for personalized answers.
+- **Cache poisoning**: an attacker elicits a manipulated answer once — for example through prompt injection in retrieved content — and the cache then serves it to every user whose query lands nearby in embedding space. Similarity thresholds are not a security boundary. Cache only responses that passed output guardrails (Factor 7), never cache responses built from untrusted tool output or web content, keep *shared* caches to vetted, FAQ-style content, and record which request produced each entry so a poisoned one can be traced and purged (OWASP LLM08, ASI06).
 
 ### Embedding Caching
 
@@ -197,6 +204,7 @@ response = await client.messages.create(
 - **Cache lifetime**: Provider caches are ephemeral — a default 5-minute TTL, with a 1-hour TTL available (at a higher write cost) for bursty or low-traffic endpoints. High-traffic endpoints benefit most.
 - **Multi-turn conversations**: In chat applications, the conversation history grows but the system prompt prefix stays the same — naturally benefiting from prefix caching.
 - **Deterministic tool lists**: Tool definitions render at the very start of the prompt, so a tool list whose order changes between requests invalidates everything after it. The MCP 2026-07-28 revision asks servers to return `tools/list` in deterministic order for exactly this reason; sort tool definitions in your own harness as well.
+- **Append-only history**: Change the conversation only by appending. Editing or deleting an earlier turn invalidates the cache from that point on — and on newer reasoning models it can also invalidate preserved reasoning state. When history must shrink, compact it at a deliberate checkpoint (Factor 17) instead of trimming a little on every turn.
 
 ```yaml
 # prompt-caching-config.yaml
@@ -274,9 +282,11 @@ class ConversationStore:
 
     async def append_turn(self, conversation_id: str, role: str, content: str):
         conversation = await self.load(conversation_id)
-        conversation.add_turn(role, content)
-        # Trim to fit context window budget
-        conversation.trim_to_token_budget(max_history_tokens=4000)
+        conversation.add_turn(role, content)   # append-only: never rewrite earlier turns
+        # Over budget? Compact at a checkpoint (one deliberate cache break) rather than
+        # trimming on every turn, which breaks prefix caching each time — see Factor 17
+        if conversation.token_count() > MAX_HISTORY_TOKENS:
+            conversation = await self.compactor.compact(conversation)
         await self.save(conversation_id, conversation)
 ```
 
@@ -330,9 +340,11 @@ AI caches need careful invalidation strategies:
 - [ ] Application processes are stateless — no in-process state survives a restart
 - [ ] Conversation history and session data are stored in backing services
 - [ ] Semantic caching reduces redundant LLM calls for similar queries
+- [ ] Semantic cache entries are scoped by tenant and data-permission scope; only guardrail-passed responses built from trusted content are cached, and every entry can be traced and purged
 - [ ] Embedding caching avoids recomputation of embeddings for unchanged content
 - [ ] Provider-level prompt caching is enabled and prompts are structured for maximum cache hit rates (stable prefix, variable suffix)
 - [ ] Prompt caching metrics (hit rate, cost savings) are monitored
+- [ ] Conversation history is append-only between deliberate compaction points, and tool definitions are serialized in deterministic order
 - [ ] Cached MCP discovery results honor the server's `ttlMs` and `cacheScope` hints
 - [ ] Cache invalidation strategies account for time, content changes, and model updates
 - [ ] Cache hit rates and cost savings are monitored (Factor 15)
