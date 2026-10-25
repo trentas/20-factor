@@ -109,13 +109,14 @@ See [MAPPING.md](MAPPING.md) for a detailed mapping of every original factor to 
 
 ---
 
-## Maturity Assessment
+## Self-Assessment
 
-Use the interactive **[Maturity Assessment Tool](assessment.html)** to evaluate your applications against all 20 factors (320+ checklist items). Features:
+Use the interactive **[Self-Assessment Tool](assessment.html)** to check your applications against all 20 factors (330+ checklist items). Features:
 
 - **Radar chart** updates in real time as you check off compliance items
-- **Maturity scoring** (0–5 per factor) based on percentage of applicable items completed
-- **N/A support** — mark items as not applicable so they don't penalize your score
+- **Declared coverage** per factor — the share of applicable items you checked. It is a self-assessment, not a measured maturity level
+- **N/A support** — items marked not applicable are left out, and a factor with every item N/A has no score and stays out of the totals
+- **Answers tied to item wording** — when an item is reworded, its answer is kept but marked for review until you confirm it
 - **Multiple profiles** — assess each application independently
 - **Export/Import JSON** — save and share assessments per application
 - **Compare mode** — overlay multiple application radars side by side
