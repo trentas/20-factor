@@ -46,112 +46,42 @@ This update retains the core principle and extends it for AI workloads:
 ## In Practice
 
 ### Startup Sequence
-Implement a structured startup that separates phases:
 
-```python
-class AIServiceLifecycle:
-    async def startup(self):
-        # Phase 1: Fast startup — accept health checks immediately
-        self.health = HealthStatus.STARTING
-        self.start_liveness_server()  # Kubernetes liveness probe passes
+Split startup into phases, so the platform always knows whether the process is alive, still loading, or ready to serve:
 
-        # Phase 2: Load dependencies
-        await self.load_configuration()
-        await self.connect_to_backing_services()
-
-        # Phase 3: Load model (slow)
-        self.logger.info("Loading model into GPU memory...")
-        self.model = await self.model_loader.load(
-            model_id=self.config.model_id,
-            device=self.config.gpu_device,
-            quantization=self.config.quantization,
-        )
-        self.logger.info(f"Model loaded in {elapsed}s, GPU memory: {gpu_mem_used}MB")
-
-        # Phase 4: Warm-up (optional but recommended)
-        await self.warm_up_model()  # Run a dummy inference to JIT compile
-
-        # Phase 5: Ready to serve
-        self.health = HealthStatus.READY  # Kubernetes readiness probe passes
-        self.logger.info("Service ready to accept traffic")
-```
+| Phase | What happens | Probe state |
+|-------|--------------|-------------|
+| 1. Process up | The health endpoint answers immediately | Liveness passes; readiness fails |
+| 2. Dependencies | Load configuration and connect to backing services (Factor 4, Factor 10); fail fast on missing or invalid configuration | Not ready |
+| 3. Model load | Load weights into GPU memory — the slow phase; log load time and memory used | Not ready; the startup probe protects it |
+| 4. Warm-up | Run a representative inference to trigger compilation and allocate caches before real traffic arrives | Not ready |
+| 5. Serving | The instance accepts traffic | Readiness passes |
 
 ### Health Check Patterns
 
-```yaml
-# kubernetes deployment
-livenessProbe:
-  httpGet:
-    path: /health/live
-    port: 8080
-  initialDelaySeconds: 5
-  periodSeconds: 10
-  # "Is the process alive?" — passes as soon as the HTTP server starts
+Each probe answers a different question, and conflating them causes restart loops:
 
-readinessProbe:
-  httpGet:
-    path: /health/ready
-    port: 8080
-  initialDelaySeconds: 30        # Give time for model loading
-  periodSeconds: 5
-  # "Is the model loaded and ready to serve?" — only passes after warm-up
+| Probe | Question | Passes when | AI-specific rule |
+|-------|----------|-------------|------------------|
+| **Liveness** | Is the process alive? | As soon as the HTTP server starts | Never depends on the model being loaded or a provider being reachable — otherwise a slow load or a provider outage restarts every replica |
+| **Readiness** | Should this instance receive traffic now? | After model load and warm-up | Fails again as soon as shutdown begins, so the load balancer stops routing new requests |
+| **Startup** | Is a slow start still in progress? | Typically the readiness check | Its budget (failure threshold × period) must exceed the worst-case model load time — for example, 30 failures × 10 s allows 5 minutes |
 
-startupProbe:
-  httpGet:
-    path: /health/ready
-    port: 8080
-  initialDelaySeconds: 10
-  periodSeconds: 10
-  failureThreshold: 30           # Allow up to 5 minutes for model loading
-  # Protects slow-starting containers from being killed during model load
-```
+Further reading: Kubernetes, [Configure Liveness, Readiness and Startup Probes](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/).
 
 ### Graceful Shutdown
 
-```python
-async def shutdown(self, signal):
-    self.logger.info(f"Received {signal}, initiating graceful shutdown")
+On SIGTERM, shut down in this order:
 
-    # Phase 1: Stop accepting new requests
-    self.health = HealthStatus.DRAINING
-    await self.deregister_from_load_balancer()
+1. **Stop accepting new work.** Fail readiness and deregister from the load balancer.
+2. **Drain in-flight requests within a bounded timeout.** Streaming responses end with an explicit completion or error event rather than a cut connection, so clients can tell a deliberate end from a failure. When the timeout expires, cancel what remains and return a retryable error.
+3. **Unload models through the serving engine's supported path.** Use the inference server's documented shutdown or unload mechanism, then let the process exit. `torch.cuda.empty_cache()` is not a release mechanism: it returns PyTorch's cached, unused blocks to the driver, does not free memory still held by live tensors, and does nothing for engines that manage GPU memory themselves.
+4. **Close connections and flush telemetry**, so the last logs and spans of the drained requests are not lost (Factor 15).
+5. **Finish inside the platform's grace period.** Drain timeout plus unload time must be shorter than the termination grace period (Kubernetes `terminationGracePeriodSeconds`); otherwise the process is killed mid-drain.
 
-    # Phase 2: Drain in-flight requests
-    self.logger.info(f"Draining {len(self.active_requests)} in-flight requests")
-    try:
-        await asyncio.wait_for(
-            self.drain_active_requests(),
-            timeout=self.config.drain_timeout_seconds  # e.g., 60 seconds
-        )
-    except asyncio.TimeoutError:
-        self.logger.warning(f"Drain timeout — {len(self.active_requests)} requests will be interrupted")
-        await self.cancel_remaining_requests()
+Before the node or GPU takes new work, verify that the old process has exited and its device memory is free.
 
-    # Phase 3: Release GPU resources
-    self.logger.info("Unloading model and releasing GPU memory")
-    await self.model_loader.unload(self.model)
-    torch.cuda.empty_cache()  # Explicitly free GPU memory
-
-    # Phase 4: Close connections
-    await self.close_backing_service_connections()
-
-    self.logger.info("Shutdown complete")
-```
-
-### Request Draining Strategies
-
-```python
-async def drain_active_requests(self):
-    """Wait for all in-flight requests to complete."""
-    # For streaming responses, signal clients to expect end-of-stream
-    for request in self.active_requests:
-        if request.is_streaming:
-            # Send a completion signal so clients know the stream ended intentionally
-            await request.send_completion_event()
-
-    # Wait for all requests to finish
-    await asyncio.gather(*[r.completion_future for r in self.active_requests])
-```
+Further reading: Kubernetes, [Pod termination](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-termination); PyTorch, [CUDA semantics — memory management](https://docs.pytorch.org/docs/main/notes/cuda.html).
 
 ### Preloading and Caching Strategies
 Mitigate slow model loading:
@@ -164,29 +94,12 @@ Mitigate slow model loading:
 
 ### Kubernetes GPU Node Cordoning and Draining
 
-GPU nodes require careful handling before maintenance or scale-down. Cordon the node first to prevent new pods from scheduling, then use a `PodDisruptionBudget` to guarantee minimum availability during draining.
+GPU nodes require careful handling before maintenance or scale-down:
 
-```yaml
-# PodDisruptionBudget — always keep at least 1 inference pod running during drain
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: inference-pdb
-spec:
-  minAvailable: 1
-  selector:
-    matchLabels:
-      app: inference-server
-```
-
-```bash
-# Safe drain sequence for a GPU node
-kubectl cordon <gpu-node>                         # stop new pods scheduling
-kubectl drain <gpu-node> --grace-period=120       # wait 120s for in-flight requests
-# Pod SIGTERM handler should: stop accepting traffic, drain requests, release GPU, exit
-```
-
-For vLLM and other inference servers, the shutdown hook must flush the KV cache and release GPU memory via `torch.cuda.empty_cache()` before process exit — stranded GPU memory on a partially drained node blocks the next scheduled pod from starting.
+- **Cordon first**, so no new pods schedule onto the node.
+- **Drain with a grace period** at least as long as the worst-case request drain, so each pod's SIGTERM handler can stop accepting traffic, drain, unload, and exit.
+- **Protect capacity with a `PodDisruptionBudget`** (for example, `minAvailable: 1` for the inference deployment), so a drain never takes down the last serving replica.
+- **Verify the GPU is free before the next pod schedules.** vLLM and other inference servers manage their weights and KV cache themselves; shut them down through their own path rather than relying on a framework cache call. Stranded GPU memory on a partially drained node blocks the next scheduled pod from starting.
 
 ### Spot and Preemptible GPU Instances
 
@@ -205,21 +118,11 @@ This is particularly valuable for models with long load times (30B+ parameter mo
 
 ### Crash Recovery
 
-```python
-# Implement idempotent request handling for crash recovery
-class RequestHandler:
-    async def handle(self, request):
-        # Check if this request was already processed (idempotency key)
-        if cached_result := await self.cache.get(request.idempotency_key):
-            return cached_result
+A process can die at any point, so a retried request must be safe to run again:
 
-        # Process the request
-        result = await self.process(request)
-
-        # Cache the result for crash recovery
-        await self.cache.set(request.idempotency_key, result, ttl=3600)
-        return result
-```
+- **Carry an idempotency key from the caller**, stable across retries of the same request.
+- **Deduplicate where the effect happens.** A result cache written *after* the work does not make it idempotent: a process that dies after the side effect and before writing the cache repeats the effect on retry. Deduplicate at the destination (many payment and messaging APIs accept an idempotency key), or record the key in the same transaction as the effect (Factor 13).
+- **Know what a retry repeats.** Retrying a model call with no side effects only costs tokens; retrying a tool call that sends, pays, or writes needs the deduplication above.
 
 ## Compliance Checklist
 
@@ -227,13 +130,13 @@ class RequestHandler:
 - [ ] Kubernetes (or equivalent) health checks distinguish between liveness, readiness, and startup probes
 - [ ] Startup probes allow sufficient time for model loading without being killed prematurely
 - [ ] Graceful shutdown drains in-flight requests before terminating
-- [ ] Shutdown explicitly releases GPU memory and unloads models
+- [ ] Shutdown unloads models through the serving engine's supported path, and GPU memory is verified free before the node takes new work
 - [ ] Drain timeouts are configured and handle the case where requests cannot complete in time
 - [ ] Streaming responses send proper completion signals during shutdown
 - [ ] Model loading is optimized through caching, preloading, or quantization
 - [ ] Request handling is idempotent to support crash recovery
 - [ ] SIGTERM handlers are registered and tested
-- [ ] Kubernetes PodDisruptionBudgets protect inference pods during node drain; GPU memory is explicitly released on shutdown
+- [ ] Kubernetes PodDisruptionBudgets protect inference pods during node drain; GPU memory is verified released before the next pod schedules
 - [ ] Spot/preemptible GPU instance handling is tested: SIGTERM mid-inference triggers graceful drain and checkpoint before exit
 - [ ] CRIU checkpoint-restore is evaluated for model-serving pods with startup times exceeding readiness SLO targets
 - [ ] Remote MCP servers run as stateless, load-balanced replicas that finish or explicitly fail in-flight calls on shutdown

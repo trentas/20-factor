@@ -59,45 +59,20 @@ Layer 4: Hardware dependencies     → NVIDIA Driver >= 550, GPU with >= 24GB VR
 Each layer needs its own management strategy.
 
 ### Containerized Dependency Isolation
-Use multi-stage builds to manage the complexity:
+Use multi-stage builds to keep the build toolchain out of the runtime image:
 
-```dockerfile
-# Stage 1: Build with full toolchain
-FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS builder
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Stage 2: Runtime with minimal footprint
-FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
-COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
-COPY --from=builder /app/models /app/models
-```
+- **Build stage**: a full toolchain image (compilers, CUDA *development* image) installs dependencies from the lockfile, with hash checking.
+- **Runtime stage**: starts from the matching CUDA *runtime* image and copies in only the installed packages, the application, and any model files it ships. Compilers, headers, and package caches stay behind, which shrinks both the image and its attack surface.
+- **Same versions in both stages**: the CUDA, Python, and OS versions must match exactly, and base images are pinned by digest, not by a mutable tag.
 
 ### Model Dependency Declaration
-Declare model dependencies explicitly, just like code dependencies:
+Declare model dependencies explicitly, just like code dependencies, in a versioned manifest. What it must record depends on how the model is consumed:
 
-```yaml
-# model-dependencies.yaml
-models:
-  embedding:
-    registry: huggingface
-    name: BAAI/bge-large-en-v1.5
-    version: "e8c4f2a"   # pinned commit SHA, not a floating branch/PR ref
-    sha256: "abc123..."
-    size: 1.34GB
-    required_memory: 3GB
-
-  generation:
-    provider: anthropic
-    model: claude-sonnet-5-5
-    pinned: true
-    fallback: claude-haiku-5-5
-
-  reranker:
-    registry: internal
-    name: custom-reranker
-    version: "2.1.0"
-    artifact: "s3://models/reranker/v2.1.0/model.onnx"
-```
+| Model source | Record | Why |
+|--------------|--------|-----|
+| Open weights from a hub (e.g., an embedding model on Hugging Face) | Repository, pinned commit SHA (not a floating branch or PR ref), file checksums, size and memory required | The same name can point to different weights tomorrow |
+| Hosted model API | Provider, exact model ID or snapshot, API version, and the evaluated fallback model | Aliases move; a fallback that was never evaluated is an unannounced quality change (Factor 16) |
+| Internal artifact (fine-tuned model, reranker) | Registry location, version, artifact digest, format (e.g., safetensors, ONNX) | A deploy can verify it serves exactly what was evaluated |
 
 ### AI SDK Version Strategy
 - **Pin exact versions** in lockfiles — not ranges. AI SDKs change behavior across minor versions.
@@ -107,17 +82,17 @@ models:
 
 ### Lockfiles for Python AI Stacks
 
-Most AI stacks are Python, and Python's lockfile story finally converged. **PEP 751** (accepted 2025) defines a standard lockfile format, `pylock.toml`, with growing tool support, and **uv** has become a common default for fast, reproducible resolution (`uv.lock`, exportable to `pylock.toml`). Whichever you use: commit the lockfile, install from it with hashes in CI and in container builds (`uv sync --frozen`, or a hash-checked install), and treat a lockfile change as a reviewable diff — it is where a malicious or hallucinated dependency first becomes visible.
+Most AI stacks are Python, and Python's lockfile story finally converged. [**PEP 751**](https://peps.python.org/pep-0751/) (accepted 2025) defines a standard lockfile format, `pylock.toml`, with growing tool support, and **uv** has become a common default for fast, reproducible resolution (`uv.lock`, exportable to `pylock.toml`). Whichever you use: commit the lockfile, install from it with hashes in CI and in container builds (`uv sync --frozen`, or a hash-checked install), and treat a lockfile change as a reviewable diff — it is where a malicious or hallucinated dependency first becomes visible.
 
 ### SLSA Provenance and sigstore for AI Artifacts
 
-Beyond checksums, supply-chain security for AI artifacts requires provenance attestations that prove a model came from a known source and wasn't tampered with in transit. **SLSA provenance** records link a model artifact to its build pipeline. [sigstore/cosign](https://github.com/sigstore/cosign) can sign model weights and prompt artifacts at publish time and verify signatures at deploy time — blocking unsigned or tampered artifacts.
+Beyond checksums, supply-chain security for AI artifacts requires provenance attestations that prove a model came from a known source and wasn't tampered with in transit. [**SLSA provenance**](https://slsa.dev/spec/v1.2/) records link a model artifact to its build pipeline. [sigstore/cosign](https://github.com/sigstore/cosign) can sign model weights and prompt artifacts at publish time and verify signatures at deploy time — blocking unsigned or tampered artifacts.
 
-For models sourced from Hugging Face or other registries, prefer models with a verified commit hash over floating branch references, and pin the commit SHA in your model-dependencies manifest.
+For models sourced from Hugging Face or other registries, prefer models with a verified commit hash over floating branch references, and pin the commit SHA in your model-dependency manifest.
 
 ### Model Cards and Dataset Cards as Versioned Metadata
 
-A **model card** (Hugging Face standard) documents intended use, limitations, training data summary, known biases, and evaluation results. A **dataset card** documents data provenance, licensing terms, and statistical characteristics. These should be stored alongside `model-dependencies.yaml` as versioned artifacts — they are part of the model dependency record, not separate documentation.
+A **model card** (Hugging Face standard) documents intended use, limitations, training data summary, known biases, and evaluation results. A **dataset card** documents data provenance, licensing terms, and statistical characteristics. These should be stored alongside the model-dependency manifest as versioned artifacts — they are part of the model dependency record, not separate documentation.
 
 When using a third-party dataset for fine-tuning or evaluation, verify the license allows your intended use case (commercial, derivative works, etc.) and record this in the dataset card.
 
