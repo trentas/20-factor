@@ -89,16 +89,7 @@ You are a document summarizer for {{company_name}}.
 {{retrieved_context}}
 ```
 
-```python
-# Prompts are loaded, rendered, and validated — not hardcoded strings
-prompt = PromptTemplate.load("prompts/summarization/system.md")
-rendered = prompt.render(
-    company_name="Acme Corp",
-    language="en",
-    max_sentences=5,
-    retrieved_context=context,
-)
-```
+Load, render, and validate templates through one code path that fails on undefined variables, rather than assembling prompts from string literals scattered through the code.
 
 Use pull requests for prompt changes — diffs are meaningful and reviewable. Tag prompt versions that correspond to production deployments.
 
@@ -122,42 +113,18 @@ Treat specs like every other declarative artifact in this factor:
 - **Kept honest**: a spec that drifts from the code is worse than none. Update it in the same PR as the behavior change, or delete it.
 
 ### CI Validation for AI Artifacts
-Validate prompts and schemas in the CI pipeline, just like application code:
+Validate prompts and schemas in the CI pipeline, just like application code. At minimum, CI checks that:
 
-```yaml
-# .github/workflows/ai-checks.yaml
-ai-validation:
-  steps:
-    - name: Validate prompt templates
-      run: |
-        python -m promptlint prompts/          # check syntax, undefined variables
-    - name: Validate tool schemas
-      run: |
-        jsonschema-lint tools/*.json           # valid JSON Schema
-    - name: Check context budgets
-      run: |
-        python scripts/check_token_budgets.py  # prompts fit within allocated budgets
-    - name: Run eval quick-suite
-      run: |
-        python -m eval run --suite quick       # fast subset of evals (Factor 6)
-```
+- **Prompt templates parse and every variable is defined** — a missing variable fails the build instead of rendering as an empty string in production.
+- **Tool schemas are valid JSON Schema** and match the contracts they implement (Factor 2).
+- **Prompts fit their token budgets** once rendered with realistic context (Factor 17).
+- **A quick evaluation suite passes** — a fast subset of the full suite, which still gates the release (Factor 6).
 
 ### GitOps for AI
-Declare model versions, endpoint configurations, and feature flags in Git:
+Declare model versions, endpoint configurations, and feature flags in Git, so the GitOps pipeline deploys them on merge:
 
-```yaml
-# deploy/ai-config.yaml — GitOps deploys this on merge to main
-models:
-  summarization:
-    model: claude-sonnet-5-5                 # immutable model ID, never a floating alias
-    rollback_to: claude-sonnet-5             # previous known-good
-  classification:
-    model: claude-haiku-5-5
-
-feature_flags:
-  use_new_rag_pipeline: false                  # toggle without redeploy
-  enable_streaming: true
-```
+- **Each use case names an immutable model ID** — never a floating alias (Factor 16) — together with the previous known-good ID to roll back to.
+- **Feature flags switch only between evaluated configurations.** Flipping a flag between combinations of model, prompt, and parameters that already passed evaluation needs no redeploy; a new combination goes through the eval gate and the release pipeline first (Factor 5, Factor 6).
 
 Rollback is a `git revert`, not a manual infrastructure change.
 

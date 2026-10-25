@@ -57,101 +57,33 @@ This update retains the core parity principle and extends it to cover:
 ### Representative Staging Data
 Create staging vector databases that reflect production reality:
 
-```yaml
-# staging-data-config.yaml
-vector_db_staging:
-  source: production_snapshot
-  sampling_strategy: stratified
-  sample_size: 50000
-  stratify_by:
-    - document_type
-    - language
-    - date_range
-    - content_length
-
-  # Include edge cases that production data contains
-  include:
-    - long_documents_over_10k_tokens: 500
-    - multilingual_documents: 1000
-    - documents_with_tables: 500
-    - documents_with_code: 500
-    - recently_updated_documents: 2000
-
-  # Refresh cadence
-  refresh_schedule: weekly
-  pii_handling: anonymize_before_copy
-```
+- **Sample, don't curate.** Draw a stratified sample large enough to surface real retrieval problems (for example, 50,000 documents), stratified by document type, language, date range, and content length.
+- **Include the hard cases on purpose**: very long documents, multilingual documents, documents with tables or code, and recently updated documents — production has them, so staging must too.
+- **Refresh on a cadence** (for example, weekly), so staging keeps tracking production as content changes.
+- **Protect personal data before the copy** (Factor 7). Prefer synthetic or effectively anonymized data. Pseudonymized data that can be linked back to a person is still personal data; if any must be used, it needs a defined purpose, restricted access, and the same protections as production.
 
 ### Environment Configuration Parity
-
-```yaml
-# Use the same base config with minimal, documented overrides
-# base-ai-config.yaml (shared)
-models:
-  summarization:
-    model: claude-sonnet-5-5
-    effort: medium
-    max_tokens: 1024
-
-# staging-overrides.yaml (minimal differences, documented)
-overrides:
-  rate_limits:
-    reason: "Lower rate limits to control staging costs"
-    per_user_rpm: 5   # prod: 20
-
-  cost_budgets:
-    reason: "Lower budgets in staging"
-    daily_limit_usd: 50  # prod: 500
-
-# NEVER override in staging:
-# - model version
-# - reasoning effort and other inference parameters
-# - safety settings
-# - prompt templates
-```
+Use one base AI configuration shared by every environment, with minimal per-environment overrides. Each override carries a written reason — for example, lower per-user rate limits in staging (5 requests per minute instead of production's 20) and a lower daily budget ($50 instead of $500) to control cost. Model versions, inference parameters, safety settings, and prompt templates are never overridden (see "Accepted Divergences" below).
 
 ### Local Development with AI Services
 Balance parity with practicality for local development:
 
-```yaml
-local_development:
-  # Option 1: Use the same cloud AI services (best parity)
-  llm_provider: anthropic  # Same as production
-  api_key: developer_personal_key
-  cost_alert_usd: 5.00  # Daily cost alert for dev
-
-  # Option 2: Use local models for rapid iteration (lower parity)
-  llm_provider: ollama
-  model: llama3.1:8b
-  note: "Use for rapid iteration only. Run eval suite against production model before PR."
-
-  # Vector DB: Use a local instance with representative sample
-  vector_db: qdrant_local
-  data_sample: fixtures/vector-db-sample.tar.gz
-```
+| Option | Parity | Use it for | Guardrails |
+|--------|--------|------------|------------|
+| **Same cloud AI services as production** | Best | Day-to-day development | A personal, low-privilege API key and a daily cost alert (for example, $5) |
+| **Local model** | Lower — a different model behaves differently | Fast iteration on plumbing and UI | Run the eval suite against the production model before opening a PR |
+| **Local vector database** | Depends on the data | Retrieval work | Load a representative, protected sample fixture, not hand-picked documents |
 
 ### Continuous Parity Validation
-Automate parity checks:
+Automate parity checks in CI and on a schedule. Between each pair of environments, compare:
 
-```python
-class EnvironmentParityChecker:
-    def check_parity(self, env_a: str, env_b: str):
-        checks = {
-            "model_version": self.compare_model_versions(env_a, env_b),
-            "model_config": self.compare_model_configs(env_a, env_b),
-            "prompt_versions": self.compare_prompt_hashes(env_a, env_b),
-            "safety_settings": self.compare_safety_configs(env_a, env_b),
-            "embedding_model": self.compare_embedding_models(env_a, env_b),
-            "vector_db_stats": self.compare_vector_db_statistics(env_a, env_b),
-        }
+- model versions and inference configuration;
+- prompt template hashes;
+- safety and guardrail settings;
+- the embedding model;
+- vector database statistics (document count and distribution by type and language).
 
-        for check, result in checks.items():
-            if not result.is_parity:
-                if result.is_intentional:
-                    self.logger.info(f"Intentional divergence: {check} — {result.reason}")
-                else:
-                    self.logger.warning(f"PARITY VIOLATION: {check} — {result.detail}")
-```
+Every difference is either listed as an accepted divergence with its reason, or it fails the check — an unexplained divergence is a parity violation, not a log line.
 
 ### Ephemeral Environments for Autonomous Validation
 
@@ -159,37 +91,13 @@ AI coding agents can work around the clock, generating code across multiple bran
 
 Ephemeral environments provide production-parity validation at branch level. Each AI-generated branch gets its own isolated environment with the same model versions, configurations, and representative data. This enables parallel validation of competing solutions and gives human reviewers confidence that what the agent built actually works before they ever look at the code.
 
-```yaml
-# ephemeral-environment.yaml
-ephemeral_environments:
-  trigger:
-    - pull_request
-    - agent_branch  # AI agent creates a branch → environment spins up
+An ephemeral environment:
 
-  provisioning:
-    method: kubernetes_namespace  # or serverless, VM, container
-    ttl: 4h                      # auto-destroy after 4 hours of inactivity
-    max_concurrent: 10           # limit parallel environments
-
-  parity:
-    model_versions: production   # same model versions as prod
-    inference_config: production # same effort, tokens, safety
-    vector_db: staging_snapshot  # representative data sample
-    safety_filters: enabled      # never skip guardrails
-
-  validation:
-    run_on_create:
-      - unit_tests
-      - integration_tests
-      - eval_suite              # Factor 6 evaluation gates
-      - safety_checks           # Factor 7 guardrails
-      - cost_estimation         # Factor 20 budget check
-    report_to: pull_request     # post results as PR comment
-
-  cost_controls:
-    budget_per_environment_usd: 10
-    shutdown_on_budget_exceeded: true
-```
+- **Starts on a trigger** — a pull request, or a branch created by an agent — in an isolated unit such as a Kubernetes namespace, VM, or serverless stack.
+- **Runs with production parity**: production model versions and inference configuration, safety filters enabled, and a representative staging data snapshot.
+- **Validates on creation**: unit and integration tests, the eval suite (Factor 6), safety checks (Factor 7), and a cost estimate (Factor 20), with results posted back to the pull request.
+- **Holds no production credentials and causes no real side effects**: anything that would send, charge, or write outside the environment goes to a sandbox account or a test double.
+- **Is bounded**: destroyed automatically after a period of inactivity (for example, 4 hours), capped in how many run at once, and shut down when it exceeds its own budget (for example, $10).
 
 This pattern is especially powerful when combined with Factor 18 (Agent Orchestration): an autonomous agent creates a branch, the ephemeral environment validates it, and the results feed back to the agent for iteration — or surface to a human reviewer when the solution passes all gates.
 
@@ -217,20 +125,12 @@ Sovereignty requirements are widening beyond data location to *who operates* the
 
 Traffic mirroring (shadow traffic, dark launch) runs new model versions or prompt changes against real production traffic without serving results to users. The shadow response is logged and evaluated, providing production-fidelity validation before cutover.
 
-```yaml
-# AI Gateway shadow routing config
-routes:
-  - name: document-summary
-    primary: anthropic/claude-sonnet-5-5
-    shadow:
-      model: anthropic/claude-opus-5-5   # evaluate new model on live traffic
-      sample_rate: 0.10                  # mirror 10% of requests
-      log_responses: true
-      evaluate_quality: true             # run Factor 6 eval on shadow responses
-      compare_against: primary           # surface quality diff in dashboard
-```
+Mirror a sample of production requests (for example, 10%) to the candidate model or prompt, log the shadow responses, evaluate them with the Factor 6 suite, and compare them against the primary's responses. Two rules keep it production-safe:
 
-Shadow mode is the production-safe way to validate Factor 6 quality gates against real traffic distributions, not just golden datasets. Implement via your AI Gateway's routing layer (Factor 10) to avoid shadow traffic logic in application code.
+- **No side effects from the shadow path.** Shadow responses never reach users, and any tool call that would write, send, or charge is disabled or stubbed for the shadow request.
+- **Same data terms as production.** Mirroring sends real user inputs to the candidate; it must be covered by the same data-processing agreements, region, and retention rules (see "Region and Data-Residency Parity" above).
+
+Shadow mode is the production-safe way to validate Factor 6 quality gates against real traffic distributions, not just golden datasets. Implement it in the control point that already routes model traffic — the AI gateway or shared client library (Factor 10) — to avoid shadow traffic logic in application code.
 
 ### Accepted Divergences
 Some differences are intentional and acceptable if documented:

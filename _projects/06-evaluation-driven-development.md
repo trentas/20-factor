@@ -38,97 +38,28 @@ This factor *is* the AI change. It exists because AI systems introduced non-dete
 
 ### Evaluation Types
 
-**1. Deterministic Evaluations**
-Where exact answers exist, use them:
+| Type | Use when | What it checks | Watch out for |
+|------|----------|----------------|---------------|
+| **Deterministic** | An exact answer or a checkable structure exists | Label match for classification, field match for extraction, schema validation for structured output | A validator that raises on bad output crashes the run — record a failed case instead |
+| **Heuristic** | Properties can be checked without judging content | Length within the token limit, no PII detected, valid markup, no unverified URLs, expected response language | A passing heuristic is a precondition, not evidence of quality |
+| **LLM-as-judge** | Quality is subjective or multi-dimensional | Accuracy, relevance, completeness, and conciseness, each scored on a defined scale against a rubric | Uncalibrated judges drift silently — see calibration below |
+| **Human** | Stakes are high or outputs are ambiguous | A sampled share of production outputs (for example 5%) on accuracy, helpfulness, and safety | Single reviewers hide disagreement |
+| **Agent trajectory** | The system is an agent | The outcome *and* the path — see below | A correct-looking final answer can hide a bad run |
 
-```python
-# Classification tasks, entity extraction, structured output
-def eval_classification(output, expected):
-    return output.label == expected.label
+**LLM-as-judge rules.** Give the judge the user's question, the response, and a reference answer when one exists; score each dimension separately on an explicit scale (for example 1–5) with a rubric that says what each score means; and request structured output so scores are machine-readable. A judge is a model: version its prompt and model like any other (Factor 1, Factor 16) and calibrate it against humans before trusting it.
 
-def eval_json_schema(output, schema):
-    # jsonschema.validate() returns None on success and raises on failure —
-    # wrap it so the eval returns a boolean instead of crashing on bad output.
-    try:
-        jsonschema.validate(output, schema)
-        return True
-    except jsonschema.ValidationError:
-        return False
-```
+**Human evaluation rules.** Use at least two reviewers per sampled output so inter-annotator agreement can be measured, and escalate cases where reviewers disagree beyond a set threshold.
 
-**2. Heuristic Evaluations**
-Rule-based checks for structure, format, and constraints:
+**Agent trajectory evaluations.** For agents, a correct-looking final answer can hide a bad run: the wrong tool, a mutated record, forty wasted steps. Grade the *path* as well as the outcome, from the full transcript of each trial — every model call, tool call, argument, and result:
 
-```python
-# Check response properties without judging content
-def eval_response_properties(response):
-    checks = {
-        "within_token_limit": len(tokenize(response)) <= 500,
-        "no_pii_detected": not pii_detector.scan(response),
-        "valid_markdown": markdown_parser.is_valid(response),
-        "no_hallucinated_urls": not contains_urls(response),
-        "appropriate_language": language_detector.detect(response) == "en",
-    }
-    return checks
-```
-
-**3. LLM-as-Judge Evaluations**
-Use a capable model to evaluate output quality:
-
-```python
-# LLM-as-judge for subjective quality dimensions
-judge_prompt = """
-Evaluate the following response on these dimensions.
-Score each from 1-5.
-
-**Accuracy**: Does the response contain only factually correct information?
-**Relevance**: Does the response address the user's question?
-**Completeness**: Does the response cover all important aspects?
-**Conciseness**: Is the response appropriately brief without losing substance?
-
-User Question: {question}
-Response to Evaluate: {response}
-Reference Answer: {reference}
-
-Return JSON: {"accuracy": N, "relevance": N, "completeness": N, "conciseness": N}
-"""
-```
-
-**4. Human Evaluations**
-For high-stakes decisions, sample outputs for human review:
-
-```yaml
-human_eval_config:
-  sample_rate: 0.05            # Review 5% of production outputs
-  dimensions:
-    - accuracy
-    - helpfulness
-    - safety
-  reviewers_per_sample: 2       # Inter-annotator agreement
-  escalation_threshold: 0.3     # Disagreement triggers review
-```
-
-**5. Agent Trajectory Evaluations**
-For agents, a correct-looking final answer can hide a bad run: the wrong tool, a mutated record, forty wasted steps. Grade the *path* as well as the outcome, from the full transcript of each trial — every model call, tool call, argument, and result:
-
-```python
-# Grade an agent run from its transcript — deterministic checks first, judge last
-def eval_trajectory(transcript, case):
-    checks = {
-        # Outcome: verified against the environment, not the agent's own claim
-        "task_completed": case.verify_end_state(transcript.environment),
-        # Path: right tools, valid arguments, nothing forbidden
-        "required_tools_called": case.required_tools <= transcript.tool_names(),
-        "no_forbidden_actions": not (case.forbidden_tools & transcript.tool_names()),
-        "tool_args_valid": all(case.validate_args(call) for call in transcript.tool_calls),
-        # Efficiency: within the steps and cost the task should take
-        "within_step_budget": transcript.step_count <= case.max_steps,
-        "within_cost_budget": transcript.cost_usd <= case.max_cost_usd,
-    }
-    if case.needs_judgment:
-        checks["plan_quality"] = judge.score(transcript, rubric=case.rubric) >= 4
-    return checks
-```
+| Check | What it verifies |
+|-------|------------------|
+| **Outcome** | The task is complete, verified against the environment's end state — not the agent's own claim |
+| **Required tools** | Every tool the task needs was called |
+| **Forbidden actions** | No tool outside the allowed set was called |
+| **Arguments** | Every tool call's arguments are valid for that tool and case |
+| **Step and cost budgets** | The run stayed within the steps and cost the task should take |
+| **Plan quality** (only when needed) | A judge scores the plan against a rubric — after the deterministic checks above |
 
 Practices that matter for agents:
 - **Verify the end state, not the report.** Check the database row, the file, the ticket — the environment — rather than trusting the agent's final message.
@@ -170,27 +101,12 @@ The pattern is the same across tools: **the repo holds an immutable pointer; the
 The non-negotiable: every eval result must be traceable to (model version, prompt version, **dataset version**, eval code version). A score of "87% accuracy" without all four is a number, not a measurement.
 
 ### Statistical Quality Gates
-Evaluations produce distributions, not single pass/fail results:
+Evaluations produce distributions, not single pass/fail results. Define gates per feature and per quality dimension:
 
-```yaml
-quality_gates:
-  summarization:
-    accuracy:
-      threshold: 0.90
-      confidence: 0.95          # 95% confidence interval must be above threshold
-      min_samples: 100
-    relevance:
-      threshold: 0.85
-    cost:
-      mean_tokens: 500
-      p95_tokens: 1200
-
-  classification:
-    accuracy:
-      threshold: 0.95
-    f1_score:
-      threshold: 0.92
-```
+- **Gate on the confidence bound, not the point estimate.** "Accuracy ≥ 0.90" means the lower bound of the 95% confidence interval is at or above 0.90 — which requires a minimum sample size (for example, 100 cases) before the gate means anything.
+- **Choose metrics per task.** Summarization might gate on judged accuracy (≥ 0.90) and relevance (≥ 0.85); classification on accuracy (≥ 0.95) and F1 (≥ 0.92).
+- **Gate cost alongside quality.** Mean and p95 output tokens per request (for example 500 and 1,200) catch a prompt change that buys quality by making every answer much longer.
+- **Compare against the current release, not only a fixed threshold**, so a regression is caught even while scores remain above the bar.
 
 ### Evaluation in the Development Workflow
 
@@ -210,20 +126,7 @@ Autonomous coding agents (Claude Code, Devin, Codex) make evaluation gates *more
 
 ### Synthetic Evaluation Data Generation
 
-Golden datasets are bottlenecked by the availability of human-labeled examples. Synthetic data generation unlocks scale: use a capable model to generate adversarial examples, edge cases, and realistic inputs, then filter for quality before adding to the eval set.
-
-```python
-generator = LLM("claude-opus-5-5")
-for category in ["edge_cases", "adversarial_inputs", "rare_language_patterns"]:
-    candidates = generator.generate_eval_examples(
-        task_description=task.description,
-        seed_examples=golden_set[:20],  # seed with real examples
-        count=500,
-        category=category,
-    )
-    verified = [ex for ex in candidates if quality_check(ex) >= 0.85]
-    eval_dataset.add(verified)
-```
+Golden datasets are bottlenecked by the availability of human-labeled examples. Synthetic data generation unlocks scale: use a capable model to generate candidate examples by category — edge cases, adversarial inputs, rare language patterns — then filter for quality before adding them to the eval set.
 
 Key practices:
 - Always seed synthetic generation with real examples to preserve domain characteristics
@@ -235,20 +138,11 @@ Key practices:
 
 LLM judges degrade over time as the underlying judge model is updated by the provider. Detect calibration drift by maintaining a "human anchor" set:
 
-1. Collect 100–200 examples with locked human scores (scored once and never re-scored)
+1. Collect 100–200 examples with locked human scores (scored once and never re-scored), versioned in the repository with the rest of the eval suite
 2. Run the judge against this set on a cadence (weekly for high-stakes features)
 3. Track judge-vs-human agreement using Cohen's kappa or Spearman correlation
 4. Alert when agreement drops below the calibration threshold (typically 0.75–0.85)
 5. When drift is detected: either re-calibrate by updating the judge prompt, or switch to a more stable judge model version
-
-```yaml
-judge_calibration:
-  anchor_set: evals/human-anchor-set.jsonl  # 200 locked human-scored examples
-  metrics: [cohens_kappa, spearman_rho]
-  alert_threshold: 0.75
-  check_cadence: weekly
-  on_drift: alert_and_open_ticket
-```
 
 ### Public Benchmarks as Reference Points
 
