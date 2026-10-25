@@ -1,0 +1,19 @@
+# Dependencies are pinned (Gemfile.lock, action SHAs); Dependabot proposes updates
+# as pull requests, which then go through the same build and tests.
+version: 2
+updates:
+  - package-ecosystem: "bundler"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      jekyll:
+        patterns: ["*"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns: ["*"]
