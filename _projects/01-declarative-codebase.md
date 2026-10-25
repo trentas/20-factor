@@ -5,6 +5,8 @@ category: "Tier 1: Foundation"
 title: "01. Declarative Codebase"
 nav_order: 1
 description: "Every artifact — code, infrastructure, prompts — lives in version control as a declarative specification."
+# Prompt examples use {{variable}} placeholders; keep Liquid from rendering them away.
+render_with_liquid: false
 ---
 
 # Factor 1: Declarative Codebase
