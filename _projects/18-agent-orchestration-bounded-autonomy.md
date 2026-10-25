@@ -100,230 +100,63 @@ User → Supervisor Agent → Worker Agent 1 ─┐
 
 ### Bounded Autonomy Definition
 
-```yaml
-# agent-definition.yaml
-agents:
-  research-assistant:
-    purpose: "Research topics using web search and knowledge base"
-    model: claude-sonnet-5-5
+Every agent has a versioned definition (Factor 1) that the harness enforces in code. It declares:
 
-    tools:
-      - name: web_search
-        permission: autonomous     # Can use freely
-        rate_limit: 10/minute
-
-      - name: knowledge_base_search
-        permission: autonomous
-        rate_limit: 20/minute
-
-      - name: send_email
-        permission: human_approval  # Must ask first
-        approval_timeout_seconds: 300   # consistent with Factor 7 triggers and Factor 8 policy
-
-      - name: write_to_database
-        permission: denied          # Cannot use this tool
-
-    execution_budget:
-      max_steps: 25                 # Maximum tool calls per invocation
-      max_tokens: 50000             # Maximum total tokens (input + output)
-      max_cost_usd: 1.00            # Maximum cost per invocation (Factor 20 defines org-wide budget hierarchy)
-      max_duration_seconds: 120     # Maximum wall-clock time
-      max_retries: 3                # Maximum retries on failure
-
-    safety:
-      capability_review: rule_of_two  # private data / untrusted input / external action — at most two (Factor 7)
-      require_reasoning: true       # Agent must explain its plan before acting
-      checkpoint_interval: 5        # Checkpoint state every 5 steps
-      rollback_on_failure: true     # Revert partial actions if agent fails
-```
+| Element | What it states | Example |
+|---------|----------------|---------|
+| **Purpose** | The one job the agent exists for | "Research topics using web search and the knowledge base" |
+| **Model** | A pinned model version (Factor 16) | — |
+| **Tools and permissions** | Each tool is *autonomous*, *requires human approval*, or *denied*, with a per-tool rate limit | Web search: autonomous, 10/min · Send email: approval · Write to database: denied |
+| **Execution budget** | Maximum steps, tokens, cost, wall-clock time, and retries per invocation, nested inside the user and tenant budgets of Factor 20 | 25 steps, 50k tokens, $1.00, 120 s, 3 retries |
+| **Safety** | Rule-of-Two capability review (Factor 7), checkpoint interval, and how partial work is undone on failure | Checkpoint every 5 steps; compensate on failure |
 
 ### Execution Budget Enforcement
 
-```python
-class AgentExecutor:
-    """Execute an agent with enforced boundaries."""
+The budget has to hold on every path through the loop, not only the successful one:
 
-    def __init__(self, agent: AgentConfig, tools: ToolRegistry):
-        self.agent = agent
-        self.tools = tools
-        self.budget = ExecutionBudget(agent.execution_budget)
-
-    async def run(self, task: str) -> AgentResult:
-        messages = [{"role": "user", "content": task}]
-        steps = []
-
-        while not self.budget.exhausted:
-            # Get next action from model
-            response = await self.llm.complete(
-                messages=messages,
-                tools=self.get_allowed_tools(),
-            )
-
-            if response.is_final_answer:
-                return AgentResult(answer=response.content, steps=steps)
-
-            if response.has_tool_call:
-                tool_call = response.tool_call
-
-                # Enforce tool permissions
-                permission = self.check_tool_permission(tool_call)
-                if permission == "denied":
-                    messages.append(self.deny_message(tool_call))
-                    continue
-                if permission == "human_approval":
-                    approved = await self.request_human_approval(tool_call)
-                    if not approved:
-                        messages.append(self.deny_message(tool_call))
-                        continue
-
-                # Execute tool with budget tracking
-                self.budget.record_step()
-                result = await self.tools.execute(tool_call)
-                self.budget.record_tokens(response.token_usage)
-                self.budget.record_cost(response.cost)
-
-                steps.append(AgentStep(tool_call=tool_call, result=result))
-                messages.append({"role": "tool", "content": result})
-
-                # Checkpoint if interval reached
-                if len(steps) % self.agent.safety.checkpoint_interval == 0:
-                    await self.checkpoint(steps)
-
-        # Budget exhausted
-        return AgentResult(
-            answer=None,
-            steps=steps,
-            status="budget_exhausted",
-            budget_report=self.budget.report(),
-        )
-```
+- **Count every model call.** The call that produces the final answer and the call whose tool request is then denied or rejected both cost tokens. A budget that records usage only after a successful tool execution undercounts — and a model that keeps requesting a forbidden tool loops forever, because nothing it does consumes the budget.
+- **Reserve before dispatch, reconcile after.** Before each call, reserve its estimated tokens and cost against what remains; after the response, record actual usage and release the difference. A call that times out counts as spent until reconciled (Factor 20).
+- **Count steps for every iteration**, including denied and rejected tool calls, and check wall-clock time on each turn.
+- **Check permissions in code at execution time**, every time — not once at the start — so a revoked permission takes effect mid-run (Factor 8).
+- **Stop cleanly on exhaustion**: return partial results with an explicit `budget_exhausted` status and a budget report. Never continue silently.
+- **Checkpoint** on a fixed interval, or durably on every step with Factor 13, so a failure after step 20 does not start over.
 
 ### Human-in-the-Loop Patterns
 
 This factor defines the *execution mechanisms* for human approval. Factor 7 defines *when* approval is triggered (safety scores, confidence thresholds), and Factor 8 defines *who* is authorized to approve.
 
-**Approval Gate**: Agent pauses and waits for human approval:
+**Approval Gate**: the agent pauses before a gated action and resumes on a decision. The gate must be:
 
-```python
-class ApprovalGate:
-    async def request_approval(self, agent_id: str, action: ToolCall) -> bool:
-        # Send approval request to human
-        request = ApprovalRequest(
-            agent_id=agent_id,
-            action=action.tool_name,
-            parameters=action.parameters,
-            reasoning=action.reasoning,
-            timestamp=now(),
-        )
-        await self.notification_service.send(request)
+- **Durable**: the pending request is persisted, and the decision arrives as a persisted signal or event (Factor 13) — not through an in-memory queue that a restart or deploy wipes out. Waiting must not hold a worker.
+- **Bound to the exact action**: the approval record carries an operation ID, the tool, a hash of the exact arguments, the target object and its version, the authorized approver (Factor 8), an expiry, and a single-use flag. If the agent changes any argument, the approval no longer applies.
+- **Re-checked before execution**: after a long pause, confirm that the approval is unexpired and unused and that the agent's and approver's access still holds, then execute.
+- **Deny by default**: a request that times out is denied, and the agent is told so.
+- **Legible**: the approver sees the action, its parameters, the trigger that required approval, and its consequences. The agent's stated plan is context, not justification.
 
-        # Wait for response with timeout
-        try:
-            response = await asyncio.wait_for(
-                self.approval_queue.get(request.id),
-                timeout=self.agent.tools[action.tool_name].approval_timeout_seconds,
-            )
-            return response.approved
-        except asyncio.TimeoutError:
-            # Default deny on timeout
-            return False
-```
-
-**Supervised Mode**: Human reviews every action before execution:
-
-```python
-class SupervisedExecutor:
-    """Every agent action requires human confirmation."""
-
-    async def execute_step(self, agent_id: str, tool_call: ToolCall) -> ToolResult:
-        # Show the human what the agent wants to do
-        await self.ui.show_pending_action(
-            agent=agent_id,
-            action=tool_call.tool_name,
-            params=tool_call.parameters,
-            reasoning=tool_call.reasoning,
-        )
-
-        # Wait for human decision
-        decision = await self.ui.get_decision()  # approve / modify / reject / stop
-
-        match decision:
-            case "approve":
-                return await self.tools.execute(tool_call)
-            case "modify":
-                modified = await self.ui.get_modified_params()
-                return await self.tools.execute(tool_call.with_params(modified))
-            case "reject":
-                return ToolResult.rejected("Human rejected this action")
-            case "stop":
-                raise AgentStoppedByHuman()
-```
+**Supervised Mode**: a human reviews every action before execution and can approve, modify, reject, or stop. A modified action is a new action — it is re-validated against permissions and budget before it runs. Stop ends the run and cancels any tool calls in flight.
 
 ### Multi-Agent Orchestration
 
-```python
-class SupervisorOrchestrator:
-    """Supervisor pattern: one agent coordinates multiple specialists."""
+In the supervisor pattern, one agent plans the work, delegates steps to specialist workers, and synthesizes their results. The boundaries apply at both levels:
 
-    def __init__(self, supervisor: AgentConfig, workers: dict[str, AgentConfig]):
-        self.supervisor = supervisor
-        self.workers = workers
-
-    async def run(self, task: str) -> OrchestratorResult:
-        # Supervisor plans the work
-        plan = await self.supervisor.plan(task)
-
-        results = {}
-        for step in plan.steps:
-            worker = self.workers[step.agent]
-
-            # Each worker has its own bounded execution
-            result = await AgentExecutor(worker).run(step.task)
-
-            if result.status != "success":
-                # Supervisor handles worker failures
-                recovery = await self.supervisor.handle_failure(step, result)
-                if recovery.action == "retry":
-                    result = await AgentExecutor(worker).run(recovery.revised_task)
-                elif recovery.action == "skip":
-                    continue
-                elif recovery.action == "escalate":
-                    result = await self.escalate_to_human(step, result)
-
-            results[step.id] = result
-
-        # Supervisor synthesizes final result
-        return await self.supervisor.synthesize(results)
-```
+- **Each worker runs under its own bounded budget**, and the supervisor holds an aggregate budget that covers all workers and its own calls.
+- **Worker failures follow an explicit policy**: retry with a revised task (a bounded number of times), skip the step, or escalate to a human — decided by code or by the supervisor within its budget, never an open-ended loop.
+- **Cancellation propagates**: stopping the supervisor stops its workers and their tool calls.
+- **Start simple**: compare a single agent, or a deterministic workflow that calls the model at fixed points, against the multi-agent design on the same evaluation set (Factor 6) before adopting it. More agents mean more cost, more latency, and more failure modes.
 
 ### Agent Observability
 
-```json
-{
-  "trace_id": "agent-trace-123",
-  "agent_id": "research-assistant",
-  "task": "Research Q3 market trends",
-  "status": "completed",
-  "steps": 12,
-  "budget": {
-    "steps_used": 12,
-    "steps_limit": 25,
-    "tokens_used": 28500,
-    "tokens_limit": 50000,
-    "cost_usd": 0.42,
-    "cost_limit_usd": 1.00,
-    "duration_seconds": 45,
-    "duration_limit_seconds": 120
-  },
-  "tools_used": {
-    "web_search": 5,
-    "knowledge_base_search": 7
-  },
-  "approvals_requested": 0,
-  "errors": 0,
-  "quality_score": 0.88
-}
-```
+Every agent run emits a trace (Factor 15) that records, at minimum:
+
+| Field | Why |
+|-------|-----|
+| Trace ID, agent ID and version, task | Correlates the run with its definition and its request |
+| Status (completed, budget exhausted, stopped, failed) | Distinguishes outcomes, not just errors |
+| Budget used vs. limit — steps, tokens, cost, duration | Shows how close agents run to their limits, and which limits bind |
+| Tools used, with counts; tool calls denied | Reveals drift in agent behavior and attempts to exceed permissions |
+| Approvals requested, granted, denied, expired | Measures the human load and the gate's effect |
+| Errors and retries | Separates tool flakiness from agent mistakes |
+| Quality score, where an online evaluator runs (Factor 6) | Connects cost to the quality of the result |
 
 ### Agent SDKs and Frameworks
 
@@ -352,38 +185,11 @@ The bounded autonomy principles from this factor (execution budgets, tool permis
 
 ### MCP for Agent Tool Integration
 
-The **Model Context Protocol (MCP)** standardizes how agents discover and invoke tools. Instead of hardcoding tool definitions per agent, agents connect to MCP servers that expose tools dynamically.
+The [**Model Context Protocol (MCP)**](https://modelcontextprotocol.io/specification/2026-07-28) standardizes how agents discover and invoke tools. Instead of hardcoding tool definitions per agent, agents connect to MCP servers that expose tools dynamically. In the agent definition, each MCP server is a backing service (Factor 10) declared with:
 
-```yaml
-# agent-definition.yaml — tools via MCP servers
-agents:
-  research-assistant:
-    purpose: "Research topics using web search and knowledge base"
-    model: claude-sonnet-5-5
-
-    # Tools provided via MCP servers (Factor 10 backing services)
-    mcp_servers:
-      - name: web-search
-        transport: streamable_http       # HTTP+SSE is deprecated
-        protocol_version: "2026-07-28"
-        endpoint: https://mcp.example.com/web-search
-        tool_permissions:
-          web_search: autonomous
-          web_browse: autonomous
-
-      - name: knowledge-base
-        transport: stdio
-        command: "npx @company/mcp-kb@2.3.1"   # pinned version, scoped package (Factor 3)
-        tool_permissions:
-          search_documents: autonomous
-          update_document: human_approval
-
-    # Direct tool definitions (non-MCP) still supported
-    tools:
-      - name: send_email
-        permission: human_approval
-        approval_timeout_seconds: 300
-```
+- **How it is reached**: remote servers over Streamable HTTP (the older HTTP+SSE transport is deprecated), with the protocol version pinned; local servers over stdio, launched from a pinned version of a scoped package (Factor 3).
+- **A permission for each tool it exposes** — autonomous, human approval, or denied — using the same model as directly defined tools. A server can host both a harmless `search_documents` and a consequential `update_document`.
+- **A default for tools that appear later**: a tool the server starts advertising after review is denied until someone assigns it a permission.
 
 MCP enables key capabilities for agent orchestration:
 - **Dynamic tool discovery**: Agents discover available tools at runtime via `tools/list`, adapting to the tools available in their environment.
@@ -397,43 +203,16 @@ MCP enables key capabilities for agent orchestration:
 
 For multi-agent systems where agents may be built by different teams, use different frameworks, or run on different infrastructure, the **Agent-to-Agent (A2A) protocol** provides a standard communication layer.
 
-```python
-class A2AOrchestrator:
-    """Orchestrate agents via A2A protocol — framework-agnostic."""
+An orchestrator delegating over A2A discovers the remote agent through its Agent Card, and verifies the card's signature (A2A v1.0) against trusted issuers before relying on anything it claims (Factor 8). It then submits a task and follows its updates until a terminal state, with an overall timeout. Every task state needs a defined handling:
 
-    def __init__(self, agent_registry: dict[str, str]):
-        # Registry maps agent names to their A2A endpoint URLs
-        self.agents = agent_registry
-
-    async def delegate_task(self, agent_name: str, task: str) -> A2ATaskResult:
-        endpoint = self.agents[agent_name]
-
-        # Discover agent capabilities via Agent Card; verify its signature (A2A v1.0)
-        # before trusting what it claims — see Factor 8
-        card = await self.fetch_agent_card(endpoint)
-        self.verify_card_signature(card, trusted_issuers=self.trusted_issuers)
-
-        # Submit task via A2A protocol
-        task_id = await self.submit_task(endpoint, task)
-
-        # Stream progress updates
-        async for update in self.stream_updates(endpoint, task_id):
-            if update.status == "working":
-                log.info(f"Agent {agent_name}: {update.message}")
-            elif update.status == "completed":
-                return update.result
-            elif update.status == "input_required":
-                # Agent needs human input — escalate
-                response = await self.request_human_input(update)
-                await self.send_input(endpoint, task_id, response)
-            elif update.status == "auth_required":
-                # Agent needs a credential — obtain a scoped, delegated token (Factor 8)
-                await self.send_input(endpoint, task_id, await self.delegate_auth(update))
-            elif update.status in ("failed", "canceled", "rejected"):
-                raise AgentTaskError(agent_name, task_id, update.status)
-
-        raise AgentTimeoutError(agent_name, task_id)
-```
+| Task state | Handling |
+|------------|----------|
+| Working | Record progress in the trace |
+| Input required | Route the question through the same human-in-the-loop gates as any other request for human input |
+| Auth required | Obtain a scoped, delegated credential for this task (Factor 8) — never forward the user's own token |
+| Completed | Validate the result against the expected contract (Factor 2) before using it |
+| Failed, canceled, rejected | Terminal: apply the orchestrator's failure policy (retry, skip, escalate) |
+| No terminal state before the timeout | Cancel the task and treat it as failed |
 
 A2A and MCP are complementary in multi-agent systems:
 - **MCP** = how agents use tools (agent → tool)
@@ -449,26 +228,11 @@ This fundamentally challenges bounded autonomy because:
 - **Observation is continuous**: The agent must repeatedly screenshot, interpret, and act — consuming significantly more tokens per step than structured tool calls.
 - **Rollback is harder**: GUI actions (clicking "Submit", "Delete", "Send") may be irreversible and don't have programmatic undo.
 
-```yaml
-agents:
-  browser-agent:
-    purpose: "Navigate web applications to complete tasks"
-    capabilities:
-      - computer_use
+A computer use policy, enforced by the harness rather than the prompt, states:
 
-    computer_use_policy:
-      allowed_applications:
-        - "internal-crm.example.com"
-        - "jira.example.com"
-      blocked_patterns:
-        - "*payment*"                  # never interact with payment flows
-        - "*delete*account*"           # never near account deletion
-      screenshot_budget: 50            # max screenshots per task
-      require_confirmation_for:
-        - form_submission              # pause before submitting any form
-        - navigation_away              # pause before leaving target application
-      sandbox: true                    # run in isolated browser environment
-```
+- **Where the agent may act**: an allowlist of applications or domains (for example, the internal CRM and the issue tracker), plus blocked patterns it must never touch, such as payment flows and account deletion.
+- **How much it may observe**: a screenshot budget per task, on top of the usual execution budget.
+- **When it must stop and ask**: before submitting a form, and before navigating away from the target application.
 
 **Key design principles for computer use agents:**
 - **Prefer structured tools over computer use**: If an API or MCP server exists for the task, use it. Computer use should be the last resort for systems that don't expose programmatic interfaces.
@@ -499,23 +263,11 @@ Real-time speech agents (OpenAI Realtime API, Pipecat, LiveKit Agents, AWS Bedro
 - **Session durability**: voice conversations are long-lived sessions; use Factor 13 (Durable Agent Runtime) for session state persistence across network interruptions
 - **Observability**: Factor 15 voice SLOs apply — track TTFT, TTFA (time-to-first-audio), end-of-turn latency, and barge-in latency separately from text agent metrics
 
-The bounded autonomy principles from this factor apply equally: voice agents have tool permissions, execution budgets, and human escalation paths. The difference is latency sensitivity — approval gates for voice agents must complete in hundreds of milliseconds, not seconds.
+The bounded autonomy principles from this factor apply equally: voice agents have tool permissions, execution budgets, and human escalation paths. The difference is latency sensitivity, and it does not extend to approvals: no human decides in hundreds of milliseconds. When a voice agent reaches a gated action, it asks the user for an explicit spoken confirmation that restates the action, parks the action in a durable pause and tells the user what happens next, or hands the conversation to a human. The audio latency SLO governs the agent's speech, not the time allowed for a human decision.
 
 ### Reflexion and Self-Critique Loops
 
-Reflexion (Shinn et al., 2023) patterns an agent to critique its own output and generate a revised response before returning to the user. In production:
-
-```python
-async def reflexion(task: str, budget: ReflexionBudget) -> str:
-    draft = await agent.generate(task)
-
-    if budget.critique_tokens > 0:
-        critique = await agent.critique(draft, task)  # "What's wrong with this?"
-        if critique.has_issues:
-            draft = await agent.revise(draft, critique)  # "Fix the issues identified"
-
-    return draft
-```
+Reflexion (Shinn et al., 2023) patterns an agent to critique its own output and generate a revised response before returning to the user. In production, the loop is generate → critique → revise only if the critique finds issues, with a fixed maximum number of rounds and its own token budget.
 
 Apply reflexion selectively: it doubles token consumption and latency. Gate reflexion on task complexity (Factor 20) and measure quality improvement in your eval suite (Factor 6) before enabling broadly. Track the critique step's reasoning effort and token spend separately from the generation step.
 

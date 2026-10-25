@@ -44,127 +44,48 @@ This merged and updated factor creates a unified observability strategy that cov
 
 ### Structured Logging for AI Operations
 
-```json
-{
-  "timestamp": "2025-06-15T14:30:00.123Z",
-  "level": "info",
-  "service": "document-assistant",
-  "trace_id": "abc123",
-  "span_id": "def456",
-  "event": "llm_completion",
-  "model": "claude-sonnet-5-5",
-  "provider": "anthropic",
-  "input_tokens": 1250,
-  "output_tokens": 340,
-  "total_tokens": 1590,
-  "cost_usd": 0.006,
-  "stop_reason": "end_turn",
-  "latency_ms": 2340,
-  "cache_hit": false,
-  "quality_score": 0.91,
-  "safety_flags": [],
-  "user_id": "user_789",
-  "tenant_id": "tenant_acme",
-  "feature": "document_summary",
-  "request_id": "req_xyz"
-}
-```
+Every model call emits one structured event, written to stdout and routed by the platform. Its fields fall into four groups:
+
+| Group | Fields | Why |
+|-------|--------|-----|
+| Correlation | Timestamp, service, trace and span IDs, request ID | Joins the event to its trace (below) |
+| Attribution | Feature, tenant, user (a pseudonymous ID, never an email address) | Cost and quality per feature and tenant (Factor 20) |
+| Model | Provider, pinned model ID, API version | Ties behavior to the exact model and request surface (Factor 16) |
+| Usage and outcome | Input, cached, output, and reasoning tokens; cost; latency; stop reason; cache hit; quality score; safety flags | Token economics, debugging, and online evaluation |
 
 ### Distributed Tracing for AI Pipelines
 
+Trace every step of the pipeline, so latency, tokens, and cost are attributed to the step that spent them:
+
 ```
-[Trace: document-summary-request]
-│
-├── [Span: api-handler] 5ms
-│   └── Parse and validate request
-│
-├── [Span: document-retrieval] 45ms
-│   ├── [Span: embed-query] 15ms
-│   │   └── model: text-embedding-3-small, tokens: 12
-│   ├── [Span: vector-search] 20ms
-│   │   └── results: 10, similarity_min: 0.82
-│   └── [Span: rerank] 10ms
-│       └── model: rerank-v3, results_after: 5
-│
-├── [Span: context-assembly] 2ms
-│   └── total_context_tokens: 3200
-│
-├── [Span: llm-generation] 2340ms
-│   ├── model: claude-sonnet-5-5
-│   ├── input_tokens: 4450
-│   ├── output_tokens: 340
-│   ├── cache_hit: prefix (3200 tokens cached)
-│   └── cost: $0.006
-│
-├── [Span: safety-check] 50ms
-│   ├── content_safety: pass
-│   ├── pii_check: pass
-│   └── hallucination_check: pass (3/3 citations verified)
-│
-└── [Span: response] 2ms
-    └── total_latency: 2444ms
+[Trace: document-summary-request]  2444 ms
+├── api-handler                       5 ms
+├── document-retrieval               45 ms
+│   ├── embed-query                  15 ms   12 tokens
+│   ├── vector-search                20 ms   10 results, min similarity 0.82
+│   └── rerank                       10 ms   5 results kept
+├── context-assembly                  2 ms   3,200 context tokens
+├── llm-generation                 2340 ms   4,450 in (3,200 from prefix cache), 340 out, $0.006
+├── safety-check                     50 ms   content safety, PII, citations: pass
+└── response                          2 ms
 ```
 
 ### AI-Specific Metrics
 
-```yaml
-# Token Economics Metrics
-metrics:
-  - name: ai_tokens_total
-    type: counter
-    labels: [model, provider, direction, feature, tenant]
-    description: "Total tokens consumed"
+| Metric | Type | Labels | Measures |
+|--------|------|--------|----------|
+| Tokens | Counter | model, provider, direction (input / cached / output / reasoning), feature, tenant | Token consumption |
+| Cost | Counter | model, provider, feature, tenant | Spend in USD |
+| Request duration | Histogram | model, provider, feature | LLM latency |
+| Quality score | Histogram | feature, model | Online evaluation scores (Factor 6) |
+| Cache hit ratio | Gauge | cache type, feature | Semantic, embedding, and prefix cache effectiveness (Factor 12) |
+| Safety triggers | Counter | trigger type, action, feature | Guardrail activations |
+| PII detections | Counter | entity type, boundary, action | PII found at input and output boundaries |
+| Provider errors | Counter | provider, error type | Rate limits, timeouts, 5xx |
+| Refusals | Counter | model, category, feature | Refusals returned inside successful responses (Factor 10) |
+| Rate-limit headroom | Gauge | provider, limit type | Remaining provider quota (Factor 14) |
 
-  - name: ai_cost_usd_total
-    type: counter
-    labels: [model, provider, feature, tenant]
-    description: "Total cost in USD"
-
-  - name: ai_request_duration_seconds
-    type: histogram
-    labels: [model, provider, feature]
-    buckets: [0.1, 0.5, 1, 2, 5, 10, 30]
-    description: "LLM request latency"
-
-  # Quality Metrics
-  - name: ai_quality_score
-    type: histogram
-    labels: [feature, model]
-    buckets: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-    description: "AI output quality scores from online evaluation"
-
-  - name: ai_cache_hit_ratio
-    type: gauge
-    labels: [cache_type, feature]
-    description: "Semantic cache hit rate"
-
-  # Safety Metrics
-  - name: ai_safety_trigger_total
-    type: counter
-    labels: [trigger_type, action, feature]
-    description: "Safety guardrail activations"
-
-  - name: ai_pii_detection_total
-    type: counter
-    labels: [entity_type, boundary, action]
-    description: "PII detected at input/output boundaries"
-
-  # Operational Metrics
-  - name: ai_provider_error_total
-    type: counter
-    labels: [provider, error_type]
-    description: "AI provider errors (rate limit, timeout, 5xx)"
-
-  - name: ai_refusal_total
-    type: counter
-    labels: [model, category, feature]
-    description: "Model refusals returned inside successful responses, by category (cross-ref Factor 10)"
-
-  - name: ai_rate_limit_remaining
-    type: gauge
-    labels: [provider, limit_type]
-    description: "Remaining rate limit capacity"
-```
+**Keep label cardinality bounded.** Model, feature, and tenant are bounded sets; user IDs, request IDs, and prompt text are not. Put per-request detail on traces and logs, never in metric labels.
 
 ### Dashboards
 
@@ -197,38 +118,16 @@ Design dashboards around key operational questions:
 
 ### Alerting Rules
 
-```yaml
-alerts:
-  - name: high_ai_cost_rate
-    condition: rate(ai_cost_usd_total[1h]) > 50
-    severity: warning
-    message: "AI spending exceeds $50/hour"
+Alert on rates and ratios against a baseline, not on raw counts — a raw count rises with traffic alone:
 
-  - name: quality_regression
-    condition: avg(ai_quality_score{feature="summarization"}[1h]) < 0.85
-    severity: critical
-    message: "Summary quality dropped below threshold"
-
-  - name: safety_spike
-    condition: rate(ai_safety_trigger_total[15m]) > 10
-    severity: critical
-    message: "Elevated safety guardrail triggers"
-
-  - name: provider_degradation
-    condition: ai_request_duration_seconds_p99 > 10
-    severity: warning
-    message: "AI provider latency exceeding 10s at p99"
-
-  - name: rate_limit_approaching
-    condition: ai_rate_limit_remaining < 100
-    severity: warning
-    message: "Approaching AI provider rate limit"
-
-  - name: refusal_rate_spike
-    condition: rate(ai_refusal_total[1h]) / rate(ai_request_duration_seconds_count[1h]) > 2 * baseline
-    severity: warning
-    message: "Refusal rate doubled — check for false positives after a model or prompt change"
-```
+| Alert | Fires when (example) | Severity |
+|-------|----------------------|----------|
+| Cost rate | Spend exceeds a budgeted rate, e.g., $50/hour | Warning |
+| Quality regression | Online quality for a feature stays below its threshold over a window, e.g., under 0.85 for an hour | Critical |
+| Safety spike | Guardrail triggers per request rise well above baseline — an attack or a wave of false positives; triage before acting | Critical |
+| Provider degradation | p99 latency exceeds a ceiling, e.g., 10 s | Warning |
+| Rate-limit exhaustion | Remaining provider quota falls below a safety margin | Warning |
+| Refusal spike | Refusals per request double against baseline — often false positives after a model or prompt change | Warning |
 
 ### Business Observability
 
@@ -236,42 +135,14 @@ Technical metrics tell you *how* your AI features are performing. Business obser
 
 Connect AI operations to business outcomes:
 
-```yaml
-# Business Observability Metrics
-metrics:
-  # User Adoption
-  - name: ai_feature_adoption_rate
-    type: gauge
-    labels: [feature, user_segment]
-    description: "Percentage of eligible users actively using AI feature"
-
-  - name: ai_feature_fallback_total
-    type: counter
-    labels: [feature, reason]
-    description: "Users who abandoned AI output and did the task manually"
-
-  # Task Effectiveness
-  - name: ai_task_completion_rate
-    type: gauge
-    labels: [feature]
-    description: "Tasks successfully completed with AI assistance vs. total attempts"
-
-  - name: ai_time_saved_seconds
-    type: histogram
-    labels: [feature, user_segment]
-    description: "Time saved per task compared to manual baseline"
-
-  # Revenue & ROI
-  - name: ai_influenced_revenue_usd
-    type: counter
-    labels: [feature, tenant]
-    description: "Revenue from transactions where AI feature was used"
-
-  - name: ai_feature_roi
-    type: gauge
-    labels: [feature]
-    description: "ROI = (business_value - ai_cost) / ai_cost"
-```
+| Metric | Measures | Caveat |
+|--------|----------|--------|
+| Feature adoption | Share of eligible users actively using the AI feature, by segment | — |
+| Manual fallback | Users who abandoned the AI output and did the task by hand, by reason | — |
+| Task completion | Tasks completed with AI assistance vs. attempts | Define "completed" per feature |
+| Time saved | Task duration vs. a manual baseline | Needs a measured baseline, not an assumed one |
+| AI-influenced revenue | Revenue from transactions where the feature was used | Correlation, not causation — claim impact only from holdouts or experiments |
+| ROI per feature | (business value − AI cost) / AI cost, with cost from Factor 20 | Only as sound as the value estimate |
 
 **Business Dashboard** (complements the technical dashboards above)
 - Feature adoption rate over time — are users actually using it?
@@ -285,46 +156,27 @@ This closes the loop between Factor 15 (observability) and Factor 20 (AI Economi
 ### AI Service Level Objectives (SLOs)
 Traditional SLOs cover availability and latency. AI features need SLOs for quality, cost, and safety — bridging observability (this factor) with economics (Factor 20).
 
-```yaml
-# ai-slos.yaml
-slos:
-  document_summary:
-    quality:
-      target: 0.90                     # 90% of responses score ≥ threshold on eval
-      measurement: ai_quality_score{feature="summarization"}
-      window: 7d
-      burn_rate_alert: 2x              # alert if error budget burns 2x faster than expected
+Each SLO states its indicator precisely — for ratios, the numerator and the denominator — plus a target and a window:
 
-    latency:
-      p50_target_ms: 2000
-      p99_target_ms: 8000
-      measurement: ai_request_duration_seconds{feature="summarization"}
-      window: 7d
+| SLO | Indicator | Example target |
+|-----|-----------|----------------|
+| Quality | Responses scoring at or above the quality threshold / evaluated responses | 90% over 7 days; alert when the error budget burns 2× faster than planned |
+| Latency | Requests faster than the threshold / all requests | 50% under 2 s and 99% under 8 s, over 7 days |
+| Cost | Mean cost per interaction, and interactions above a hard ceiling | Mean under $0.03, none above $0.50, over 30 days |
+| Resolution (support chat) | Conversations resolved without human escalation / all conversations | 70% over 30 days |
 
-    cost_per_interaction:
-      target_usd: 0.03                 # average cost per request
-      max_usd: 0.50                    # no single request exceeds this
-      measurement: ai_cost_usd{feature="summarization"}
-      window: 30d
+**Safety needs more than one indicator.** A guardrail activation rate is not a safety SLO on its own: a higher rate can mean more blocked attacks or more false positives, and a lower rate can mean a broken detector. Track separately:
 
-    safety:
-      guardrail_trigger_rate: 0.01     # < 1% of requests trigger safety guardrails
-      hallucination_rate: 0.05         # < 5% of responses flagged by hallucination detection
-      window: 7d
+- **Detections** — guardrail activations per request, by category.
+- **False positives** — the share of activations that human review finds unwarranted, from a sampled review queue.
+- **Estimated false negatives** — harmful outputs found in a reviewed sample of traffic the guardrails passed.
+- **Confirmed harmful events** — incidents verified by review or user reports; the outcome the SLO exists to protect.
 
-  support_chat:
-    quality:
-      target: 0.85
-      window: 7d
-    latency:
-      p50_target_ms: 1500
-      p99_target_ms: 5000
-    resolution_rate:
-      target: 0.70                     # 70% of conversations resolved without human escalation
-      window: 30d
-```
+The same caution applies to automated quality and hallucination scores: an LLM judge's score, or a model's self-reported confidence, is not a probability. Calibrate it against human-labeled samples and report the observed error rate.
 
 SLOs turn metrics into actionable contracts. When an error budget burns down, the team prioritizes reliability work over features — the same discipline applied to traditional services, extended to AI quality and cost.
+
+Further reading: Google SRE Workbook, [Implementing SLOs](https://sre.google/workbook/implementing-slos/) and [Alerting on SLOs](https://sre.google/workbook/alerting-on-slos/).
 
 ### OpenTelemetry GenAI Semantic Conventions
 
@@ -335,7 +187,7 @@ Agent work is modeled as a span tree: an `invoke_agent` span parents the `chat` 
 ```text
 gen_ai.operation.name                  = "chat" | "invoke_agent" | "execute_tool" | ...
 gen_ai.provider.name                   = "anthropic" | "openai" | "gcp.vertex_ai" | ...
-gen_ai.request.model                   = "claude-sonnet-5-5"
+gen_ai.request.model                   = "<pinned model ID>"
 gen_ai.request.max_tokens              = 4096
 gen_ai.usage.input_tokens              = 1250
 gen_ai.usage.output_tokens             = 340
@@ -357,14 +209,14 @@ Metric names follow the same convention (e.g., `gen_ai.client.token.usage`). Tre
 
 Sustainability metrics moved from "nice to have" to dashboard-default in 2026. Google's disclosure benchmark of ~0.24 Wh and ~0.03 gCO₂e (plus ~0.26 mL of water) per median Gemini text prompt set the public reference. EU procurement and several enterprise vendor reviews now require Wh-per-100-tokens and gCO₂e-per-request reporting. Stanford AI Index emphasizes tokens-per-second-per-watt and tokens-per-joule as serving efficiency metrics.
 
-```text
-ai_request_energy_wh           # Wh consumed per request
-ai_request_carbon_g_co2e       # gCO₂e estimated per request, regional grid factor applied
-ai_tokens_per_joule            # serving efficiency
-ai_water_l_per_request         # for hyperscaler workloads where reporting is available
-```
+Track these per request, and label them as estimates — record the estimation method and the grid-intensity source with each value:
 
-Source the carbon factor from a regional grid intensity API (e.g., Electricity Maps, ClimateTRACE) rather than a static average — it varies 10× across regions and across hours. Cross-ref Factor 20 for cost-equivalent treatment.
+- Energy per request (Wh)
+- Estimated carbon per request (gCO₂e), with the regional grid factor applied
+- Tokens per joule — serving efficiency
+- Water per request, for hyperscaler workloads where reporting is available
+
+Source the carbon factor from a regional grid intensity API (e.g., Electricity Maps) rather than a static average — it varies 10× across regions and across hours. Cross-ref Factor 20 for cost-equivalent treatment.
 
 ### New Signal Surfaces (2026)
 
@@ -373,17 +225,13 @@ Beyond model calls, these signal classes need first-class observability now:
 - **Thinking-token ratio**: `thinking_tokens / output_tokens` per route. Sudden rise = harder task or prompt regression. Cross-ref Factor 14, Factor 17, Factor 20.
 - **Computer-use action traces**: per-session traces of the actions a browser/desktop agent took (click, type, navigate), with screenshot redaction. Required to debug bad agent behavior and to satisfy audit obligations under EU AI Act high-risk classifications. Cross-ref Factor 8, Factor 18.
 - **Voice / realtime latency** (when applicable): time-to-first-token, time-to-first-audio-byte, end-of-turn detection latency, barge-in latency, audio packet loss. Sub-300ms TTFT is the user-perceptible threshold for voice.
-- **Memory read/write events**: per-identity counts of memory writes, recall hits, recall above-threshold hits, forget operations, poisoning blocks. Cross-ref Factor 19.
+- **Memory read/write events**: counts of memory writes, recall hits, recall above-threshold hits, forget operations, and poisoning blocks, with per-identity detail kept in the audit log rather than in metric labels. Cross-ref Factor 19.
 - **Steps and cost per completed agent task**: how many model calls and tool calls a task took, and what it cost end to end (cross-ref Factor 20). A rising step count for the same task mix is often the first visible sign of a harness, prompt, or model regression.
 - **Refusals**: refusal rate per category and model (cross-ref Factor 10). A jump after a model upgrade usually means false positives on legitimate traffic.
 
 ### Fallback-Drift Detection
 
-Multi-provider routing and fallback chains (cross-ref Factor 14, Factor 20) silently shift cost and quality when upstream providers degrade. A common production incident in 2025–2026: a primary provider intermittently fails and the fallback runs at 5–10× the cost without a visible alert. Detect this as a metric:
-
-```text
-ai_fallback_invocation_total{primary_model, fallback_model, reason}
-```
+Multi-provider routing and fallback chains (cross-ref Factor 14, Factor 20) silently shift cost and quality when upstream providers degrade. A common production incident in 2025–2026: a primary provider intermittently fails and the fallback runs at 5–10× the cost without a visible alert. Detect this as a metric: count fallback invocations by primary model, fallback model, and reason.
 
 Alert when fallback rate exceeds expected baseline (typically <1%). Most teams discover fallback drift only on the cost report.
 

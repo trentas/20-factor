@@ -46,108 +46,57 @@ This update retains the immutability principle and extends the pipeline to inclu
 ### The Extended Pipeline
 
 ```
-┌─────────┐    ┌─────────┐    ┌──────────┐    ┌─────────┐    ┌─────┐
-│  BUILD   │───▶│  EVAL   │───▶│ RELEASE  │───▶│ DEPLOY  │───▶│ RUN │
-│          │    │         │    │          │    │         │    │     │
-│ Compile  │    │ Quality │    │ Tag +    │    │ Roll out│    │Serve│
-│ Test     │    │ Safety  │    │ Seal     │    │         │    │     │
-│ Bundle   │    │ Cost    │    │          │    │         │    │     │
-└─────────┘    └─────────┘    └──────────┘    └─────────┘    └─────┘
+┌─────────┐    ┌─────────┐    ┌─────────┐    ┌──────────┐    ┌───────┐
+│ BUILD   │───▶│ EVAL    │───▶│ RELEASE │───▶│ DEPLOY   │───▶│ RUN   │
+│         │    │         │    │         │    │          │    │       │
+│ Compile │    │ Quality │    │ Tag +   │    │ Roll out │    │ Serve │
+│ Test    │    │ Safety  │    │ Seal    │    │          │    │       │
+│ Bundle  │    │ Cost    │    │         │    │          │    │       │
+└─────────┘    └─────────┘    └─────────┘    └──────────┘    └───────┘
 ```
 
 ### Build Stage
-The build stage produces a deterministic artifact:
+The build stage produces a deterministic artifact. Whatever CI system runs it, the stage:
 
-```yaml
-# ci-pipeline.yaml
-build:
-  steps:
-    - name: Install dependencies
-      run: pip install -r requirements.lock
-
-    - name: Compile prompt templates
-      run: |
-        prompt-compiler compile \
-          --input prompts/templates/ \
-          --output dist/prompts/ \
-          --validate-schemas
-
-    - name: Resolve model versions
-      run: |
-        model-resolver resolve \
-          --config ai-config.yaml \
-          --output dist/model-manifest.json \
-          --pin-versions
-
-    - name: Run unit tests
-      run: pytest tests/unit/
-
-    - name: Build container image
-      run: docker build -t app:$SHA .
-
-    - name: Scan for vulnerabilities
-      run: trivy image app:$SHA
-```
+- **Installs dependencies from a lockfile** (Factor 3), never from floating version ranges.
+- **Compiles and validates prompt templates**: every variable is bound, every include resolves, and structured-output schemas are valid. A template error fails the build instead of a request at runtime.
+- **Resolves model references to pinned identifiers** and writes them into the model manifest (Factor 16).
+- **Runs the unit tests, builds the container image, and scans it for vulnerabilities** before anything can be released.
 
 ### Evaluation Stage
-Evaluations are the AI equivalent of integration tests — they gate the pipeline:
+Evaluations are the AI equivalent of integration tests — they gate the pipeline. They run against the build's own model manifest, so the release is evaluated with exactly the models it will ship with:
 
-```yaml
-evaluate:
-  needs: build
-  steps:
-    - name: Run quality evaluations
-      run: |
-        eval-runner run \
-          --model-manifest dist/model-manifest.json \
-          --eval-suite evals/quality/ \
-          --threshold accuracy=0.92
-
-    - name: Run safety evaluations
-      run: |
-        eval-runner run \
-          --eval-suite evals/safety/ \
-          --threshold toxicity=0.01 \
-          --threshold pii_leak=0.001
-
-    - name: Run cost evaluations
-      run: |
-        eval-runner run \
-          --eval-suite evals/cost/ \
-          --threshold avg_cost_per_request=0.05 \
-          --threshold p99_tokens=4096
-```
+| Gate | Example threshold | Blocks the release when |
+|------|-------------------|-------------------------|
+| **Quality** | Accuracy ≥ 0.92 on the golden dataset | The score falls below the threshold (judged on its confidence interval — Factor 6) or regresses against the current release |
+| **Safety** | Toxic outputs ≤ 1% and PII leaks ≤ 0.1% of cases | Any safety threshold is exceeded |
+| **Cost** | Mean cost ≤ $0.05 per request; p99 output ≤ 4,096 tokens | The release would cost more to run than budgeted (Factor 20) |
 
 ### Release Manifest
-The release artifact is immutable and self-describing:
+The release artifact is immutable and self-describing. A minimal manifest:
 
 ```json
 {
   "version": "2026.10.22-abc123f",
-  "build_sha": "abc123f",
-  "timestamp": "2026-10-22T14:30:00Z",
+  "source": "git+https://example.com/app@abc123f",
   "artifacts": {
-    "container": "registry.example.com/app:abc123f",
-    "prompts": "s3://releases/abc123f/prompts.tar.gz",
-    "skills": "s3://releases/abc123f/skills.tar.gz",
-    "sbom": "s3://releases/abc123f/sbom.cdx.json"
+    "container": "registry.example.com/app@sha256:…",
+    "prompts": "sha256:…",
+    "skills": "sha256:…",
+    "sbom": "sha256:…"
   },
   "models": {
-    "summarization": { "id": "claude-sonnet-5-5", "effort": "medium", "api_version": "2026-10-21" },
-    "embedding": "text-embedding-3-small@v2"
+    "summarization": { "id": "<pinned model ID>", "effort": "medium", "provider_api_version": "<pinned>" }
   },
-  "protocols": {
-    "mcp": "2026-07-28",
-    "mcp_servers": { "knowledge-base": "@company/mcp-kb@2.3.1" }
-  },
-  "evaluations": {
-    "quality_accuracy": 0.94,
-    "safety_toxicity": 0.003,
-    "avg_cost_per_request": 0.032
-  },
-  "config_hash": "sha256:def456..."
+  "protocols": { "mcp": "2026-07-28", "mcp_servers": { "knowledge-base": "2.3.1" } },
+  "evaluations": { "report": "sha256:…", "quality_accuracy": 0.94, "safety_toxicity": 0.003 },
+  "config_hash": "sha256:…"
 }
 ```
+
+- **Reference every artifact by content digest**, not by a mutable tag or path — a tag can be repointed after the release is sealed.
+- **Record what the release was tested against**: pinned model IDs with their effort settings, the provider API version, and the MCP/A2A protocol and server versions (Factor 2, Factor 16).
+- **Attach the evaluation report, not just the scores.** It is the evidence that this release passed its gates.
 
 ### AI Bill of Materials (AIBOM/MLBOM)
 
@@ -158,47 +107,22 @@ By 2026 the build is expected to emit a machine-readable **AI Bill of Materials*
 
 A minimal AIBOM entry per model includes: model identifier and version, weights checksum, training dataset references with licenses, evaluation results, intended use, known limitations.
 
-```yaml
-# Example: emit AIBOM as part of the release manifest
-- name: Generate AIBOM
-  run: |
-    aibom-cli generate \
-      --models dist/model-manifest.json \
-      --evals dist/eval-results.json \
-      --datasets datasets.lock \
-      --guardrails guardrails.yaml \
-      --output dist/aibom.cdx.json \
-      --format cyclonedx-1.6
-
-- name: Sign AIBOM
-  run: cosign sign-blob dist/aibom.cdx.json --bundle dist/aibom.sig
-```
+Generate the AIBOM in the build from the model manifest, the evaluation results, the dataset lockfile, and the guardrail configuration, and sign it together with the other release artifacts (see below).
 
 The AIBOM travels with the release. Downstream consumers (compliance, procurement, customers) verify it before deployment. Regulators (EU AI Act, NIST profiles — see Factor 7) increasingly require it, and the EU Cyber Resilience Act makes a component inventory part of the technical documentation for products on the EU market (obligations from December 2027; vulnerability reporting already since September 2026 — see Factor 3). Keep every release's SBOM and AIBOM queryable, so an advisory can be matched to the releases that ship the affected component within hours.
 
 ### Provenance, Signing, and Reproducibility
 
-- **SLSA provenance**: emit SLSA Build Level 3 attestations for every release artifact, including model weights and prompt bundles. The attestation states what was built, by whom, from what source, on what builder.
+- **SLSA provenance, at a declared level**: emit provenance for every release artifact — container images, prompt bundles, fine-tuned model weights — stating what was built, from what source, on which build platform. SLSA Build levels describe the *build platform*, not the attestation file: Build L1 means provenance exists; L2 means the provenance is signed and generated by a hosted build platform; L3 requires a hardened build platform that isolates builds from one another and keeps the provenance-signing key out of reach of user-defined build steps. Generating and signing an attestation from your own build script does not make a release L3. State the level each artifact targets, chosen by its risk, and the evidence that your build platform meets it.
 - **Sigstore / cosign signatures**: sign container images, prompt bundles, fine-tuned model weights, and the AIBOM. Verify signatures at deploy time — unsigned artifacts are refused.
 - **Reproducible builds for ML**: re-running the same build with the same inputs produces byte-identical artifacts (where the toolchain allows). For non-deterministic training, capture seeds and dataset hashes so the *result* — not the bits — is reproducible to within statistical tolerance.
 
-```yaml
-# Sign and attest the release artifact
-- name: Sign container image
-  run: cosign sign --yes registry.example.com/app:$SHA
-
-- name: Attach SLSA provenance
-  run: |
-    slsa-generator generate \
-      --artifact registry.example.com/app:$SHA \
-      --build-config ci-pipeline.yaml \
-      --source git+https://github.com/example/app@$SHA \
-      | cosign attest --predicate - registry.example.com/app:$SHA
-```
+Further reading: [SLSA 1.2 — Build track basics](https://slsa.dev/spec/v1.2/build-track-basics); [SLSA 1.2 — Build requirements](https://slsa.dev/spec/v1.2/build-requirements).
 
 ### Immutability Rules
 - **Never mutate a released artifact**. If a prompt needs changing, create a new release.
 - **Never change a model version** in a running deployment. Change the configuration and trigger a new release.
+- **Runtime switches stay inside the release.** A flag may switch among model / prompt / parameter combinations that this release contains and that passed its evaluation gates — for example, the evaluated fallback (Factor 4). Any other combination is a new release.
 - **Evaluation results are part of the release**. They're not just CI output — they're the evidence that this release meets quality standards.
 - **Rollback is deployment of a previous release**, not manual surgery on a running system.
 

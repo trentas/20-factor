@@ -34,189 +34,80 @@ This factor *is* the AI change. It exists because:
 
 ### Model Registry
 
-Maintain a registry of all models used in the application:
+Maintain a registry of every model the application uses — a versioned file in the repository (for example, `model-registry.yaml`), reviewed like code (Factor 1). Each entry records:
 
-```yaml
-# model-registry.yaml
-models:
-  summarization-primary:
-    provider: anthropic
-    model_id: claude-sonnet-5
-    id_semantics: immutable           # immutable snapshot | dated snapshot | floating alias
-    api_version: "2023-06-01"         # pinned API version — see "Platform and protocol deprecations"
-    purpose: "Document summarization"
-    status: active
-    deployed_date: "2026-03-15"
-    eval_scores:
-      accuracy: 0.94
-      relevance: 0.91
-      cost_per_1k_requests: 8.10
-    owner: team-ai-platform
-
-  summarization-candidate:
-    provider: anthropic
-    model_id: claude-sonnet-5-5  # newer version
-    id_semantics: immutable
-    api_version: "2026-10-21"
-    purpose: "Document summarization — evaluation candidate"
-    status: evaluating
-    eval_scores:
-      accuracy: 0.95
-      relevance: 0.93
-      cost_per_1k_requests: 7.60
-    notes: "+5% quality, -6% cost at the same list price (shorter outputs). Request shape changes: no sampling parameters. A/B test started 2026-10-12."
-
-  classification-v2:
-    type: fine-tuned
-    base_model: gpt-5.4-mini
-    fine_tune_id: ft:gpt-5.4-mini:org:classification-v2:abc123
-    training_data: "s3://ml-data/classification/training-v2.jsonl"
-    training_date: "2025-05-20"
-    purpose: "Support ticket classification"
-    status: active
-    eval_scores:
-      accuracy: 0.97
-      f1: 0.95
-    retrain_schedule: quarterly
-    owner: team-support
-
-  embedding-production:
-    provider: openai
-    model_id: text-embedding-3-small
-    purpose: "Document embedding for RAG"
-    status: active
-    dimension: 1536
-    notes: "Changing this model requires re-embedding all documents (~2M docs, ~$500, ~4h)"
-```
+| Field | Why it matters |
+|-------|----------------|
+| Provider and model ID | What is actually called |
+| ID semantics | Whether the ID is an immutable snapshot, a dated snapshot, or a floating alias (see below) |
+| Pinned API version | Request shapes change with API versions, not only with models |
+| Purpose and owner | Which feature depends on it, and who decides when it changes |
+| Status | Active, evaluating, or deprecated |
+| Eval results | Scores from the eval-suite version that justified adoption, plus cost per completed task (Factor 6, Factor 20) |
+| Deprecation date | The provider's announced retirement, if any |
+| Fine-tuned models | Base model, training data version, training date, retrain trigger |
+| Embedding models | Vector dimension, and what re-embedding the corpus would cost if the model changed |
 
 ### Model Selection Framework
 
-```python
-class ModelSelector:
-    """Structured process for evaluating and selecting models."""
+Evaluate a candidate against the current model as a controlled comparison, not a leaderboard lookup:
 
-    async def evaluate_candidate(
-        self,
-        candidate: ModelConfig,
-        current: ModelConfig,
-        eval_suite: EvalSuite,
-    ) -> ModelEvaluation:
-        # Run evaluation suite against both models
-        current_results = await eval_suite.run(current)
-        candidate_results = await eval_suite.run(candidate)
-
-        return ModelEvaluation(
-            candidate=candidate,
-            current=current,
-            quality_comparison=self.compare_quality(current_results, candidate_results),
-            cost_comparison=self.compare_cost(current_results, candidate_results),
-            latency_comparison=self.compare_latency(current_results, candidate_results),
-            recommendation=self.generate_recommendation(
-                current_results, candidate_results
-            ),
-        )
-```
+- **Same suite, same version.** Run the identical eval-suite version against both models (Factor 6), on cases stratified by use case.
+- **Compare the trade-offs that matter.** Quality per stratum, cost per completed task, latency (p50 and p95), refusal rate, and failure modes — not a single average score.
+- **Include the request shape.** Parameters the candidate rejects, or defaults it changes, are part of the migration cost (see "Pin the request surface" below).
+- **Record the decision.** The comparison and the recommendation go into the registry entry, so the next review starts from evidence.
 
 ### Version Pinning Strategy
 
-```yaml
-# Version pinning levels
-pinning:
-  # Level 1: Pin to an immutable model identifier (strictest)
-  strict:
-    model: claude-sonnet-5-5
-    note: "Immutable ID — the provider will not change the model behind it"
+| Level | Identifier | Behavior can change when | Use |
+|-------|------------|--------------------------|-----|
+| **Strict** | Immutable model ID | Only when you change the ID | Production, with eval-gated upgrades |
+| **Alias** | Provider alias that tracks the newest snapshot | The provider moves the alias — no deploy on your side | Development and prototypes |
+| **Tier** | "Any model of this class" | A new model generation arrives | Only behind eval gates that run on every change |
 
-  # Level 2: Floating alias (moderate)
-  alias:
-    model: "<provider alias that tracks the newest snapshot>"
-    note: "Follows provider updates automatically — behavior can change without a deploy"
+Recommended: strict pinning in production, with eval-gated upgrades.
 
-  # Level 3: Pin to capability tier (loosest)
-  tier:
-    model: "any Sonnet-class model"
-    note: "Allows model generation changes — requires eval gates"
-
-  # Recommended: Use strict pinning in production with eval-gated upgrades
-```
-
-**Know what kind of identifier you hold.** "Pinned" means different things at different providers, and sometimes across generations at the same provider. Some IDs are dated snapshots with an undated alias that moves (Anthropic's `claude-sonnet-4-5-20250929` behind the `claude-sonnet-4-5` alias); some current IDs carry no date yet are themselves immutable (`claude-sonnet-5-5`); and some names float by design (`-latest`-style aliases, or a hyperscaler deployment set to auto-update). Read the provider's model-ID semantics before deciding what counts as pinned, and record it in the registry (`id_semantics` above).
+**Know what kind of identifier you hold.** "Pinned" means different things at different providers, and sometimes across generations at the same provider. Some IDs are dated snapshots with an undated alias that moves (Anthropic's `claude-sonnet-4-5-20250929` behind the `claude-sonnet-4-5` alias); some current IDs carry no date yet are themselves immutable (`claude-sonnet-5-5`); and some names float by design (`-latest`-style aliases, or a hyperscaler deployment set to auto-update). Read the provider's model-ID semantics before deciding what counts as pinned, and record it in the registry's ID-semantics field.
 
 **Pin the request surface, not just the model.** Newer models can remove parameters or change defaults: sampling parameters rejected on reasoning models, forced tool choice or assistant prefill no longer accepted, a different default reasoning effort. A model upgrade is a code change whenever the request shape must change — run it through the same eval gate and release process (Factor 5, Factor 6), and set every behavior-relevant parameter explicitly instead of inheriting a default that the next model may change.
 
 ### A/B Testing Models
 
+Route a fixed share of traffic to the candidate and compare it with the control on the same metrics. Assignment must be stable: Python's `hash()` of a string is salted per process, so replicas — and every restart — would put the same user in different arms. Derive the bucket from a cryptographic digest of the experiment ID and the unit ID:
+
 ```python
-class ModelABTest:
-    """Run controlled experiments comparing model versions."""
+# WRONG — str hashes are salted per process: replicas disagree on the arm
+bucket = hash(user_id) % 100
 
-    def __init__(self, control: ModelConfig, treatment: ModelConfig, traffic_split: float):
-        self.control = control
-        self.treatment = treatment
-        self.traffic_split = traffic_split  # e.g., 0.10 = 10% to treatment
-
-    async def route(self, request: Request) -> ModelConfig:
-        # Deterministic routing based on user ID for consistent experience
-        if hash(request.user_id) % 100 < self.traffic_split * 100:
-            return self.treatment
-        return self.control
-
-    async def analyze(self) -> ABTestResult:
-        control_metrics = await self.collect_metrics(self.control)
-        treatment_metrics = await self.collect_metrics(self.treatment)
-
-        return ABTestResult(
-            quality_delta=treatment_metrics.quality - control_metrics.quality,
-            cost_delta=treatment_metrics.cost - control_metrics.cost,
-            latency_delta=treatment_metrics.latency - control_metrics.latency,
-            statistical_significance=self.calculate_significance(
-                control_metrics, treatment_metrics
-            ),
-            recommendation=self.recommend(control_metrics, treatment_metrics),
-        )
+# RIGHT — stable across processes and restarts; the experiment ID keeps experiments independent
+digest = hashlib.sha256(f"{experiment_id}:{user_id}".encode()).digest()
+bucket = int.from_bytes(digest[:8], "big") % 100
 ```
+
+- **Randomize and analyze on the same unit.** Assign per user (or per tenant) for a consistent experience, and analyze per user too — requests from the same user are not independent samples.
+- **Fix promotion and abort criteria before starting**: the primary metric and the minimum effect worth shipping; guardrail metrics (safety, cost per completed task, p95 latency, refusal rate) with abort thresholds; and the sample size or duration. Stop early only under a rule decided up front.
+- **Tag every trace with its arm** (Factor 15), so quality, cost, and latency differences can be attributed.
+
+Further reading: Python, [`object.__hash__` and hash randomization](https://docs.python.org/3/reference/datamodel.html#object.__hash__).
 
 ### Deprecation Planning
 
-```yaml
-# Model deprecation timeline
-deprecation_plan:                   # illustrative timeline
-  model: claude-3-sonnet-20240229
-  status: deprecated
-  timeline:
-    announced: "2025-01-15"
-    soft_deadline: "2025-06-01"     # Warnings in logs
-    hard_deadline: "2025-09-01"      # Model removed by provider
-  migration:
-    target: claude-sonnet-4-20250514
-    eval_status: passed              # New model passed eval suite
-    migration_steps:
-      - "Update model-registry.yaml"
-      - "Run full eval suite against new model"
-      - "Deploy to staging, run smoke tests"
-      - "A/B test in production (10% traffic for 1 week)"
-      - "Full rollout"
-    estimated_effort: "2 developer-days"
-    cost_impact: "-15% per request"
-    quality_impact: "+3% accuracy"
-```
+Every model in the registry has a deprecation plan before a provider forces one. The plan records:
+
+- **Dates**: when the deprecation was announced, the provider's removal date, and an internal deadline well ahead of it, when warnings start appearing in logs.
+- **Migration target**, already evaluated against the full suite.
+- **Steps**: update the registry → run the full eval suite → deploy to staging and smoke-test → A/B test on a small share of production traffic → full rollout.
+- **Expected impact** on cost, quality, and engineering effort, so the migration is scheduled rather than rushed.
 
 #### Platform and Protocol Deprecations
 
 Models are not the only dependencies that get retired. Platform features, API versions, and protocol versions follow the same lifecycle — and they often break more code than a model swap, because they change request shapes and remove whole capabilities:
 
-```yaml
-platform_deprecations:
-  - item: "OpenAI Evals platform (hosted evals, graders)"
-    impact: "read-only from 31 Oct 2026; dashboard and API shut down 30 Nov 2026"
-    action: "keep eval datasets and graders in the repo; run them with an open harness (Factor 6)"
-  - item: "Anthropic Messages API version 2026-10-21"
-    impact: "temperature, top_p, and top_k rejected on every model"
-    action: "remove sampling parameters; tune reasoning effort instead (Factor 4)"
-  - item: "MCP Roots, Sampling, and Logging (deprecated in 2026-07-28)"
-    impact: "removal after the protocol's minimum 12-month deprecation window"
-    action: "pass paths as tool parameters; call model providers directly; log via OpenTelemetry"
-```
+| Deprecation | Impact | Action |
+|-------------|--------|--------|
+| OpenAI Evals platform (hosted evals, graders) | Read-only from 31 Oct 2026; dashboard and API shut down 30 Nov 2026 | Keep eval datasets and graders in the repo; run them with an open harness (Factor 6) |
+| Anthropic Messages API version 2026-10-21 | `temperature`, `top_p`, and `top_k` rejected on every model | Remove sampling parameters; tune reasoning effort instead (Factor 4) |
+| MCP Roots, Sampling, and Logging (deprecated in 2026-07-28) | Removal after the protocol's minimum 12-month deprecation window | Pass paths as tool parameters; call model providers directly; log via OpenTelemetry |
 
 Track these in the same registry as models, with an owner and a date for each, and subscribe to every provider's deprecation feed. A hosted feature you depend on is a model-like dependency: plan the exit before you adopt it.
 
@@ -224,48 +115,12 @@ Track these in the same registry as models, with an owner and a date for each, a
 
 Distillation uses a larger, more capable model (the "teacher") to generate training data for a smaller, cheaper model (the "student"). Unlike fine-tuning on human-labeled data, distillation leverages the teacher model's capabilities to create high-quality training data at scale — then produces a student model that approximates the teacher's quality at a fraction of the inference cost.
 
-```yaml
-# distillation-pipeline.yaml
-distillation:
-  teacher:
-    model: claude-opus-5-5
-    purpose: "Generate high-quality labeled data for student training"
+A distillation pipeline has four gated steps:
 
-  student:
-    base_model: open-weights-8b-instruct    # small open-weights base, pinned to a commit hash
-    purpose: "Production inference at 10-20x lower cost than teacher"
-
-  pipeline:
-    - step: generate_training_data
-      source: production_inputs             # real production queries
-      teacher_model: claude-opus-5-5
-      output_format: jsonl
-      sample_size: 50000
-      quality_filter:
-        # Only keep teacher outputs that pass quality checks
-        min_confidence: 0.9
-        human_spot_check_rate: 0.02         # verify 2% of teacher outputs
-
-    - step: train_student
-      method: supervised_fine_tuning
-      dataset: distillation_output.jsonl
-      hyperparameters:
-        epochs: 3
-        learning_rate_multiplier: 1.5
-
-    - step: evaluate_student
-      compare_against:
-        - teacher_model                     # quality gap vs. teacher
-        - current_production_model          # improvement vs. current
-      threshold:
-        quality_vs_teacher: 0.90            # student must be ≥90% of teacher quality
-        cost_reduction: 0.70                # student must be ≥70% cheaper
-
-    - step: deploy
-      strategy: ab_test
-      traffic_split: 0.10
-      monitor: [quality_score, cost_per_request, latency_p95]
-```
+1. **Generate training data with the teacher** from real production inputs — which carry the same privacy obligations as any production data (Factor 7). Filter teacher outputs with automated quality checks plus human spot checks on a sample; don't filter on the teacher's self-reported confidence, which is not a calibrated probability.
+2. **Train the student** — supervised fine-tuning of a small open-weights base, pinned to a commit hash.
+3. **Evaluate the student** against both the teacher (quality gap) and the current production model (improvement), with thresholds fixed before training — for example, at least 90% of the teacher's quality at 70% lower cost.
+4. **Deploy through an A/B test** on a small share of traffic, monitoring quality, cost per request, and p95 latency.
 
 **Teacher licensing in distillation**: Check the teacher model's terms of service before using its outputs as training data. Some providers have historically prohibited using model outputs to train competing models. Document the legal basis for distillation — the teacher model name, its license at the time of distillation, and the permitted use case — in the model registry entry alongside the distillation pipeline reference.
 
@@ -309,48 +164,15 @@ Open-weight models (Llama 4, Mistral, Qwen, Gemma, Phi-4) have community-driven 
 
 ### Fine-Tuning Pipeline
 
-```yaml
-# Fine-tuning lifecycle
-fine_tuning:
-  trigger:
-    schedule: quarterly
-    or: eval_score_drops_below_threshold
+Fine-tuning is a versioned pipeline, triggered on a schedule (for example, quarterly) or when eval scores fall below threshold:
 
-  pipeline:
-    - step: collect_training_data
-      source: production_feedback
-      filter: human_verified_only
-      min_samples: 5000
-
-    - step: prepare_dataset
-      format: jsonl
-      split: {train: 0.8, validation: 0.1, test: 0.1}
-
-    - step: fine_tune
-      base_model: gpt-5.4-mini
-      hyperparameters:
-        epochs: 3
-        learning_rate_multiplier: 1.8
-
-    - step: evaluate
-      suite: evals/classification/
-      threshold:
-        accuracy: 0.95
-        f1: 0.93
-      compare_against: current_production_model
-
-    - step: register
-      registry: model-registry.yaml
-      status: candidate
-
-    - step: deploy
-      strategy: ab_test
-      traffic_split: 0.10
-      duration: 7d
-
-    - step: promote_or_rollback
-      decision: based_on_ab_test_results
-```
+1. **Collect training data** from production feedback, keeping only human-verified examples, with a minimum sample size.
+2. **Split** into train, validation, and test sets. The test set stays held out: it never feeds training or hyperparameter tuning, or its scores stop meaning anything.
+3. **Fine-tune** from a pinned base model, recording the hyperparameters with the run.
+4. **Evaluate** on the versioned suite against the current production model, with pass thresholds set before training.
+5. **Register** the result as a candidate in the model registry.
+6. **A/B test** on a small share of traffic for a fixed period (see A/B Testing Models above).
+7. **Promote or roll back** according to the criteria fixed before the test.
 
 ## Compliance Checklist
 

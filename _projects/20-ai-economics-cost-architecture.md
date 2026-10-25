@@ -35,265 +35,116 @@ This factor *is* the AI change. It addresses:
 
 ### Cost Model
 
-```yaml
-# cost-model.yaml — understand your cost drivers
-cost_model:
-  models:
-    claude-sonnet-5-5:
-      input_per_1m_tokens: 2.00
-      output_per_1m_tokens: 10.00
-      cache_read_per_1m_tokens: 0.10
-      typical_use: "Complex reasoning, document analysis, agentic coding"
+A cost model makes the drivers of spend explicit for every feature — before launch, and kept current afterward:
 
-    claude-opus-5-5:
-      input_per_1m_tokens: 4.00
-      output_per_1m_tokens: 20.00
-      cache_read_per_1m_tokens: 0.20
-      thinking_tokens_per_1m: 20.00    # thinking tokens billed as output
-      typical_use: "Complex reasoning, multi-step analysis, research"
-      note: "Reasoning is always on; effort controls how many thinking tokens are spent"
+| Driver | What to record | Why it matters |
+|--------|----------------|----------------|
+| Volume | Requests or tasks per month, and their growth | Usage-based cost scales with demand, not capacity |
+| Tokens per call | Uncached input, cache writes and reads, output — including thinking tokens, which are billed as output | Output and thinking tokens usually dominate on reasoning routes |
+| Calls per task | Model calls per completed task, including retries, judges, routers, and fallbacks | Agent loops multiply every per-call cost |
+| Cache hit ratio | Share of input served from the provider's prompt cache | Cache reads cost a fraction of uncached input |
+| Model and effort | Pinned model version and effort level per route | Price differs by tier; effort drives thinking-token spend (Factor 17) |
+| Success rate | Share of tasks that complete acceptably | Failed attempts are paid for too |
+| Multimodal inputs | Image resolution; audio duration, often cheaper transcribed first (Factor 17) | Non-text inputs are priced differently from text |
 
-    claude-haiku-5-5:
-      input_per_1m_tokens: 0.10        # prompts up to 100K tokens
-      output_per_1m_tokens: 0.50
-      cache_read_per_1m_tokens: 0.01
-      long_prompt_pricing: { input: 0.50, output: 2.50, cache_read: 0.05 }  # prompts over 100K tokens
-      typical_use: "Classification, simple Q&A, routing, sub-agent reading"
+For agentic features, the unit is the **completed task**:
 
-    text-embedding-3-small:
-      input_per_1m_tokens: 0.02
-      typical_use: "Document embedding, semantic search"
-
-  # Reasoning models introduce thinking token economics
-  reasoning:
-    thinking_tokens: "Internal reasoning tokens generated before the visible response"
-    cost_impact: "A 500-token response may consume 10,000-30,000 thinking tokens"
-    pricing: "Thinking tokens are typically billed at output token rates"
-    optimization: "Set reasoning effort per task type — on several current models reasoning cannot be disabled, so effort is the only cost lever"
-    note: "See Factor 17 for reasoning-effort configuration per task profile"
-
-  # Multimodal inputs have different token economics
-  multimodal:
-    image_tokens: "A 1024x1024 image ≈ 1,000 tokens; cost scales with resolution"
-    audio: "Pre-transcription recommended — transcription cost + text tokens < raw audio tokens"
-    note: "See Factor 17 for multimodal context budget allocation"
-
-  # Estimate costs per feature
-  features:
-    document_summary:
-      avg_input_tokens: 4500
-      avg_output_tokens: 500
-      model: claude-sonnet-5-5
-      estimated_cost_per_request: 0.014
-      monthly_volume: 50000
-      estimated_monthly_cost: 700
-
-    support_chat:
-      avg_input_tokens: 2000
-      avg_output_tokens: 300
-      model: claude-haiku-5-5
-      estimated_cost_per_request: 0.00035
-      monthly_volume: 200000
-      estimated_monthly_cost: 70
-      cache_hit_rate: 0.30             # provider prompt-cache hits on input (read = 0.1x input)
-      estimated_monthly_cost_with_cache: 59
-
-    ticket_classification:
-      avg_input_tokens: 500
-      avg_output_tokens: 50
-      model: claude-haiku-5-5
-      estimated_cost_per_request: 0.000075
-      monthly_volume: 100000
-      estimated_monthly_cost: 7.50
-
-    # Agentic features are priced per completed task, not per request
-    research_agent:
-      model: claude-opus-5-5
-      calls_per_task: 20               # one model call per agent step
-      avg_input_tokens_per_call: 40000 # context grows each step; most of it is a cache hit
-      cache_hit_ratio: 0.85            # uncached remainder is written at the 5-min write price ($5/MTok)
-      avg_output_tokens_per_call: 1500 # includes thinking tokens
-      estimated_cost_per_task: 1.34
-      monthly_volume: 2000
-      estimated_monthly_cost: 2680
+```
+cost per completed task =
+    ( Σ over every billable call in the period:
+          uncached input × input price
+        + cache writes × write price  +  cache reads × read price
+        + output, including thinking × output price
+      + paid tool calls )
+    ÷ tasks completed successfully
+  + human review and rework per completed task
 ```
 
-Two things follow from current pricing. First, the spread between tiers is wide — the small tier's input price is 20× below the mid tier's — so pushing high-volume, low-complexity traffic down to it is still the largest single lever. Second, the expensive unit is no longer the request but the **task**: an agent loop that re-reads a growing context on every step costs orders of magnitude more than any single call, and its cost is dominated by loop length, cache hit ratio, and reasoning effort. Model it per completed task, and budget it per task (see Budget Circuit Breakers below and Factor 18's execution budgets).
+"Every billable call" includes retries, routers and classifiers, LLM judges, fallbacks, and responses that were discarded; the cost of failed tasks lands on the ones that succeeded.
+
+**Keep prices out of code and prose.** Prices, model names, and discounts change faster than architecture. Keep them in one dated, sourced price table that the cost model and the gateway read, and re-check it whenever a pinned model changes (Factor 16). This page deliberately lists none.
+
+Two things follow from how models are priced. First, the spread between tiers is wide — input prices between a provider's smallest and mid tiers commonly differ by an order of magnitude or more — so pushing high-volume, low-complexity traffic down to the smaller tier is still the largest single lever. Second, the expensive unit is no longer the request but the **task**: an agent loop that re-reads a growing context on every step costs orders of magnitude more than any single call, and its cost is dominated by loop length, cache hit ratio, and reasoning effort. Model it per completed task, and budget it per task (see Budget Circuit Breakers below and Factor 18's execution budgets).
 
 ### Intelligent Model Routing
 
-```python
-class CostAwareRouter:
-    """Route requests to the most cost-effective model that meets quality requirements."""
+Route each request to the cheapest configuration that meets the quality bar for its task class:
 
-    def __init__(self, models: list[ModelConfig], classifier: ComplexityClassifier):
-        self.models = sorted(models, key=lambda m: m.cost_per_token)
-        self.classifier = classifier
+| Task class | Examples | Starting configuration |
+|------------|----------|------------------------|
+| Simple | Classification, yes/no questions, format conversion | Smallest tier, low effort |
+| Moderate | Summarization, Q&A with context | Mid tier, low effort |
+| Complex | Multi-step reasoning, code generation | Mid tier at high effort, or the most capable tier |
+| Research | Multi-step analysis, research synthesis, complex planning | Most capable tier, high effort; max only where evals show a gain |
 
-    async def route(self, request: AIRequest) -> ModelConfig:
-        complexity = await self.classifier.classify(request)
-
-        match complexity:
-            case Complexity.SIMPLE:
-                # Simple tasks: cheapest model, lowest reasoning effort
-                # Examples: classification, yes/no questions, format conversion
-                return self.get_model("haiku", effort="low")
-
-            case Complexity.MODERATE:
-                # Moderate tasks: mid-tier model, low reasoning effort
-                # Examples: summarization, Q&A with context
-                return self.get_model("sonnet", effort="low")
-
-            case Complexity.COMPLEX:
-                # Complex tasks: most capable model
-                # Examples: multi-step reasoning, creative writing, code generation
-                return self.get_model("sonnet", effort="high")
-
-            case Complexity.RESEARCH:
-                # Deep reasoning tasks: reasoning model with high thinking budget
-                # Examples: multi-step analysis, research synthesis, complex planning
-                return self.get_model("opus", effort="max")
-
-    async def route_with_fallback(self, request: AIRequest) -> ModelConfig:
-        """Try cheaper model first, escalate if quality is insufficient."""
-        cheap_model = self.get_cheapest_viable(request)
-        response = await cheap_model.complete(request)
-
-        if await self.quality_check(response) >= request.quality_threshold:
-            return response
-
-        # Escalate to more capable model
-        better_model = self.get_next_tier(cheap_model)
-        return await better_model.complete(request)
-```
+- **Pick each class's configuration with evals, not intuition** (Factor 6), and repeat the comparison when models change (Factor 16).
+- **Count the router.** Whatever assigns the class — a rule set or a classifier model — has its own cost, latency, and error rate. Misrouted complex requests show up as quality regressions, not as savings.
+- **A cascade pays for every rung.** "Try the cheap model, escalate if a quality check fails" pays for the cheap attempt, the quality check, and the escalated call.
 
 Before building a multi-model cascade, measure the simpler alternative: the more capable model at a *lower* reasoning effort. On current models, lower effort often matches the previous generation at high effort, and a cascade has a hidden cost — provider prompt caches are scoped per model, so every escalation re-pays the full uncached prompt. Judge both options on cost per *completed* task, not cost per request: a cheaper request that needs retries or extra turns is not cheaper.
 
 ### Budget Circuit Breakers
 
-```python
-class BudgetCircuitBreaker:
-    """Hard limits that prevent runaway AI costs."""
+A budget breaker must hold under concurrency and must see every dollar. Reading current usage and approving in a separate step is a race: two concurrent requests both see $40 left, and both spend $30. Enforce budgets as **reserve → dispatch → reconcile**:
 
-    def __init__(self, budgets: BudgetConfig):
-        self.budgets = budgets
-        self.usage = CostTracker()
+| Step | What happens | Invariant |
+|------|--------------|-----------|
+| Reserve | Before dispatch, atomically add the estimated cost to every budget the request falls under — request, user, tenant, global — or reject it | All levels reserve or none do; concurrent requests cannot approve the same remaining balance |
+| Dispatch | The call runs while its reservation counts against those budgets | In-flight spend is visible to every other request |
+| Reconcile | Replace the reservation with the actual cost from the response's usage data and release the remainder | Reported usage, not the estimate, is what accumulates |
 
-    async def check_budget(self, request: AIRequest) -> BudgetResult:
-        estimated_cost = self.estimate_cost(request)
+Rules around the cycle:
 
-        # Per-request limit
-        if estimated_cost > self.budgets.max_cost_per_request:
-            return BudgetResult.rejected(
-                f"Estimated cost ${estimated_cost:.3f} exceeds "
-                f"per-request limit ${self.budgets.max_cost_per_request:.3f}"
-            )
-
-        # Per-user hourly limit
-        user_hourly = await self.usage.get_user_hourly(request.user_id)
-        if user_hourly + estimated_cost > self.budgets.max_cost_per_user_per_hour:
-            return BudgetResult.rejected("User hourly budget exceeded")
-
-        # Per-tenant daily limit
-        tenant_daily = await self.usage.get_tenant_daily(request.tenant_id)
-        if tenant_daily + estimated_cost > self.budgets.max_cost_per_tenant_per_day:
-            return BudgetResult.rejected("Tenant daily budget exceeded")
-
-        # Global daily limit
-        global_daily = await self.usage.get_global_daily()
-        if global_daily + estimated_cost > self.budgets.max_cost_per_day:
-            return BudgetResult.rejected("Global daily budget exceeded")
-
-        return BudgetResult.approved(estimated_cost)
-```
+- **Count every attempt.** Retries, responses discarded by guardrails or cascades, LLM judges, routers and classifiers, fallbacks, and paid tool calls all reserve and reconcile against the same budgets. A breaker that only sees successful final answers under-counts; Factor 18 applies the same rule to agent execution budgets.
+- **Expire reservations deliberately.** A reservation whose call never reports back (crash, timeout) must not hold budget forever — but it must not be released while the provider may still bill for the call. Treat the outcome as unknown and keep it counted until the provider's usage or billing data settles it.
+- **Choose the failure policy per route.** If the budget store is unavailable, either fail closed (reject; safe for cost) or fail open under a small local cap (available; bounded overspend). Decide in advance rather than letting an exception handler decide.
+- **Know what the limit guarantees.** A limit enforced on estimates and reconciled afterward bounds spend only approximately: estimate error and calls already in flight can overshoot it. Size that margin (roughly, calls in flight × the largest per-call cost), present the limit as a guardrail rather than an exact invoice ceiling, and use provider-side spend limits, where offered, as a backstop.
 
 ### Budget Configuration
 
-```yaml
-budgets:
-  per_request:
-    max_usd: 0.50              # No single request can cost more than $0.50
-    alert_threshold: 0.25       # Alert on requests costing > $0.25
+Define a budget at every level that has an owner, each with its own windows:
 
-  per_user:
-    hourly_max_usd: 5.00
-    daily_max_usd: 25.00
+| Level | Typical windows | Purpose |
+|-------|-----------------|---------|
+| Per request | One call or one task | Stops a single pathological request (a runaway loop, a huge input) |
+| Per user | Hourly, daily | Contains abuse and runaway clients |
+| Per tenant | Daily, monthly | Enforces contracts and plans |
+| Global | Hourly, daily, monthly | Caps total exposure |
 
-  per_tenant:
-    daily_max_usd: 500.00
-    monthly_max_usd: 10000.00
+Escalate as a budget fills, with critical traffic defined in advance:
 
-  global:
-    hourly_max_usd: 200.00
-    daily_max_usd: 3000.00
-    monthly_max_usd: 50000.00
+| Budget used | Action |
+|-------------|--------|
+| 50% | Notify the owning team |
+| 80% | Notify the team and management |
+| 95% | Throttle non-critical traffic |
+| 100% | Block non-critical traffic |
 
-  alerts:
-    - threshold: 0.50           # 50% of budget
-      action: notify_team
-    - threshold: 0.80           # 80% of budget
-      action: notify_team_and_management
-    - threshold: 0.95           # 95% of budget
-      action: throttle_non_critical
-    - threshold: 1.00           # 100% of budget
-      action: block_all_non_critical
-```
+Also alert on individual requests whose cost crosses a lower threshold, even when they stay under the per-request limit — they are early signs of prompt bloat or loops.
 
 ### Cost Attribution
 
-```python
-class CostAttributor:
-    """Attribute AI costs to features, teams, users, and tenants."""
+Every billable call — retries, judges, and fallbacks included — emits one cost record with these dimensions:
 
-    async def record(self, request: AIRequest, response: AIResponse):
-        cost = self.calculate_cost(response.model, response.token_usage)
+| Dimension | Example | Used for |
+|-----------|---------|----------|
+| Feature | `document_summary` | Cost by feature, unit economics |
+| Team | `product` | Showback and chargeback |
+| Tenant and user | Tenant and user IDs | Per-customer cost, abuse detection |
+| Model, version, provider, effort | Pinned identifiers | Cost by model, routing decisions |
+| Token breakdown | Input, cache reads and writes, output, thinking | Cache savings, thinking-token ratio |
+| Task or trace ID, attempt type | Primary, retry, judge, fallback | Rolling calls up to cost per completed task (Factor 15) |
 
-        # Multi-dimensional attribution
-        await self.metrics.record(
-            cost_usd=cost,
-            dimensions={
-                "feature": request.feature,           # e.g., "document_summary"
-                "team": request.team,                 # e.g., "product"
-                "user": request.user_id,
-                "tenant": request.tenant_id,
-                "model": response.model,
-                "provider": response.provider,
-                "cache_hit": response.cache_hit,
-                "thinking_tokens": response.thinking_tokens,  # reasoning model overhead
-            },
-        )
-```
+Keep high-cardinality dimensions such as user ID on the cost records themselves (events or logs), not on metric labels, so the metrics backend stays within its cardinality limits (Factor 15).
 
 ### Caching ROI Measurement
 
-```python
-class CachingROI:
-    """Measure the cost savings from semantic caching."""
+Judge caching by its net effect per route, not by hit rate alone:
 
-    async def report(self, period: TimePeriod) -> CacheROIReport:
-        cache_hits = await self.metrics.count("cache_hit=true", period)
-        cache_misses = await self.metrics.count("cache_hit=false", period)
-        total_requests = cache_hits + cache_misses
-
-        hit_rate = cache_hits / total_requests if total_requests > 0 else 0
-
-        # Cost saved = cache hits × average cost per uncached request
-        avg_uncached_cost = await self.metrics.avg("cost_usd", "cache_hit=false", period)
-        cost_saved = cache_hits * avg_uncached_cost
-
-        # Cost of cache infrastructure
-        cache_infra_cost = await self.get_cache_infrastructure_cost(period)
-
-        return CacheROIReport(
-            hit_rate=hit_rate,
-            requests_served_from_cache=cache_hits,
-            cost_saved_usd=cost_saved,
-            cache_infrastructure_cost_usd=cache_infra_cost,
-            net_savings_usd=cost_saved - cache_infra_cost,
-            roi_percentage=((cost_saved - cache_infra_cost) / cache_infra_cost) * 100
-                if cache_infra_cost > 0 else float('inf'),
-        )
-```
+- **Savings**: for each hit, what the request would have cost uncached — estimated from comparable misses on the same route, not from a global average. For provider prompt caching, compute it directly from usage data: cached tokens × (input price − cache-read price), minus any write premium.
+- **Costs**: the cache infrastructure, plus the lookup paid on *every* request, hit or miss (embedding the query, searching the index).
+- **Quality**: the false-hit rate — cached answers that a fresh call would have answered differently or better — measured by sampling hits against fresh responses in the eval suite (Factor 6).
+- **Report all three together.** Savings that rise with the false-hit rate are a quality regression, not a win.
 
 ### Cost Optimization Strategies
 
@@ -312,9 +163,9 @@ class CachingROI:
 
 ### AI Gateway as the Cost Control Plane
 
-By 2026 putting an **AI Gateway** in front of every LLM call is the production default. Direct SDK-to-provider calls suffice for prototypes; production workloads route through a gateway because cost, routing, caching, and observability are cross-cutting concerns that don't belong scattered across application code.
+Cost, routing, caching, and observability are cross-cutting concerns that don't belong scattered across application code. The rule, shared with Factor 10: **production model traffic passes through one enforced control point** — an AI gateway or a shared client library — that applies cost limits, identity, routing, and telemetry. A separate gateway service is the default when several applications or teams share providers; a single application can enforce the same controls in-process. Ad hoc SDK calls scattered through the code are for prototypes only.
 
-Production-grade options: **LiteLLM**, **Portkey**, **Kong AI Gateway**, **Cloudflare AI Gateway**, **TrueFoundry**, hyperscaler-native (Bedrock, Azure AI Gateway). Whether built or bought, the gateway centralizes:
+Production-grade gateway options: **LiteLLM**, **Portkey**, **Kong AI Gateway**, **Cloudflare AI Gateway**, **TrueFoundry**, hyperscaler-native (Bedrock, Azure AI Gateway). Whether gateway or shared library, built or bought, the control point centralizes:
 
 - **Multi-provider routing**: a single API surface for OpenAI, Anthropic, Google, Bedrock, Azure, self-hosted, and others — with per-route policies
 - **Semantic and prompt caching**: a unified cache layer across providers (cross-ref Factor 12)
@@ -323,48 +174,18 @@ Production-grade options: **LiteLLM**, **Portkey**, **Kong AI Gateway**, **Cloud
 - **Guardrails**: input/output filtering before the model and before the user (cross-ref Factor 7)
 - **Audit and observability**: every call logged with the same correlation IDs as application traces (cross-ref Factor 15)
 
-The architectural rule: **no application code calls a model provider directly**. All traffic flows through the gateway, and policies are centralized.
-
-```yaml
-# ai-gateway-policy.yaml — minimal example
-gateway:
-  routes:
-    - name: customer-support
-      pin_model: anthropic/claude-sonnet-5-5 # mandatory model-pin
-      cache: { semantic: true, similarity_threshold: 0.95 }
-      budget:
-        per_tenant_daily_usd: 50
-        per_user_hourly_usd: 1
-        on_breach: block                       # circuit breaker
-      guardrails: [pii_redact_input, content_safety_output]
-
-    - name: research-assistant
-      pin_model: anthropic/claude-opus-5-5
-      thinking: { effort: high }
-      cache: { semantic: false }
-      budget:
-        per_request_usd: 5
-        on_breach: fallback                    # downgrade to sonnet
-      fallback_chain:
-        - anthropic/claude-sonnet-5-5
-        - openai/gpt-5.5                       # last resort
-```
+Policies are declared per route, not in application code. Each route states its pinned model and effort level, its cache policy, its budgets and what happens on a breach (block, or fall back), its input and output guardrails, and its fallback chain. Every model in a fallback chain is pinned and has passed the route's evals (Factor 6, Factor 14); a fallback to a model — or another provider's model — that was never evaluated is a silent quality change.
 
 ### Mandatory Model-Pinning per Job
 
 Every scheduled job, every production route, every batch process **must explicitly declare which model it uses**. Implicit "use the latest" or relying on provider aliases is a recipe for silent cost and quality drift. Pin an *immutable* identifier — and know which kind your provider issues: some IDs are dated snapshots, some undated IDs are themselves immutable, and some names are floating aliases (see Factor 16).
 
-The 2026 pattern: a release manifest entry per job with model + version + thinking-effort + max-cost. The gateway refuses to dispatch a request that doesn't match the manifest.
+The 2026 pattern: a release manifest entry per job, versioned with the release (Factor 5), and a control point that refuses to dispatch any request that doesn't match it. Each entry declares:
 
-```yaml
-jobs:
-  - name: nightly-content-summarization
-    model: anthropic/claude-sonnet-5-5
-    thinking: { effort: low }
-    max_cost_per_run_usd: 25
-    expected_output_tokens_p99: 4000
-    fallback_policy: fail_loudly   # do NOT silently fall back to a more expensive model
-```
+- **Model and immutable version**, plus the effort level
+- **Maximum cost per run**, enforced as a budget (see Budget Circuit Breakers)
+- **Expected output size** (for example, p99 output tokens), so drift is detectable
+- **Fallback policy**: an explicit, evaluated fallback chain — or *fail loudly*, so a cost-sensitive job never silently falls back to a more expensive model
 
 ### Reserved Capacity and Provisioned Throughput
 
@@ -453,7 +274,7 @@ Essential views:
 - [ ] Cost optimization strategies (routing, caching, batching) are actively used
 - [ ] Reasoning effort is set per task type and thinking tokens are tracked separately from output tokens
 - [ ] AI cost is a line item in capacity planning and business case analysis
-- [ ] All production model traffic flows through an AI Gateway (LiteLLM, Portkey, Kong AI, Cloudflare AI Gateway, or equivalent), not via direct SDK calls
+- [ ] All production model traffic passes through one enforced control point — an AI gateway (LiteLLM, Portkey, Kong AI, Cloudflare AI Gateway, or equivalent) or a shared client library — that applies cost limits, identity, routing, and telemetry
 - [ ] Every scheduled job and production route declares an explicit pinned model + version + thinking-effort; "latest" aliases are forbidden
 - [ ] Steady-state high-volume workloads run on reserved/provisioned throughput (Bedrock PT, Azure PTUs, enterprise commits, or reserved GPU)
 - [ ] Carbon-per-request (gCO₂e) is tracked alongside dollar cost, with regional grid factors

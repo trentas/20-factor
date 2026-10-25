@@ -47,131 +47,62 @@ This update retains all traditional security requirements and extends them to co
 
 ### Agent Identity Model
 
-```yaml
-# agent-identity.yaml
-agents:
-  document-summarizer:
-    type: ai-agent
-    model: claude-sonnet-5-5
-    identity:
-      id: "agent:document-summarizer:v2"
-      certificates: ["x509:agents/doc-summarizer.pem"]
-    permissions:
-      - resource: documents
-        actions: [read]
-        scope: "tenant:{tenant_id}"
-      - resource: summaries
-        actions: [read, write]
-        scope: "tenant:{tenant_id}"
-    denied:
-      - resource: documents
-        actions: [delete, share]
-      - resource: users
-        actions: [read, write, delete]
-    autonomy:
-      max_actions_per_request: 10
-      max_cost_per_request_usd: 0.50
-      requires_approval: [write_to_external_api]
+Each agent has an identity record, versioned and reviewed like code (Factor 1). It declares:
 
-  customer-support-agent:
-    type: ai-agent
-    model: claude-sonnet-5-5
-    identity:
-      id: "agent:customer-support:v3"
-    permissions:
-      - resource: tickets
-        actions: [read, write, update]
-        scope: "team:support"
-      - resource: knowledge_base
-        actions: [read]
-      - resource: customer_data
-        actions: [read]
-        scope: "ticket:{ticket_id}.customer"
-        pii_handling: redact_in_context
-    autonomy:
-      autonomous_actions: [respond_to_ticket, update_status, search_kb]
-      approval_required: [issue_refund, escalate_to_manager, access_billing]
-      approval_timeout_seconds: 300    # consistent with Factor 7 triggers and Factor 18 execution
-```
+| Element | What it states |
+|---------|----------------|
+| **Identity** | A unique, versioned agent ID (for example `agent:customer-support:v3`) and the credential that proves it — a workload identity or certificate, never a shared user account |
+| **Permissions** | Each resource the agent may touch, the actions allowed on it, and the scope that narrows it: this tenant, this team, only the customer on the current ticket |
+| **Explicit denials** | Actions the agent must never take, even where a broader rule would allow them; anything not granted is denied by default |
+| **Autonomy** | Which actions run on their own, which require human approval and how long an approval request may wait, and per-request caps on actions and cost (Factor 18) |
+| **Data handling** | Rules for sensitive fields — for example, customer PII redacted before it enters the model's context |
+
+Two agents in the same system end up with very different shapes:
+
+| Rule | Document summarizer | Customer-support agent |
+|------|---------------------|------------------------|
+| **May** | Read documents; read and write summaries — within its tenant | Read, write, and update tickets for the support team; read the knowledge base; read customer data only for the customer on the current ticket, with PII redacted in context |
+| **Needs approval for** | Writing to external APIs | Issuing refunds, escalating to a manager, accessing billing |
+| **Never** | Deleting or sharing documents; reading or changing user records | Anything not granted above |
+| **Limits** | 10 actions and $0.50 per request | Approval requests expire after 5 minutes (consistent with Factor 7 triggers and Factor 18 execution) |
 
 ### Trust Boundaries
 
 ```
-┌───────────────────────────────────────────┐
-│  USER TRUST BOUNDARY                       │
-│                                           │
-│  User authenticates → gets permissions     │
-│                                           │
-│  ┌─────────────────────────────────────┐  │
-│  │  AGENT TRUST BOUNDARY               │  │
-│  │                                     │  │
-│  │  Agent inherits subset of user      │  │
-│  │  permissions + agent-specific       │  │
-│  │  constraints                        │  │
-│  │                                     │  │
-│  │  ┌─────────────────────────────┐    │  │
-│  │  │  TOOL TRUST BOUNDARY        │    │  │
-│  │  │                             │    │  │
-│  │  │  Each tool has its own      │    │  │
-│  │  │  permission check           │    │  │
-│  │  │  Rate limits apply          │    │  │
-│  │  │  Actions are logged         │    │  │
-│  │  └─────────────────────────────┘    │  │
-│  └─────────────────────────────────────┘  │
-└───────────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│ USER TRUST BOUNDARY                          │
+│ Authenticates, holds permissions             │
+│  ┌────────────────────────────────────────┐  │
+│  │ AGENT TRUST BOUNDARY                   │  │
+│  │ Subset of the user's permissions       │  │
+│  │ + agent-specific constraints           │  │
+│  │  ┌──────────────────────────────────┐  │  │
+│  │  │ TOOL TRUST BOUNDARY              │  │  │
+│  │  │ Own permission check per call    │  │  │
+│  │  │ Rate limits apply                │  │  │
+│  │  │ Every action logged              │  │  │
+│  │  └──────────────────────────────────┘  │  │
+│  └────────────────────────────────────────┘  │
+└──────────────────────────────────────────────┘
 ```
 
 ### Permission Enforcement
-Enforce permissions architecturally, not just through prompts:
+Enforce permissions architecturally, not just through prompts. Every tool call passes the same checks, in order, in code the model cannot influence:
 
-```python
-class AgentPermissionEnforcer:
-    def authorize_action(self, agent_id: str, action: Action) -> AuthResult:
-        agent = self.registry.get_agent(agent_id)
-        user = self.get_delegating_user(agent_id)
-
-        # Check 1: Is this action within the agent's declared permissions?
-        if not agent.permissions.allows(action):
-            return AuthResult.denied("Agent lacks permission")
-
-        # Check 2: Does the delegating user have this permission?
-        if not user.permissions.allows(action):
-            return AuthResult.denied("Delegating user lacks permission")
-
-        # Check 3: Is the agent within its autonomy budget?
-        if agent.autonomy.exceeds_budget(action):
-            return AuthResult.denied("Autonomy budget exceeded")
-
-        # Check 4: Does this action require human approval?
-        if action.type in agent.autonomy.approval_required:
-            return AuthResult.pending_approval(user, action)
-
-        # Log the authorized action
-        self.audit_log.record(agent_id, user.id, action, "authorized")
-        return AuthResult.allowed()
-```
+1. **Agent permission**: the agent's declared permissions allow this action on this specific object — not just on the resource type. An agent that may read tickets is still denied a ticket outside its scope.
+2. **Delegating user**: the user on whose behalf the agent acts holds the same permission *now*. Check at execution time, not only when the session started: a permission revoked mid-run revokes the agent's too.
+3. **Autonomy budget**: the action fits within the agent's remaining action and cost budget (Factor 18).
+4. **Approval**: if the action requires human approval, the call pauses. The approval is bound to the exact action — operation ID, target object, a hash of the arguments, an approver authorized for it, an expiry — and is used once. When it arrives, checks 1–3 run again before execution, because time has passed.
+5. **Audit**: every decision — allowed, denied, pending, approved — is written to the audit log.
 
 ### Audit Logging
-Every agent action must be auditable:
+Every agent action must be auditable. Each record captures:
 
-```json
-{
-  "timestamp": "2025-06-15T14:30:00Z",
-  "agent_id": "agent:customer-support:v3",
-  "delegating_user": "user:jane@example.com",
-  "action": "update_ticket",
-  "resource": "ticket:TKT-4521",
-  "parameters": {
-    "status": "resolved",
-    "response": "Your refund has been processed..."
-  },
-  "authorization": "auto_approved",
-  "model": "claude-sonnet-5-5",
-  "token_usage": {"input": 1250, "output": 340},
-  "cost_usd": 0.006,
-  "session_id": "sess_abc123"
-}
-```
+- **When**: timestamp, session ID, and trace ID (Factor 15).
+- **Who**: the agent ID and version, and the delegating user.
+- **What**: the action, the target resource (for example `ticket:TKT-4521`), its parameters — sanitized, so secrets and unnecessary personal data are not copied into the log — and the result.
+- **Under what authority**: the authorization outcome — auto-approved by policy, approved by a named human, or denied.
+- **With what**: the model and version that chose the action, its token usage, and its cost (Factor 20).
 
 ### OAuth and API Key Management for Agents
 When agents interact with external services:
@@ -244,45 +175,12 @@ By 2026, **computer-use agents** crossed the production threshold (Claude comput
 
 Treat each computer-use session as a **scoped impersonation**:
 
-- **Per-session sandbox**: every computer-use session runs in an isolated VM/container with a fresh browser profile. Sessions never share storage, cookies, or credentials with each other or with the user's primary workstation.
-- **Scoped credential delegation**: the user grants the agent a *time-boxed, site-scoped* credential — not their full session cookie. Pattern: ephemeral OAuth scopes per target site, or a credential-broker service that mediates each authentication.
+- **Per-session sandbox**: every computer-use session runs in an isolated VM/container with a fresh browser profile. Sessions never share storage, cookies, or credentials with each other or with the user's primary workstation, and network egress is limited to an allowlist.
+- **Scoped credential delegation**: the user grants the agent a *time-boxed, site-scoped* credential — not their full session cookie — with a short lifetime (for example, 30 minutes). Pattern: ephemeral OAuth scopes per target site, or a credential-broker service that mediates each authentication.
 - **Action policy**: an explicit allowlist of permitted actions per site (e.g., "read-only on bank.example.com, full on internal-tickets.example.com, blocked on payment.example.com"). Enforced at the runtime, not in the prompt.
-- **Confirmation gates**: any irreversible action (purchase, send, delete, post) requires a human confirmation popup. Confirmation is delivered out-of-band — not via the same browser the agent controls.
-- **Screenshot redaction**: screenshots used for the agent's vision are redacted server-side before logging or training. Treat them as PII at rest.
+- **Confirmation gates**: any irreversible action (purchase, send, delete, post), and any payment above a set amount, requires a human confirmation. Confirmation is delivered out-of-band — not via the same browser the agent controls.
+- **Screenshot redaction**: screenshots used for the agent's vision are redacted server-side before logging or training, and kept only for a short, fixed retention period. Treat them as PII at rest.
 - **Blocked patterns**: regex/URL patterns that trigger immediate session termination (auth pages of unintended sites, password managers, MFA prompts the user didn't initiate).
-
-```yaml
-# computer-use-session-policy.yaml
-session:
-  isolation: vm                       # per-session VM, never shared
-  fresh_browser_profile: true
-  inherit_user_cookies: false
-  network_egress: allowlist_only
-
-  credential_broker:
-    type: ephemeral_oauth             # broker mediates each site auth
-    max_credential_lifetime_minutes: 30
-
-  action_policy:
-    allowed_sites:
-      - host: internal-tickets.example.com
-        actions: [read, write, comment]
-      - host: bank.example.com
-        actions: [read]
-      - host: payment.example.com
-        actions: []                   # explicitly blocked
-
-  confirmation_gates:
-    require_human_confirm:
-      - any_action: [purchase, send_payment, delete_account, post_publicly]
-      - any_amount_over: { currency: USD, value: 50 }
-    out_of_band: true                  # confirm via Slack/SMS, not the agent's browser
-
-  screenshot_redaction:
-    enabled: true
-    redact_classes: [pii, credentials, auth_tokens]
-    log_retention_days: 7
-```
 
 The architectural rule: **the agent's effective permissions are the intersection of the user's permissions and the action policy** — never broader than either. This is the same principle as Factor 8's general delegation model, applied to the high-risk surface of computer use.
 
@@ -296,19 +194,9 @@ For workloads handling regulated or highly sensitive data (healthcare, finance, 
 
 The architectural pattern is **attestation as a deployment gate**: before sensitive data is forwarded to an inference endpoint, the endpoint produces a cryptographic attestation of (a) the GPU's TEE state, (b) the model weights' hash, (c) the runtime image's hash. The caller verifies the attestation against an expected policy and only then submits the data.
 
-```python
-# Pseudocode — verify GPU TEE attestation before sending sensitive data
-async def call_confidential_inference(prompt: str, sensitivity: SensitivityLevel) -> str:
-    if sensitivity >= SensitivityLevel.RESTRICTED:
-        attestation = await inference_endpoint.get_attestation()
-        verify_attestation(
-            attestation,
-            expected_gpu_tee_state="enabled",
-            expected_model_hash=KNOWN_MODEL_HASHES["medical-summary-v3"],
-            expected_runtime_hash=KNOWN_RUNTIME_HASHES["confidential-inference-v2"],
-        )
-    return await inference_endpoint.complete(prompt)
-```
+- **Verify before sending, by sensitivity**: for data above a set sensitivity level, fetch the endpoint's attestation and check all three measurements against the expected values for that model and runtime.
+- **Fail closed**: if the attestation is missing, stale, or does not match, the data is not sent.
+- **Keep expected values under change control**: the known-good model and runtime hashes ship with the release (Factor 5), so a model update changes them deliberately, not silently.
 
 Attestation is also identity: a TEE-attested endpoint is a *verifiable identity* in the zero-trust sense. Pair this with the workload identity story above — TEE attestation can be a SPIFFE selector.
 

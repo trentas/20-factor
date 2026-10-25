@@ -57,106 +57,42 @@ Pick a layer per use case. Conflating them is the most common mistake.
 
 A typical agent uses 2–3 layers in combination, fronted by a single memory service.
 
-### A Minimal Memory Service Interface
+### A Minimal Memory Service Contract
 
-```python
-class AgentMemory(Protocol):
-    """Identity-bound, multi-layer memory."""
+A single memory service fronts the layers. Its contract has four operations, and every one of them takes an identity (tenant + end user + agent):
 
-    async def write(
-        self,
-        identity: MemoryIdentity,        # tenant + user + agent
-        layer: Literal["vector", "graph", "episodic"],
-        record: MemoryRecord,
-        provenance: Provenance,          # who/when/source — required
-    ) -> MemoryId: ...
-
-    async def recall(
-        self,
-        identity: MemoryIdentity,
-        query: RecallQuery,              # natural language or structured
-        layers: list[str] = ["vector"],
-        limit: int = 10,
-        min_relevance: float = 0.6,
-    ) -> list[ScoredMemory]: ...
-
-    async def forget(
-        self,
-        identity: MemoryIdentity,
-        scope: ForgetScope,              # specific record / by category / all
-        reason: ErasureReason,           # gdpr_request | poisoning | decay | manual
-    ) -> ForgetReceipt: ...
-
-    async def audit(
-        self,
-        identity: MemoryIdentity,
-        time_range: TimeRange,
-    ) -> list[MemoryAuditEvent]: ...     # who wrote what when, who read it
-```
+| Operation | Inputs | Guarantee |
+|-----------|--------|-----------|
+| **Write** | Identity, layer, record, provenance (who, when, source) | Refused without an identity or provenance |
+| **Recall** | Identity, query, layers, result limit, relevance threshold | Returns only that identity's records, each with a relevance score |
+| **Forget** | Identity, scope (one record, a category, or everything), reason (erasure request, poisoning, decay, manual) | Reaches every store holding the memory or anything derived from it, and returns a receipt |
+| **Audit** | Identity, time range | Lists who wrote what and when, and who read it |
 
 Every operation is identity-scoped. The memory service refuses to recall or write without an identity. Cross-tenant access is structurally impossible, not policy-controlled.
 
 ### Memory Lifecycle — Six Operations
 
-**Write**: agent decides what's worth remembering. Use a *write filter*, not a write-everything policy:
+**Write**: the agent decides what's worth remembering. Use a *write filter*, not a write-everything policy. Before persisting a candidate memory:
 
-```python
-async def maybe_persist_memory(turn: ConversationTurn, agent_memory: AgentMemory):
-    classification = await classify_turn(turn)
-    if classification.contains_pii and not classification.user_consented_to_remember:
-        return  # never persist non-consented PII
-    if classification.salience < SALIENCE_THRESHOLD:
-        return  # not worth remembering
-    if classification.is_likely_prompt_injection:
-        log_security_event(turn, classification)
-        return  # poisoning defense — see below
-    await agent_memory.write(
-        identity=turn.identity,
-        layer="vector",
-        record=MemoryRecord(content=classification.summary, tags=classification.tags),
-        provenance=Provenance(source="conversation", turn_id=turn.id, model=turn.model),
-    )
-```
+- **Skip personal data the user has not consented to have remembered.**
+- **Skip low-salience content** — not every turn deserves a memory.
+- **Block likely prompt injection** and log it as a security event (see the poisoning defenses below).
+- **Persist a summary with provenance**: the source (conversation, tool output, system), the turn it came from, and the model that produced the summary.
 
-**Recall**: every recall is scored, filtered, and budgeted before injection into the prompt. Memory drives prompt growth — see Factor 17 for token budget integration.
+**Recall**: every recall is scored, filtered, and budgeted before injection into the prompt. Retrieve candidates above a relevance threshold, then fit them into a fixed token allocation for memory, prioritizing recency, relevance, and what the user pinned. Memory drives prompt growth — see Factor 17 for token budget integration.
 
-```python
-memories = await agent_memory.recall(identity, query, limit=20, min_relevance=0.7)
-budget = prompt_budget.allocate(component="memory", max_tokens=2000)
-selected = budget.fit(memories, prioritize=["recency", "relevance", "user-pinned"])
-```
+**Decay**: memories lose relevance over time. Define a decay policy per layer:
 
-**Decay**: memories lose relevance over time. Implement decay policies per layer:
+| Layer | Policy | Example |
+|-------|--------|---------|
+| Vector | Relevance decays with a half-life; records below a floor are compacted | 60-day half-life |
+| Episodic | Fixed retention; older episodes are collapsed into summaries | Keep 365 days, summarize after 90 |
+| Graph | Relationships not confirmed recently become stale, then are confirmed with the user or deleted | Stale after 180 days |
 
-```yaml
-memory_decay:
-  vector_layer:
-    half_life_days: 60
-    minimum_relevance: 0.3   # below this, mark for compaction
-  episodic_layer:
-    retention_days: 365
-    summarize_after_days: 90  # collapse old episodes into summaries
-  graph_layer:
-    edges:
-      stale_after_days: 180
-      action: confirm_or_delete   # ask the user to confirm stale relationships
-```
+**Forget (right-to-erasure)**: GDPR/LGPD apply to memory. A user can request erasure of all memory about them. The implementation must reach **every memory store** (vector, graph, episodic, plus any caches, indexes, or embeddings that materialized memory content). Test it in CI:
 
-**Forget (right-to-erasure)**: GDPR/LGPD apply to memory. A user can request erasure of all memory about them. The implementation must reach **every memory store** (vector, graph, episodic, plus any caches that materialized memory content). Test this:
-
-```python
-async def test_right_to_erasure_is_complete():
-    user = await create_test_user()
-    await populate_all_memory_layers(user.identity)
-    await agent_memory.forget(user.identity, scope=ForgetScope.ALL,
-                              reason=ErasureReason.GDPR_REQUEST)
-
-    # Assert ZERO records remain — across every layer
-    assert await count_records_anywhere(user.identity) == 0
-
-    # Assert downstream caches/embeddings/derived stores are also purged
-    assert await count_derived_records(user.identity) == 0
-```
+- Populate every layer for a test user, request full erasure, and assert that **zero** records remain in every store — derived stores included.
+- Assert that restoring a backup does not bring erased memories back: keep an erasure log and re-apply it after any restore.
 
 **Redact**: a partial form of forget — a single fact corrected, not the whole user wiped. Useful for "I changed jobs, forget I work at X" without losing the rest of the user's history.
 
@@ -167,7 +103,7 @@ async def test_right_to_erasure_is_complete():
 A user can prompt-inject content that, if persisted, biases future responses — possibly across other users' sessions, if scopes leak. Defenses:
 
 1. **Classify before persist**: run a guardrail on candidate memory writes (cross-ref Factor 7). Block writes that look like instructions, system overrides, or attempts to plant persistent biases.
-2. **Summarize, don't store raw**: persist agent-generated summaries of user input rather than verbatim user input. The summarization step strips most injection attempts.
+2. **Summarize, don't store raw**: persist agent-generated summaries of user input rather than verbatim user input. Summarizing reduces injection risk but does not remove it — a summary can carry a planted instruction forward — so summaries still pass the classification step and remain untrusted content.
 3. **Per-identity scoping is structural**: a memory written by user A is *never* recalled when serving user B. No cross-tenant similarity search.
 4. **Quarantine new memories**: new memories are recallable only after a soak period (e.g., 1h) during which they can be reviewed by automated heuristics or sampling.
 5. **Explicit user provenance label**: every memory carries `source=user_input` vs `source=agent_inference` vs `source=system`. Recall ranking can down-weight `user_input` when content is sensitive.
@@ -198,8 +134,8 @@ Each path has different ownership, lifecycle, and compliance:
 |--------|-------------|-----------|--------------|
 | Owner | Platform | Editorial / data team | User / tenant |
 | Mutability | Auto-invalidated | Republished | Mutated by agent + user |
-| Scope | Global or content-keyed | Global or tenant-scoped | Identity-scoped |
-| Compliance | TTL is enough | License + provenance | Right-to-erasure required |
+| Scope | Content-keyed, within the tenant and permission scope of what it caches | Global or tenant-scoped | Identity-scoped |
+| Compliance | Follows the cached content — personal data in a cache needs access scoping and erasure propagation like any other copy (Factor 12) | License + provenance | Right-to-erasure required |
 | Failure mode if missing | Slow / expensive | Worse retrieval quality | Agent feels amnesic |
 
 ### Tooling Landscape (2026)
@@ -214,17 +150,13 @@ The choice is less important than the *discipline* of treating memory as a separ
 
 ### Observability for Memory
 
-Memory operations belong on the same telemetry plane as model calls (Factor 15):
+Memory operations belong on the same telemetry plane as model calls (Factor 15). Emit at least:
 
-```yaml
-metrics:
-  - memory_write_total{layer, identity_type, source}
-  - memory_recall_total{layer, identity_type, hit_above_threshold}
-  - memory_recall_latency_seconds{layer}
-  - memory_forget_total{reason}
-  - memory_poisoning_blocked_total{guardrail}
-  - memory_recall_token_budget_consumed
-```
+- Writes, by layer, identity type, and source
+- Recalls, by layer, and how many cleared the relevance threshold
+- Recall latency per layer, and the prompt tokens memory consumed
+- Forget operations, by reason
+- Poisoning blocks, by guardrail
 
 Alert on: memory recall latency p95 spiking (often a sign of unbounded growth); poisoning-block rate spiking (active attack); right-to-erasure failures; cross-tenant access attempts.
 

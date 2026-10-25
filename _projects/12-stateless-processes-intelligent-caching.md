@@ -46,83 +46,32 @@ This update retains the stateless process requirement and adds intelligent cachi
 
 ### Stateless Process Design
 
-```python
-class AIRequestHandler:
-    """Stateless handler — all state is in backing services."""
+A request handler keeps nothing between requests. Everything it needs arrives with the request or is loaded from a backing service (Factor 10), and everything that must outlive the request is written back before it returns:
 
-    def __init__(self, llm: LLMProvider, cache: CacheService, vector_db: VectorStore):
-        # Dependencies are injected, not stored in process memory
-        self.llm = llm
-        self.cache = cache
-        self.vector_db = vector_db
-
-    async def handle(self, request: Request) -> Response:
-        # Conversation history comes from the request or backing service
-        conversation = await self.load_conversation(request.conversation_id)
-
-        # Check semantic cache before calling LLM
-        cached = await self.cache.semantic_lookup(
-            request.message, conversation.context, scope=request.cache_scope  # tenant + data permissions
-        )
-        if cached and cached.similarity > 0.95:
-            return cached.response
-
-        # Process request — no local state
-        response = await self.process(request, conversation)
-
-        # Store conversation state in backing service
-        await self.save_conversation(request.conversation_id, conversation)
-
-        # Cache the response for future similar queries
-        await self.cache.store(request.message, conversation.context, response, scope=request.cache_scope)
-
-        return response
-```
+- **Inject dependencies; don't hold request state.** The model client, cache, and vector store are backing services wired in at startup; nothing specific to one request or conversation stays on the handler.
+- **Load, act, persist.** Load conversation state by conversation ID, process the request, and save the updated state, so the next turn can land on any instance.
+- **Check the cache before calling the model, store after.** Every lookup and write carries the request's cache scope — tenant plus data permissions (see below).
+- **Move long-running work off the request path.** Multi-step agent runs and approval pauses belong in a durable runtime (Factor 13), not in a handler that keeps them in memory.
 
 ### Semantic Caching
 
 > Semantic caching integrates naturally with RAG pipelines (Factor 17). Cache lookups happen before the retrieval stage — if a semantically similar query was recently answered with the same context, skip the full pipeline.
 
-```python
-class SemanticCache:
-    """Cache LLM responses using semantic similarity, not exact match."""
+A semantic cache is a vector index of past queries that points to stored responses. Similarity decides *which* entry matches; exact filters decide *which entries are eligible at all*:
 
-    def __init__(self, vector_store: VectorStore, response_store: ResponseStore):
-        self.vector_store = vector_store
-        self.response_store = response_store
+| Part of the entry | Matched how | Why |
+|-------------------|-------------|-----|
+| Query embedding | Similarity above a tuned threshold | Paraphrases of the same question reach the same answer |
+| Tenant and data-permission scope | Exact filter | An answer built from data one caller may see must never reach another |
+| Context digest (retrieved document IDs and versions, prompt version) | Exact filter | The same question over different context is a different answer |
+| Model version | Exact filter | A model change retires the old model's answers (see Cache Invalidation) |
+| Source documents, producing request, creation time | Stored, not matched | Lets content changes, revocations, and poisoned entries be traced and purged |
 
-    async def lookup(self, query: str, context: str, scope: str) -> CacheResult | None:
-        # Embed the query
-        query_embedding = await self.embed(query)
+Rules for the mechanism:
 
-        # Search for similar cached queries
-        results = await self.vector_store.query(
-            vector=query_embedding,
-            top_k=1,
-            filter={"context_hash": hash(context), "scope": scope},  # Same context, same tenant/permissions
-            threshold=0.95,  # High similarity required
-        )
-
-        if results:
-            response = await self.response_store.get(results[0].id)
-            return CacheResult(
-                response=response,
-                similarity=results[0].score,
-                cache_hit=True,
-            )
-        return None
-
-    async def store(self, query: str, context: str, response: str, scope: str):
-        query_embedding = await self.embed(query)
-        cache_id = generate_id()
-
-        await self.vector_store.upsert([Vector(
-            id=cache_id,
-            values=query_embedding,
-            metadata={"context_hash": hash(context), "scope": scope, "timestamp": now()},
-        )])
-        await self.response_store.set(cache_id, response, ttl=3600)
-```
+- **Build keys from stable digests.** Python's built-in `hash()` of a string is salted per process, so two replicas compute different values for the same context and never share entries. Use a cryptographic digest over a canonical serialization (see Embedding Caching).
+- **Tune the threshold per route.** It is a quality parameter, not a constant: set it by measuring false hits in the eval suite (Factor 6), and re-measure whenever the embedding model changes.
+- **Expire the index entry and the stored response together.** A vector whose response has expired is a miss; an orphaned vector must not keep matching.
 
 **Scope the cache, or it becomes a leak and an attack surface.** A semantic cache serves an answer that was generated for someone else, which brings two failure modes:
 
@@ -131,71 +80,27 @@ class SemanticCache:
 
 ### Embedding Caching
 
+Embeddings are deterministic for a given model and input, so recomputing them for unchanged content is pure waste. The cache key must identify everything that changes the vector: a digest of the content, the embedding model and its version, and any preprocessing that alters the input or output (normalization, chunking, output dimensions). Look up a whole batch at once, embed only the misses, and write them back.
+
+The key must also be stable across processes and restarts:
+
 ```python
-class EmbeddingCache:
-    """Cache embeddings by content hash to avoid recomputation."""
+# WRONG — str hash() is salted per process: every replica builds different keys
+key = f"emb:{model_version}:{hash(text)}"
 
-    def __init__(self, cache: KeyValueStore, embedding_service: EmbeddingService):
-        self.cache = cache
-        self.embedding_service = embedding_service
-        self.model_version = embedding_service.model_version
-
-    async def embed(self, texts: list[str]) -> list[list[float]]:
-        results = [None] * len(texts)
-        uncached_indices = []
-
-        # Check cache for each text
-        for i, text in enumerate(texts):
-            cache_key = f"emb:{self.model_version}:{hash(text)}"
-            cached = await self.cache.get(cache_key)
-            if cached:
-                results[i] = cached
-            else:
-                uncached_indices.append(i)
-
-        # Compute only uncached embeddings
-        if uncached_indices:
-            uncached_texts = [texts[i] for i in uncached_indices]
-            new_embeddings = await self.embedding_service.embed(uncached_texts)
-
-            for idx, embedding in zip(uncached_indices, new_embeddings):
-                results[idx] = embedding
-                cache_key = f"emb:{self.model_version}:{hash(texts[idx])}"
-                await self.cache.set(cache_key, embedding)
-
-        return results
+# RIGHT — a stable digest over a defined encoding
+key = f"emb:{model_version}:{hashlib.sha256(text.encode('utf-8')).hexdigest()}"
 ```
+
+When a key is derived from a sensitive identifier (an email address, an account number), use an HMAC with a managed secret instead of a plain digest, so the identifier cannot be recovered by hashing guesses. And a stable hash is not anonymization: the cache still holds the content or values derived from it, which follow the same retention and erasure rules as their source (Factor 7, Factor 19).
+
+Further reading: Python, [Data model — `object.__hash__`](https://docs.python.org/3/reference/datamodel.html#object.__hash__) (hash randomization); Python, [`hmac`](https://docs.python.org/3/library/hmac.html).
 
 ### Provider-Level Prompt Caching
 
 Major LLM providers (Anthropic, OpenAI, Google) now offer **native prompt caching** as a first-class feature. When the prefix of a request matches a previously cached prefix, the provider reuses cached computation — reducing input token costs by up to 90–95% and latency by up to 85%. This is one of the highest-leverage cost optimizations available.
 
-```python
-# Anthropic prompt caching — mark stable content with cache_control
-response = await client.messages.create(
-    model="claude-sonnet-5-5",
-    system=[
-        {
-            "type": "text",
-            "text": large_system_prompt,        # ~4000 tokens
-            "cache_control": {"type": "ephemeral"}  # cache this block
-        },
-        {
-            "type": "text",
-            "text": large_knowledge_base,        # ~10000 tokens
-            "cache_control": {"type": "ephemeral"}  # cache this block
-        }
-    ],
-    messages=[
-        {"role": "user", "content": user_message}  # variable per request
-    ],
-)
-
-# Result: first request pays full price + small cache write fee
-# Subsequent requests with same prefix: cached tokens bill at 5-10% of the input price
-# response.usage.cache_creation_input_tokens → tokens written to cache
-# response.usage.cache_read_input_tokens → tokens read from cache (discounted)
-```
+Some providers cache eligible prefixes automatically; others require an explicit cache marker on the blocks to reuse. Either way, responses report cache writes and cache reads separately in their usage data: reads are billed at a fraction of the normal input price, and some providers charge a premium on writes. Track both per route — a hit rate that falls after a deploy usually means something now varies inside the prefix.
 
 **Design patterns that maximize provider cache hit rates:**
 - **Stable prefix, variable suffix**: Put system prompts, knowledge bases, and few-shot examples *before* the variable user content. The prefix must match byte-for-byte.
@@ -206,102 +111,50 @@ response = await client.messages.create(
 - **Deterministic tool lists**: Tool definitions render at the very start of the prompt, so a tool list whose order changes between requests invalidates everything after it. The MCP 2026-07-28 revision asks servers to return `tools/list` in deterministic order for exactly this reason; sort tool definitions in your own harness as well.
 - **Append-only history**: Change the conversation only by appending. Editing or deleting an earlier turn invalidates the cache from that point on — and on newer reasoning models it can also invalidate preserved reasoning state. When history must shrink, compact it at a deliberate checkpoint (Factor 17) instead of trimming a little on every turn.
 
-```yaml
-# prompt-caching-config.yaml
-prompt_caching:
-  strategy: prefix_stable
-  min_cacheable_tokens: 512    # model-dependent (512-4096 for Anthropic models) — re-check on every model change
-
-  # Structure: cached sections first, variable sections last
-  sections_order:
-    - system_prompt          # stable — always cached
-    - safety_instructions    # stable — always cached
-    - knowledge_base         # stable per session — cached
-    - few_shot_examples      # stable per task type — cached
-    - conversation_history   # grows per turn — partially cached
-    - user_message           # variable — never cached
-
-  monitoring:
-    track_cache_hit_rate: true          # % of input tokens served from cache
-    track_cost_savings: true            # $ saved vs. uncached requests
-    alert_on_low_hit_rate:
-      threshold: 0.30                   # alert if <30% cache hits
-      action: investigate_prefix_stability
-```
-
-This is distinct from the application-level semantic caching above. Provider-level caching is automatic, exact-match, and provider-managed. Semantic caching is application-level, similarity-based, and manages LLM *responses*. Use both for maximum cost reduction.
+This is distinct from the application-level semantic caching above. Provider-level caching is exact-match and provider-managed. Semantic caching is application-level, similarity-based, and manages LLM *responses*. Use both for maximum cost reduction.
 
 ### Prompt Prefix Design for Caching
-Design prompts to maximize provider-side prefix caching:
 
-```python
-# Structure prompts so the prefix is stable across requests
-system_prompt = """
-[STABLE PREFIX — same for all requests, cached by provider]
-You are a customer support agent for ExampleCorp.
+Order every request from most to least stable, so the cacheable prefix is as long as possible:
 
-Company policies:
-{large_policy_document}
-
-Product catalog:
-{large_product_catalog}
-
-Instructions:
-{detailed_instructions}
-"""
-
-# Variable part comes AFTER the stable prefix
-user_message = f"""
-[VARIABLE SUFFIX — unique per request]
-Customer: {customer_message}
-Context: {conversation_history}
-"""
 ```
+┌─ Stable prefix — cached ─────────────────────────────┐
+│ tool definitions (deterministic order)               │
+│ system prompt, safety instructions                   │
+│ knowledge base, few-shot examples (stable per task)  │
+├─ Grows by appending — cached up to the last turn ────┤
+│ conversation history                                 │
+├─ Variable suffix — never cached ─────────────────────┤
+│ current user message, per-request retrieved context  │
+│ anything with timestamps or request IDs              │
+└──────────────────────────────────────────────────────┘
+```
+
+Monitor the share of input tokens served from cache and the savings per route, and alert when a route's hit rate falls below its own baseline; check prefix stability first.
 
 ### Conversation State Externalization
 
-```python
-class ConversationStore:
-    """Externalize conversation state to a backing service."""
+Conversation state lives in a backing service, keyed by conversation ID, so any instance can serve any turn:
 
-    def __init__(self, redis: Redis):
-        self.redis = redis
-
-    async def load(self, conversation_id: str) -> Conversation:
-        data = await self.redis.get(f"conv:{conversation_id}")
-        if data:
-            return Conversation.deserialize(data)
-        return Conversation.new()
-
-    async def save(self, conversation_id: str, conversation: Conversation):
-        await self.redis.set(
-            f"conv:{conversation_id}",
-            conversation.serialize(),
-            ex=86400,  # 24h TTL
-        )
-
-    async def append_turn(self, conversation_id: str, role: str, content: str):
-        conversation = await self.load(conversation_id)
-        conversation.add_turn(role, content)   # append-only: never rewrite earlier turns
-        # Over budget? Compact at a checkpoint (one deliberate cache break) rather than
-        # trimming on every turn, which breaks prefix caching each time — see Factor 17
-        if conversation.token_count() > MAX_HISTORY_TOKENS:
-            conversation = await self.compactor.compact(conversation)
-        await self.save(conversation_id, conversation)
-```
+- **Append atomically.** Two requests for the same conversation can arrive at once (a retry, a second browser tab). Use an append operation or a version check on save; a plain load-modify-save silently drops one of the turns.
+- **Never rewrite earlier turns.** History changes only by appending. When it exceeds its budget, compact it at a checkpoint (one deliberate cache break) instead of trimming on every turn, which breaks prefix caching each time (Factor 17).
+- **Let retention follow the content, not the store.** A TTL bounds how long idle conversations are kept, but conversations often contain personal data: their retention, access, and erasure follow the same policy as any other personal data, including the summaries and cache entries derived from them (Factor 7, Factor 19).
 
 ### PagedAttention and Prefix Tree KV Cache (Self-Hosted Inference)
 
 For self-hosted model serving, the KV (key-value) cache is the primary performance and cost lever. vLLM's **PagedAttention** manages KV cache entries as fixed-size memory pages — eliminating fragmentation and dramatically improving GPU memory utilization compared to contiguous allocation. The **prefix tree** (radix tree / block prefix sharing) extends PagedAttention to share identical prefix blocks across concurrent requests, achieving de-facto provider-level prefix caching for self-hosted engines.
 
-```yaml
-# vLLM serving configuration for KV cache optimization
-gpu_memory_utilization: 0.90   # fraction of GPU VRAM for KV cache pages
-enable_prefix_caching: true    # share identical prefix blocks across requests
-max_num_seqs: 256              # max parallel sequences per GPU
-swap_space_gb: 4               # CPU RAM for overflowed KV pages (extends effective KV cache)
-block_size: 16                 # tokens per KV page (tune for workload)
-```
+The engine settings that matter most (names vary by engine):
+
+| Setting | What it controls | Trade-off |
+|---------|------------------|-----------|
+| GPU memory fraction | Share of VRAM the engine claims for weights, activations, and KV-cache pages | More KV pages mean more concurrent sequences, but less headroom for spikes |
+| Prefix caching | Sharing identical prefix blocks across requests | Large win for long shared prompts; confirm it is on for your engine version |
+| Maximum concurrent sequences | Batch width per replica | Throughput versus per-request latency |
+| CPU offload / swap space | Where KV pages go when VRAM is full | Extends capacity at the cost of latency |
+| Block (page) size | Tokens per KV page | Granularity of sharing versus bookkeeping overhead |
+
+Further reading: vLLM, [Automatic Prefix Caching](https://docs.vllm.ai/en/latest/design/prefix_caching.html).
 
 When long system prompts or shared knowledge bases are prepended to every request, prefix caching can eliminate 80–90% of redundant prefill computation — the same economics as provider-side prompt caching but at the inference-engine level.
 
@@ -336,6 +189,8 @@ AI caches need careful invalidation strategies:
 - **Model-based invalidation**: When the model version changes, cached responses from the old model should be invalidated.
 - **Feedback-based invalidation**: When a user marks a cached response as unhelpful, remove it from the cache.
 - **Protocol cache hints**: MCP list and read results carry `ttlMs` (freshness) and `cacheScope` (`public` may be cached by shared intermediaries such as a gateway; `private` only by the requesting client). Honor them — a tool list that varies by the caller's authorization must not be served from a shared cache to another caller.
+- **Permission-based invalidation**: When a user loses access or a document's permissions change, entries derived from that content must stop reaching callers who no longer qualify. Scope entries by permission and purge them by source document (see Semantic Caching).
+- **Erasure reaches derived entries**: When source data is deleted for privacy reasons, delete the cached responses, embeddings, and summaries derived from it as well; don't rely on a TTL alone to honor an erasure request (Factor 19).
 
 ## Compliance Checklist
 

@@ -47,88 +47,35 @@ This update broadens the principle from HTTP APIs to all interface boundaries:
 ## In Practice
 
 ### API Contracts
-Define APIs using standard specification formats before writing implementation code:
+Define APIs in a standard specification format — OpenAPI 3.1, protobuf, or GraphQL SDL — and review the document before writing implementation code. The specification is the source for server stubs, client SDKs, and contract tests, not documentation generated afterwards.
 
-```yaml
-# openapi.yaml — the contract comes first
-openapi: 3.1.0
-paths:
-  /documents/{id}/summary:
-    post:
-      summary: Generate an AI summary of a document
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/SummaryRequest'
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SummaryResponse'
-```
+Types are only part of a contract. For every operation, the contract also states:
+
+- **Errors**: which error responses exist and what each means, including failures of an upstream model provider surfaced to the client.
+- **Effects and idempotency**: whether the operation changes state, and whether a client may safely retry it — with an idempotency key where a retry could repeat a side effect (Factor 13).
+- **Long-running work**: whether the call returns a result or a handle to poll, and how the caller cancels it.
+- **Compatibility**: which changes are additive, and how breaking changes are versioned and deprecated.
 
 ### Event Contracts
-Use AsyncAPI or CloudEvents to define event schemas:
-
-```yaml
-# asyncapi.yaml
-channels:
-  document.summarized:
-    publish:
-      message:
-        payload:
-          type: object
-          properties:
-            documentId:
-              type: string
-              format: uuid
-            summary:
-              type: string
-            model:
-              type: string
-            tokenUsage:
-              $ref: '#/components/schemas/TokenUsage'
-```
+Define event schemas with AsyncAPI (channels, operations, message payloads) or CloudEvents (a standard envelope with attributes such as `id`, `source`, and `type`, plus a schema for the data). An event carries what consumers need without calling back — for an AI-generated summary: the document ID, the summary, the model that produced it, and the token usage. Consumers may receive the same event more than once, so the contract names the field they deduplicate on.
 
 ### Agent Tool Schemas
-Define tool contracts with precision — every parameter typed, described, and constrained:
+Define tool contracts with precision — every parameter typed, described, and constrained. The description says *when* to use the tool, because the model reads it to decide:
 
 ```json
 {
   "name": "search_knowledge_base",
   "description": "Search the knowledge base for relevant documents. Use when the user asks a question that requires factual information.",
-  "parameters": {
+  "inputSchema": {
     "type": "object",
     "properties": {
-      "query": {
-        "type": "string",
-        "description": "The search query, rephrased for semantic search",
-        "minLength": 3,
-        "maxLength": 500
-      },
-      "filters": {
-        "type": "object",
-        "properties": {
-          "date_range": {
-            "type": "string",
-            "enum": ["last_week", "last_month", "last_year", "all_time"]
-          },
-          "document_type": {
-            "type": "string",
-            "enum": ["policy", "procedure", "faq", "knowledge_article"]
-          }
-        }
-      },
-      "max_results": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 20,
-        "default": 5
-      }
+      "query": { "type": "string", "minLength": 3, "maxLength": 500,
+                 "description": "The search query, rephrased for semantic search" },
+      "document_type": { "type": "string", "enum": ["policy", "procedure", "faq", "knowledge_article"] },
+      "max_results": { "type": "integer", "minimum": 1, "maximum": 20, "default": 5 }
     },
-    "required": ["query"]
+    "required": ["query"],
+    "additionalProperties": false
   }
 }
 ```
@@ -137,56 +84,7 @@ Define tool contracts with precision — every parameter typed, described, and c
 
 The **Model Context Protocol (MCP)** has emerged as the open standard for connecting AI models to external tools and data sources. Rather than defining tool schemas ad hoc per agent or per provider, MCP provides a unified protocol that any model or agent framework can use to discover and invoke tools. It is now stewarded by the Agentic AI Foundation (AAIF) under the Linux Foundation.
 
-MCP standardizes the contract between AI agents and their tools. As of the **2026-07-28** revision, every request carries its own protocol version and client capabilities in `_meta`, and list results carry cache hints:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "tools/list",
-  "params": {
-    "_meta": {
-      "io.modelcontextprotocol/protocolVersion": "2026-07-28",
-      "io.modelcontextprotocol/clientInfo": { "name": "support-agent", "version": "3.2.0" },
-      "io.modelcontextprotocol/clientCapabilities": {}
-    }
-  }
-}
-```
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "resultType": "complete",
-    "tools": [
-      {
-        "name": "search_knowledge_base",
-        "description": "Search the knowledge base for relevant documents",
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "query": {
-              "type": "string",
-              "description": "The search query, rephrased for semantic search"
-            },
-            "max_results": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 20,
-              "default": 5
-            }
-          },
-          "required": ["query"]
-        }
-      }
-    ],
-    "ttlMs": 300000,
-    "cacheScope": "public"
-  }
-}
-```
+MCP standardizes the contract between AI agents and their tools. As of the **2026-07-28** revision, every request carries its own protocol version and client capabilities in `_meta` (see the table below for what else changed). Tool definitions use the same shape as the schema above: a name, a description, and a JSON Schema `inputSchema`.
 
 Key design principles for MCP tool contracts:
 - **MCP servers as contract artifacts**: An MCP server *is* the contract implementation. The tool schema it exposes is the interface definition, and the server enforces it.
@@ -216,39 +114,10 @@ Pin the protocol version your servers and clients implement, and test against th
 While MCP standardizes how agents interact with tools, the **Agent-to-Agent (A2A) protocol** standardizes how agents interact with each other. In multi-agent systems (Factor 18), agents need a common contract for task delegation, status updates, and result exchange. A2A reached **v1.0** in early 2026 — the first stable release — and, like MCP, is now hosted by the Agentic AI Foundation.
 
 A2A defines:
-- **Agent Cards**: Machine-readable descriptions of an agent's capabilities, published at a well-known URL. These are the contract for what an agent can do. In v1.0 a card can be **signed** (JWS), so a caller can verify who published it before trusting the capabilities it claims (Factor 8).
+- **Agent Cards**: Machine-readable descriptions of an agent's capabilities, published at a well-known URL. These are the contract for what an agent can do: a card names the agent and its version, lists each interface it exposes, declares capabilities such as streaming and push notifications, the input and output media types it accepts, and the skills it offers. In v1.0 a card can be **signed** (JWS), so a caller can verify who published it before trusting the capabilities it claims (Factor 8).
 - **Multiple bindings**: the same agent can be reached over JSON-RPC, gRPC, or HTTP+JSON; the card lists each interface with its protocol version, and multi-tenant deployments can declare a tenant per interface.
 - **Task lifecycle**: A standard state machine — submitted, working, input-required, auth-required, and the terminal completed, failed, canceled, and rejected — with streaming updates, so orchestrators can manage tasks uniformly regardless of the agent implementation.
 - **Message exchange**: A common message format for agent-to-agent communication, including support for multimodal content (text, files, structured data).
-
-```json
-{
-  "name": "research-assistant",
-  "description": "Researches topics using web search and knowledge base",
-  "version": "2.1.0",
-  "supportedInterfaces": [
-    { "url": "https://agents.example.com/research/a2a/v1", "protocolBinding": "JSONRPC", "protocolVersion": "1.0" },
-    { "url": "https://agents.example.com/research/grpc", "protocolBinding": "GRPC", "protocolVersion": "1.0" }
-  ],
-  "capabilities": {
-    "streaming": true,
-    "pushNotifications": true
-  },
-  "defaultInputModes": ["text/plain"],
-  "defaultOutputModes": ["text/plain", "application/json"],
-  "skills": [
-    {
-      "id": "web-research",
-      "name": "Web Research",
-      "description": "Search the web and synthesize findings",
-      "tags": ["research"]
-    }
-  ],
-  "signatures": [
-    { "protected": "eyJhbGciOiJFUzI1NiIsImtpZCI6InJlc2VhcmNoLTIwMjYifQ", "signature": "MEUCIQ..." }
-  ]
-}
-```
 
 A2A and MCP are complementary:
 - **MCP** = agent-to-tool contracts (how an agent uses tools)
@@ -266,23 +135,7 @@ In production, putting an **MCP Gateway** in front of MCP servers is now the def
 - **Observability**: every tool call is logged in one place with the same correlation IDs as model calls (cross-ref Factor 15).
 - **Fail-closed defaults**: a tool that returns 5xx repeatedly is automatically circuit-broken at the gateway level.
 
-```yaml
-# mcp-gateway.yaml — minimal example
-gateway:
-  upstreams:
-    - name: knowledge-base
-      url: http://kb-mcp:8080
-      oauth: { scopes: ["kb.read"] }
-      rate_limit: { rpm_per_tenant: 60 }
-    - name: code-execution
-      url: http://exec-mcp:8080
-      oauth: { scopes: ["exec.run"] }
-      tenant_allowlist: ["tier-pro", "tier-enterprise"]
-      rate_limit: { rpm_per_tenant: 10 }
-  defaults:
-    audit_log: true
-    circuit_breaker: { failure_threshold: 0.5, window_seconds: 60 }
-```
+For each upstream server, the gateway configuration names the OAuth scopes a caller needs, the per-tenant rate limit, and — for sensitive tools such as code execution — which tenants may use it at all. Audit logging and circuit breaking are on by default for every upstream.
 
 Vendors in this space include Portkey, Kong AI Gateway, and dedicated MCP-aware gateways. Whether built or bought, the principle is: **the contract layer needs an enforcement layer in production**.
 
