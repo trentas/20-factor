@@ -1,12 +1,14 @@
 ---
 layout: page
-title: Maturity Assessment
+title: Self-Assessment
 permalink: /assessment.html
-description: Score your application against the 20 factors and chart its maturity.
+description: Check your application against the 20 factors' checklists and chart declared coverage.
 nav: false
 ---
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"
+        integrity="sha384-vsrfeLOOY6KuIYKDlmVH5UiBmgIdB1oEf7p01YgWHuqmOHfZr374+odEv96n9tNC"
+        crossorigin="anonymous"></script>
 
 <style>
   .tfa {
@@ -242,10 +244,18 @@ nav: false
     display: flex;
     align-items: baseline;
     gap: 1rem;
+    width: 100%;
     padding: 1rem 0.25rem;
+    background: none;
+    border: 0;
+    color: inherit;
+    font: inherit;
+    text-align: left;
     cursor: pointer;
     user-select: none;
   }
+  .tfa-factor-head:focus-visible { outline: 2px solid var(--global-text-color); outline-offset: 2px; }
+  .tfa-factor-head { scroll-margin-top: 5rem; } /* clear the fixed navbar when scrolled into view */
   .tfa-factor-head:hover .tfa-factor-name { text-decoration: underline; text-underline-offset: 3px; }
   .tfa-factor-arrow {
     font-size: 0.65rem;
@@ -330,7 +340,7 @@ nav: false
     margin: 0;
   }
   .tfa-checklist li.is-na label { text-decoration: line-through; opacity: 0.45; }
-  .tfa-checklist li.is-na input[type="checkbox"] { opacity: 0.3; pointer-events: none; }
+  .tfa-checklist li.is-na input[type="checkbox"] { opacity: 0.3; cursor: not-allowed; }
   .tfa-na {
     font-size: 0.62rem;
     font-weight: 600;
@@ -358,6 +368,66 @@ nav: false
     .tfa-factor-body { padding-left: 1.5rem; }
   }
 
+  /* Answers carried over from an earlier wording of an item */
+  .tfa-pending {
+    grid-column: 2 / -1;
+    margin-top: 0.4rem;
+    padding: 0.35rem 0 0.35rem 0.65rem;
+    border-left: 2px solid #d97706;
+    font-size: 0.84rem;
+    line-height: 1.5;
+    color: var(--global-text-color-light);
+  }
+  .tfa-pending-actions { display: flex; gap: 1.1rem; margin-top: 0.3rem; }
+  .tfa-pending-actions .tfa-link { font-size: 0.84rem; }
+
+  /* Review and storage notices */
+  .tfa-review {
+    display: none;
+    margin: 1.25rem 0 0;
+    padding: 0.85rem 1rem;
+    border: 1px solid #d97706;
+  }
+  .tfa-review.is-open { display: block; }
+  .tfa-review p { margin: 0 0 0.55rem; font-size: 0.92rem; }
+  .tfa-review-actions { display: flex; gap: 1.4rem; flex-wrap: wrap; }
+
+  /* Chart fallbacks */
+  .tfa-chart-fallback {
+    color: var(--global-text-color-light);
+    font-size: 0.92rem;
+    padding-top: 2rem;
+    text-align: center;
+  }
+  .tfa-table-alt { margin: 0.5rem 0 0; }
+  .tfa-table-alt summary {
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--global-text-color-light);
+  }
+  .tfa-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.75rem;
+    font-size: 0.88rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .tfa-table th,
+  .tfa-table td {
+    text-align: left;
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid var(--global-divider-color);
+  }
+
+  .tfa-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
   #importInput { display: none; }
 </style>
 
@@ -365,9 +435,14 @@ nav: false
 
 <p class="tfa-eyebrow">How to use</p>
 <p class="tfa-section-intro">
-  Tick the items you have in place. Each factor scores from <em>None</em> to <em>Optimized</em>
-  based on the share of applicable items checked, and the radar shows where your application stands across all twenty.
-  Mark items as <strong>N/A</strong> when they don't apply. Progress is saved to your browser; export the JSON to share or back up.
+  Tick the items you have in place, and mark items that don't apply as <strong>N/A</strong>. Each factor shows its
+  <em>declared coverage</em>: the share of its applicable items you ticked. This is a self-assessment, not a measured
+  maturity level — it says nothing about evidence or how well a control works. N/A items are left out, and a factor
+  whose items are all N/A has no score and is left out of the totals.
+</p>
+<p class="tfa-section-intro">
+  Answers are saved in your browser and tied to the exact wording of each item. When an item is reworded, its answer
+  is kept but marked for review until you confirm it. Export the JSON to share or back up.
 </p>
 
 <hr class="tfa-rule">
@@ -375,24 +450,29 @@ nav: false
 <p class="tfa-section-label">Profile</p>
 <div class="tfa-profile" id="profileBar"></div>
 <div class="tfa-compare" id="comparePanel"></div>
+<div class="tfa-review" id="reviewBar" role="status"></div>
 
 <hr class="tfa-rule">
 
-<p class="tfa-section-label">Maturity radar</p>
-<div class="tfa-chart-wrap">
-  <canvas id="radarChart"></canvas>
+<p class="tfa-section-label">Coverage radar</p>
+<div class="tfa-chart-wrap" id="chartWrap">
+  <canvas id="radarChart" aria-label="Declared coverage per factor" role="img"></canvas>
 </div>
+<details class="tfa-table-alt">
+  <summary>Show the chart as a table</summary>
+  <div id="chartTable"></div>
+</details>
 
 <hr class="tfa-rule">
 
-<p class="tfa-section-label">Score by tier</p>
+<p class="tfa-section-label">Coverage by tier</p>
 <section class="tfa-summary" id="summaryBar"></section>
 
 <hr class="tfa-rule">
 
 <p class="tfa-section-label">Checklist</p>
 <p class="tfa-section-intro">
-  Twenty factors grouped by tier. Expand a row to score its compliance items.
+  Twenty factors grouped by tier. Expand a row to answer its compliance items.
 </p>
 
 <nav class="tfa-actions" aria-label="Checklist actions">
@@ -416,13 +496,16 @@ const FACTORS = [
     name: {{ project.factor_name | default: project.title | jsonify }},
     tier: {{ project.tier_slug | jsonify }},
     items: [
-      {%- for item in project.compliance_items %}
-      {{ item | jsonify }}{% unless forloop.last %},{% endunless %}
+      {%- for entry in project.compliance_entries %}
+      { id: {{ entry.id | jsonify }}, text: {{ entry.text | jsonify }} }{% unless forloop.last %},{% endunless %}
       {%- endfor %}
     ]
   }{% unless forloop.last %},{% endunless %}
 {%- endfor %}
 ];
+
+// Changes whenever any checklist item is added, removed, or reworded.
+const CATALOG_VERSION = {{ site.data.checklist_catalog.version | jsonify }};
 
 const TIERS = {
   foundation:   { label: "Tier 1 — Foundation",   color: "#2563eb", factors: [1,2,3,4],          range: "Factors 1 – 4"  },
@@ -430,15 +513,6 @@ const TIERS = {
   operation:    { label: "Tier 3 — Operation",    color: "#059669", factors: [9,10,11,12,13,14,15], range: "Factors 9 – 15" },
   intelligence: { label: "Tier 4 — Intelligence", color: "#7c3aed", factors: [16,17,18,19,20],   range: "Factors 16 – 20" }
 };
-
-const MATURITY_LEVELS = [
-  { label: "None",       bg: "#9ca3af" },
-  { label: "Initial",    bg: "#dc3545" },
-  { label: "Developing", bg: "#fd7e14" },
-  { label: "Defined",    bg: "#ffc107" },
-  { label: "Managed",    bg: "#198754" },
-  { label: "Optimized",  bg: "#0d6efd" }
-];
 
 // Abbreviated labels for the radar chart. MUST match FACTORS order and length
 // (positional: SHORT_NAMES[i] pairs with FACTORS[i]). Guarded below.
@@ -460,134 +534,306 @@ const COMPARE_COLORS = [
   "#7c3aed", "#0ea5e9", "#be185d", "#475569"
 ];
 
+// Kept from the first version of this page: a new key would orphan saved assessments.
 const STORAGE_KEY = "18factor-assessment";
+const BACKUP_KEY = STORAGE_KEY + ".backup";
+const SCHEMA = 2;
+const EXPORT_VERSION = "20factor-v2";
+const LEGACY_EXPORT_VERSION = "20factor-v1";
+const MAX_NAME = 100;
+const MAX_TEXT = 2000;
+const MAX_ANSWERS = 5000;
 
-let db = loadDB();
+const FACTOR_BY_NUM = new Map(FACTORS.map(f => [f.num, f]));
+const ITEM_BY_ID = new Map();
+for (const f of FACTORS) f.items.forEach((item, i) => ITEM_BY_ID.set(item.id, { factor: f.num, index: i }));
+
+let notices = [];
+let storageWarned = false;
 let compareMode = false;
 let compareSelected = new Set();
 let radarChart = null;
+const resolveCache = new Map();
+let db = null;   // assigned after loadDB(), which may post notices before it returns
+db = loadDB();
 
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
-function loadDB() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return createFreshDB();
-    const parsed = JSON.parse(raw);
-    if (!parsed.profiles) {
-      const id = genId();
-      return { profiles: { [id]: { name: "Default", state: parsed } }, activeProfile: id };
-    }
-    return parsed;
-  } catch {
-    return createFreshDB();
-  }
+// Profile IDs end up in onclick attributes, so anything unexpected from storage is replaced.
+function safeProfileId(id) { return /^[A-Za-z0-9_-]{1,40}$/.test(id) ? id : genId(); }
+
+// --- Storage ---
+// Browser storage can be missing, blocked, or full; the page keeps working without it.
+function storageGet(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
 }
+
+function storageSet(key, value) {
+  try { localStorage.setItem(key, value); return true; } catch { return false; }
+}
+
+function backupRaw(raw) {
+  const key = storageGet(BACKUP_KEY) === null ? BACKUP_KEY : `${BACKUP_KEY}.${Date.now()}`;
+  return storageSet(key, raw) ? key : null;
+}
+
+function keptAs(key) {
+  return key
+    ? `The original data is kept in this browser's storage under “${key}”.`
+    : "The original data could not be copied, so export anything you need before changing answers.";
+}
+
+function loadDB() {
+  const raw = storageGet(STORAGE_KEY);
+  if (!raw) return createFreshDB();
+  let parsed = null;
+  try { parsed = JSON.parse(raw); } catch { /* handled below */ }
+
+  if (parsed && parsed.schema === SCHEMA) {
+    const valid = validateDB(parsed);
+    if (valid) return valid;
+  } else if (parsed) {
+    const migrated = migrateLegacyDB(parsed);
+    if (migrated) {
+      addNotice("Answers saved by an earlier version of this page were carried over. They are matched by position, so each one needs review before it counts. " + keptAs(backupRaw(raw)));
+      return migrated;
+    }
+  }
+  addNotice("Saved answers could not be read, so a new profile was started. " + keptAs(backupRaw(raw)));
+  return createFreshDB();
+}
+
+function newProfile(name) { return { name, answers: {} }; }
 
 function createFreshDB() {
   const id = genId();
-  return { profiles: { [id]: { name: "Default", state: {} } }, activeProfile: id };
+  return { schema: SCHEMA, profiles: { [id]: newProfile("Default") }, activeProfile: id };
 }
 
-function saveDB() { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); }
-function activeState() { return db.profiles[db.activeProfile].state; }
-function activeProfileName() { return db.profiles[db.activeProfile].name; }
+function saveDB() {
+  resolveCache.clear();
+  if (storageSet(STORAGE_KEY, JSON.stringify(db))) return;
+  if (!storageWarned) {
+    storageWarned = true;
+    addNotice("Answers could not be saved in this browser (private browsing or full storage). Export the JSON to keep them.");
+  }
+}
+
+function cleanName(value) {
+  if (typeof value !== "string") return "";
+  return value.replace(/\s+/g, " ").trim().slice(0, MAX_NAME);
+}
+
+// A stored answer: { f: factor, i: index when answered, s: "done" | "na", t: item text when answered, at? }
+function cleanAnswer(a) {
+  if (!a || typeof a !== "object") return null;
+  if (!Number.isInteger(a.f) || a.f < 1 || a.f > 999) return null;
+  if (!Number.isInteger(a.i) || a.i < 0 || a.i > 999) return null;
+  if (a.s !== "done" && a.s !== "na") return null;
+  if (a.t !== null && (typeof a.t !== "string" || a.t.length > MAX_TEXT)) return null;
+  const answer = { f: a.f, i: a.i, s: a.s, t: a.t };
+  if (typeof a.at === "string") answer.at = a.at.slice(0, 40);
+  return answer;
+}
+
+function isAnswerKey(key) { return /^[A-Za-z0-9:._-]{1,64}$/.test(key); }
+
+function validateDB(d) {
+  if (!d.profiles || typeof d.profiles !== "object") return null;
+  const profiles = {};
+  for (const [id, p] of Object.entries(d.profiles)) {
+    if (!p || typeof p !== "object" || !p.answers || typeof p.answers !== "object") return null;
+    const answers = {};
+    for (const [key, a] of Object.entries(p.answers)) {
+      const answer = cleanAnswer(a);
+      if (!answer || !isAnswerKey(key)) return null;
+      answers[key] = answer;
+    }
+    profiles[safeProfileId(id)] = { name: cleanName(p.name) || "Untitled", answers };
+  }
+  const ids = Object.keys(profiles);
+  if (!ids.length) return null;
+  return { schema: SCHEMA, profiles, activeProfile: profiles[d.activeProfile] ? d.activeProfile : ids[0] };
+}
+
+// Before item IDs existed, answers were stored by position: state[factor][index] and
+// state[`${factor}_na`][index]. The checklist they were recorded against is unknown,
+// so each one is kept at its position and marked for review rather than trusted.
+function legacyStateToAnswers(state) {
+  if (!state || typeof state !== "object") return null;
+  const answers = {};
+  for (const [key, entries] of Object.entries(state)) {
+    const m = /^(\d+)(_na)?$/.exec(key);
+    if (!m || !entries || typeof entries !== "object") continue;
+    const f = Number(m[1]);
+    const s = m[2] ? "na" : "done";
+    for (const [idx, on] of Object.entries(entries)) {
+      if (on !== true || !/^\d{1,3}$/.test(idx)) continue;
+      const i = Number(idx);
+      const answerKey = `legacy:${f}:${i}`;
+      // N/A wins over done, as it did in the old interface.
+      if (s === "na" || !answers[answerKey]) answers[answerKey] = { f, i, s, t: null };
+    }
+  }
+  return answers;
+}
+
+function migrateLegacyDB(parsed) {
+  if (typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const legacy = parsed.profiles && typeof parsed.profiles === "object"
+    ? parsed.profiles
+    : { [genId()]: { name: "Default", state: parsed } };
+  const profiles = {};
+  for (const [id, p] of Object.entries(legacy)) {
+    if (!p || typeof p !== "object") return null;
+    const answers = legacyStateToAnswers(p.state || {});
+    if (!answers) return null;
+    profiles[safeProfileId(id)] = { name: cleanName(p.name) || "Untitled", answers };
+  }
+  const ids = Object.keys(profiles);
+  if (!ids.length) return null;
+  return { schema: SCHEMA, profiles, activeProfile: profiles[parsed.activeProfile] ? parsed.activeProfile : ids[0] };
+}
+
+// --- Answers ---
+function activeProfile() { return db.profiles[db.activeProfile]; }
+function activeProfileName() { return activeProfile().name; }
 function profileIds() { return Object.keys(db.profiles); }
 
-function getChecked(factorNum, idx) {
-  const s = activeState();
-  return !!(s[factorNum] && s[factorNum][idx]);
+// Match a profile's stored answers to the current checklist.
+//   confirmed: item id -> "done" | "na", recorded for this exact wording
+//   pending:   item id -> stored answer recorded for an earlier wording at the same position
+//   orphaned:  stored answers that match neither an item nor a free position
+function resolvedFor(profileId) {
+  if (resolveCache.has(profileId)) return resolveCache.get(profileId);
+  const confirmed = new Map();
+  const pending = new Map();
+  const orphaned = [];
+  const stale = [];
+  for (const [key, a] of Object.entries(db.profiles[profileId].answers)) {
+    if (ITEM_BY_ID.has(key)) confirmed.set(key, a.s);
+    else stale.push({ key, ...a });
+  }
+  for (const a of stale) {
+    const factor = FACTOR_BY_NUM.get(a.f);
+    const item = factor && factor.items[a.i];
+    if (item && !confirmed.has(item.id) && !pending.has(item.id)) pending.set(item.id, a);
+    else orphaned.push(a);
+  }
+  const result = { confirmed, pending, orphaned };
+  resolveCache.set(profileId, result);
+  return result;
 }
 
-function isNA(factorNum, idx) {
-  const s = activeState();
-  return !!(s[`${factorNum}_na`] && s[`${factorNum}_na`][idx]);
+// "done" | "na" | null for confirmed answers; pending answers don't count until confirmed.
+function itemStatus(factorNum, i, profileId = db.activeProfile) {
+  const item = FACTOR_BY_NUM.get(factorNum).items[i];
+  return resolvedFor(profileId).confirmed.get(item.id) || null;
 }
 
-function setChecked(factorNum, idx, val) {
-  const s = activeState();
-  if (!s[factorNum]) s[factorNum] = {};
-  s[factorNum][idx] = val;
+function pendingFor(factorNum, i, profileId = db.activeProfile) {
+  const item = FACTOR_BY_NUM.get(factorNum).items[i];
+  return resolvedFor(profileId).pending.get(item.id) || null;
+}
+
+function factorStats(factorNum, profileId = db.activeProfile) {
+  const r = resolvedFor(profileId);
+  const factor = FACTOR_BY_NUM.get(factorNum);
+  let done = 0, na = 0, pending = 0;
+  for (const item of factor.items) {
+    const s = r.confirmed.get(item.id);
+    if (s === "done") done++;
+    else if (s === "na") na++;
+    else if (r.pending.has(item.id)) pending++;
+  }
+  const applicable = factor.items.length - na;
+  return { done, na, pending, applicable, total: factor.items.length, coverage: applicable ? done / applicable : null };
+}
+
+// Item-weighted totals; factors with nothing applicable add nothing.
+function totalStats(factorNums, profileId = db.activeProfile) {
+  const t = { done: 0, applicable: 0, pending: 0, naFactors: 0 };
+  for (const num of factorNums) {
+    const s = factorStats(num, profileId);
+    t.done += s.done;
+    t.applicable += s.applicable;
+    t.pending += s.pending;
+    if (s.applicable === 0) t.naFactors++;
+  }
+  t.coverage = t.applicable ? t.done / t.applicable : null;
+  return t;
+}
+
+function percent(coverage) { return coverage === null ? null : Math.round(coverage * 100); }
+
+function setAnswer(factorNum, i, status) {
+  const profile = activeProfile();
+  const item = FACTOR_BY_NUM.get(factorNum).items[i];
+  // Answering an item replaces whatever was carried over for it.
+  const carried = pendingFor(factorNum, i);
+  if (carried) delete profile.answers[carried.key];
+  if (status) profile.answers[item.id] = { f: factorNum, i, s: status, t: item.text, at: new Date().toISOString() };
+  else delete profile.answers[item.id];
+  changed();
+}
+
+function onCheck(factorNum, i, checked) { setAnswer(factorNum, i, checked ? "done" : null); }
+function toggleNA(factorNum, i) { setAnswer(factorNum, i, itemStatus(factorNum, i) === "na" ? null : "na"); }
+
+function confirmPending(factorNum, i) {
+  const carried = pendingFor(factorNum, i);
+  if (carried) setAnswer(factorNum, i, carried.s);
+}
+
+function discardPending(factorNum, i) {
+  const carried = pendingFor(factorNum, i);
+  if (!carried) return;
+  delete activeProfile().answers[carried.key];
+  changed();
+}
+
+function confirmAllPending() {
+  const profile = activeProfile();
+  for (const factor of FACTORS) {
+    factor.items.forEach((item, i) => {
+      const carried = pendingFor(factor.num, i);
+      if (!carried) return;
+      delete profile.answers[carried.key];
+      profile.answers[item.id] = { f: factor.num, i, s: carried.s, t: item.text, at: new Date().toISOString() };
+    });
+  }
+  changed();
+}
+
+function discardOrphaned() {
+  const profile = activeProfile();
+  for (const a of resolvedFor(db.activeProfile).orphaned) delete profile.answers[a.key];
+  changed();
+}
+
+function changed() {
   saveDB();
+  rerenderFactors();
   update();
 }
-
-function toggleNA(factorNum, idx) {
-  const s = activeState();
-  const key = `${factorNum}_na`;
-  if (!s[key]) s[key] = {};
-  s[key][idx] = !s[key][idx];
-  if (s[key][idx] && s[factorNum] && s[factorNum][idx]) {
-    s[factorNum][idx] = false;
-  }
-  saveDB();
-  const openCards = new Set();
-  document.querySelectorAll(".tfa-factor.is-open").forEach(c => openCards.add(c.id));
-  renderFactors();
-  openCards.forEach(id => { const el = document.getElementById(id); if (el) el.classList.add("is-open"); });
-  update();
-}
-
-function totalItems(factorNum) {
-  const f = FACTORS.find(x => x.num === factorNum);
-  return f ? f.items.length : 0;
-}
-
-function countChecked(factorNum, st) {
-  const s = st || activeState();
-  const f = s[factorNum];
-  if (!f) return 0;
-  let count = 0;
-  const naKey = `${factorNum}_na`;
-  const total = totalItems(factorNum);
-  for (let i = 0; i < total; i++) {
-    const isItemNA = s[naKey] && s[naKey][i];
-    if (f[i] && !isItemNA) count++;
-  }
-  return count;
-}
-
-function countNA(factorNum, st) {
-  const s = st || activeState();
-  const key = `${factorNum}_na`;
-  const f = s[key];
-  if (!f) return 0;
-  return Object.values(f).filter(Boolean).length;
-}
-
-function countApplicable(factorNum, st) { return totalItems(factorNum) - countNA(factorNum, st); }
-
-function maturityScore(factorNum, st) {
-  const applicable = countApplicable(factorNum, st);
-  if (applicable === 0) return 5;
-  const checked = countChecked(factorNum, st);
-  const pct = checked / applicable;
-  if (pct === 0) return 0;
-  if (pct <= 0.2) return 1;
-  if (pct <= 0.4) return 2;
-  if (pct <= 0.6) return 3;
-  if (pct <= 0.8) return 4;
-  return 5;
-}
-
-function maturityInfo(factorNum, st) { return MATURITY_LEVELS[maturityScore(factorNum, st)]; }
 
 // --- Profile CRUD ---
 function createProfile(name) {
   const id = genId();
-  db.profiles[id] = { name, state: {} };
+  db.profiles[id] = newProfile(name);
   db.activeProfile = id;
   saveDB();
   fullRender();
 }
 
 function renameProfile() {
-  const name = prompt("Rename application:", activeProfileName());
+  const name = cleanName(prompt("Rename application:", activeProfileName()));
   if (!name || name === activeProfileName()) return;
-  db.profiles[db.activeProfile].name = name;
+  activeProfile().name = name;
   saveDB();
   renderProfileBar();
   renderComparePanel();
+  updateChart();
 }
 
 function deleteProfile() {
@@ -611,30 +857,27 @@ function switchProfile(id) {
 }
 
 function promptNewProfile() {
-  const name = prompt("Application name:");
+  const name = cleanName(prompt("Application name:"));
   if (!name) return;
   createProfile(name);
 }
 
 // --- Export / Import ---
-function exportJSON() {
-  const s = activeState();
-  const data = {
-    name: activeProfileName(),
+function exportData() {
+  const profile = activeProfile();
+  return {
+    version: EXPORT_VERSION,
+    catalogVersion: CATALOG_VERSION,
+    name: profile.name,
     exportedAt: new Date().toISOString(),
-    version: "20factor-v1",
-    factors: {}
+    answers: Object.entries(profile.answers).map(([id, a]) => ({
+      id, factor: a.f, index: a.i, status: a.s, text: a.t, answeredAt: a.at || null
+    }))
   };
-  for (const f of FACTORS) {
-    const checked = [];
-    const na = [];
-    for (let i = 0; i < f.items.length; i++) {
-      if (s[f.num] && s[f.num][i]) checked.push(i);
-      if (s[`${f.num}_na`] && s[`${f.num}_na`][i]) na.push(i);
-    }
-    data.factors[f.num] = { name: f.name, checked, na };
-  }
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+}
+
+function exportJSON() {
+  const blob = new Blob([JSON.stringify(exportData(), null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -647,36 +890,80 @@ function importJSON() {
   document.getElementById("importInput").click();
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("importInput").addEventListener("change", (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const data = JSON.parse(ev.target.result);
-        if (!data.factors || !data.name) { alert("Invalid assessment file."); return; }
-        const st = {};
-        for (const [num, info] of Object.entries(data.factors)) {
-          if (info.checked && info.checked.length) {
-            st[num] = {};
-            for (const i of info.checked) st[num][i] = true;
-          }
-          if (info.na && info.na.length) {
-            st[`${num}_na`] = {};
-            for (const i of info.na) st[`${num}_na`][i] = true;
-          }
-        }
-        const id = genId();
-        db.profiles[id] = { name: data.name, state: st };
-        db.activeProfile = id;
-        saveDB();
-        fullRender();
-      } catch { alert("Could not parse file."); }
-    };
-    reader.readAsText(file);
-    e.target.value = "";
-  });
+function importV2(data) {
+  if (!Array.isArray(data.answers)) throw new Error("the file has no answers list.");
+  if (data.answers.length > MAX_ANSWERS) throw new Error("the file has too many answers.");
+  const answers = {};
+  for (const a of data.answers) {
+    if (!a || typeof a !== "object") throw new Error("an answer entry is malformed.");
+    if (typeof a.id !== "string" || !isAnswerKey(a.id)) throw new Error("an answer has an invalid item ID.");
+    if (!FACTOR_BY_NUM.has(a.factor)) throw new Error(`an answer refers to unknown factor ${String(a.factor).slice(0, 10)}.`);
+    const answer = cleanAnswer({ f: a.factor, i: a.index, s: a.status, t: a.text === undefined ? null : a.text, at: a.answeredAt });
+    if (!answer) throw new Error(`the answer for item ${a.id} is malformed.`);
+    const known = ITEM_BY_ID.get(a.id);
+    if (known && known.factor !== a.factor) throw new Error(`item ${a.id} does not belong to factor ${a.factor}.`);
+    if (answers[a.id]) throw new Error(`item ${a.id} is answered twice.`);
+    answers[a.id] = answer;
+  }
+  return answers;
+}
+
+// Version 1 files stored positions only, so their answers are carried over for review.
+function importV1(data) {
+  if (!data.factors || typeof data.factors !== "object") throw new Error("the file has no factors.");
+  const answers = {};
+  for (const [num, info] of Object.entries(data.factors)) {
+    const factor = /^\d+$/.test(num) ? FACTOR_BY_NUM.get(Number(num)) : null;
+    if (!factor) throw new Error(`unknown factor ${num.slice(0, 10)}.`);
+    if (!info || typeof info !== "object") throw new Error(`factor ${num} is malformed.`);
+    const checked = info.checked || [];
+    const na = info.na || [];
+    if (!Array.isArray(checked) || !Array.isArray(na)) throw new Error(`factor ${num} is malformed.`);
+    for (const i of [...checked, ...na]) {
+      if (!Number.isInteger(i) || i < 0 || i >= factor.items.length) {
+        throw new Error(`factor ${num} refers to item ${String(i).slice(0, 10)}, which does not exist.`);
+      }
+    }
+    const naSet = new Set(na);
+    for (const i of checked) {
+      if (naSet.has(i)) throw new Error(`factor ${num}, item ${i} is marked both done and N/A.`);
+      answers[`legacy:${factor.num}:${i}`] = { f: factor.num, i, s: "done", t: null };
+    }
+    for (const i of na) answers[`legacy:${factor.num}:${i}`] = { f: factor.num, i, s: "na", t: null };
+  }
+  return answers;
+}
+
+function parseImport(text) {
+  let data;
+  try { data = JSON.parse(text); } catch { throw new Error("the file is not valid JSON."); }
+  if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("the file is not an assessment export.");
+  const name = cleanName(data.name);
+  if (!name) throw new Error("the file has no application name.");
+  if (data.version === EXPORT_VERSION) return { name, answers: importV2(data) };
+  if (data.version === LEGACY_EXPORT_VERSION) return { name, answers: importV1(data) };
+  throw new Error(`unsupported file version ${JSON.stringify(String(data.version).slice(0, 40))}.`);
+}
+
+// Nothing is written unless the whole file is valid.
+function importFromText(text) {
+  let parsed;
+  try { parsed = parseImport(text); } catch (err) { alert(`Could not import: ${err.message}`); return false; }
+  const id = genId();
+  db.profiles[id] = { name: parsed.name, answers: parsed.answers };
+  db.activeProfile = id;
+  saveDB();
+  fullRender();
+  return true;
+}
+
+document.getElementById("importInput").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => importFromText(String(ev.target.result));
+  reader.readAsText(file);
+  e.target.value = "";
 });
 
 // --- Compare ---
@@ -694,16 +981,76 @@ function toggleCompareProfile(id) {
   updateChart();
 }
 
+function isComparing() { return compareMode && compareSelected.size > 0; }
+
+// Profiles on the chart, in the same order and colors as the compare panel.
+function chartProfiles() {
+  return isComparing() ? profileIds().filter(id => compareSelected.has(id)) : [db.activeProfile];
+}
+
+function profileColor(id) {
+  const i = Math.max(0, profileIds().indexOf(id));
+  return COMPARE_COLORS[i % COMPARE_COLORS.length];
+}
+
+// --- Notices ---
+function addNotice(message) {
+  notices.push(message);
+  renderReviewBar();
+}
+
+function dismissNotices() {
+  notices = [];
+  renderReviewBar();
+}
+
+function showPending() {
+  let first = null;
+  for (const factor of FACTORS) {
+    if (factorStats(factor.num).pending) {
+      setOpen(factor.num, true);
+      first = first || factor.num;
+    }
+  }
+  const el = first && document.getElementById(`head-${first}`);
+  if (el && el.scrollIntoView) { el.scrollIntoView({ block: "start" }); el.focus(); }
+}
+
+function renderReviewBar() {
+  const bar = document.getElementById("reviewBar");
+  if (!bar || !db) return;
+  const r = resolvedFor(db.activeProfile);
+  const parts = notices.map(n => `<p>${escapeHtml(n)}</p>`);
+  if (notices.length) {
+    parts.push(`<div class="tfa-review-actions"><button class="tfa-link" type="button" onclick="dismissNotices()">Dismiss</button></div>`);
+  }
+  if (r.pending.size) {
+    parts.push(`<p><strong>${r.pending.size} ${r.pending.size === 1 ? "answer needs" : "answers need"} review.</strong>
+      The checklist changed after ${r.pending.size === 1 ? "it was" : "they were"} recorded, so ${r.pending.size === 1 ? "it doesn't" : "they don't"} count until confirmed.</p>
+      <div class="tfa-review-actions">
+        <button class="tfa-link" type="button" onclick="showPending()">Show them</button>
+        <button class="tfa-link" type="button" onclick="confirmAllPending()">Confirm all as recorded</button>
+      </div>`);
+  }
+  if (r.orphaned.length) {
+    parts.push(`<p>${r.orphaned.length} ${r.orphaned.length === 1 ? "answer refers" : "answers refer"} to items no longer in the checklist.
+      ${r.orphaned.length === 1 ? "It is" : "They are"} kept and exported, but ${r.orphaned.length === 1 ? "doesn't" : "don't"} count.</p>
+      <div class="tfa-review-actions"><button class="tfa-link" type="button" onclick="discardOrphaned()">Discard them</button></div>`);
+  }
+  bar.innerHTML = parts.join("");
+  bar.classList.toggle("is-open", parts.length > 0);
+}
+
 // --- Rendering ---
 function renderProfileBar() {
   const bar = document.getElementById("profileBar");
-  const ids = profileIds();
-  const opts = ids.map(id =>
+  const opts = profileIds().map(id =>
     `<option value="${id}" ${id === db.activeProfile ? "selected" : ""}>${escapeHtml(db.profiles[id].name)}</option>`
   ).join("");
   bar.innerHTML = `
     <div class="tfa-profile-group">
-      <select class="tfa-select" onchange="switchProfile(this.value)">${opts}</select>
+      <label class="tfa-visually-hidden" for="profileSelect">Application profile</label>
+      <select class="tfa-select" id="profileSelect" onchange="switchProfile(this.value)">${opts}</select>
       <button class="tfa-link" type="button" onclick="promptNewProfile()">+ New</button>
       <button class="tfa-link" type="button" onclick="renameProfile()">Rename</button>
       <button class="tfa-link is-danger" type="button" onclick="deleteProfile()">Delete</button>
@@ -713,7 +1060,7 @@ function renderProfileBar() {
       <button class="tfa-link" type="button" onclick="importJSON()">Import JSON</button>
     </div>
     <div class="tfa-profile-group">
-      <button class="tfa-link ${compareMode ? "is-active" : ""}" type="button" onclick="toggleCompare()">Compare profiles</button>
+      <button class="tfa-link ${compareMode ? "is-active" : ""}" type="button" aria-pressed="${compareMode}" onclick="toggleCompare()">Compare profiles</button>
     </div>
   `;
 }
@@ -722,16 +1069,65 @@ function renderComparePanel() {
   const panel = document.getElementById("comparePanel");
   if (!compareMode) { panel.classList.remove("is-open"); return; }
   panel.classList.add("is-open");
-  const ids = profileIds();
-  panel.innerHTML = ids.map((id, i) => {
-    const color = COMPARE_COLORS[i % COMPARE_COLORS.length];
+  panel.innerHTML = profileIds().map(id => {
     const checked = compareSelected.has(id) ? "checked" : "";
     return `<label class="tfa-compare-item">
       <input type="checkbox" ${checked} onchange="toggleCompareProfile('${id}')">
-      <span class="tfa-compare-dot" style="background:${color}"></span>
+      <span class="tfa-compare-dot" style="background:${profileColor(id)}"></span>
       ${escapeHtml(db.profiles[id].name)}
     </label>`;
   }).join("");
+}
+
+function coverageColor(coverage) {
+  if (coverage === null) return "transparent";
+  if (coverage === 0) return "#9ca3af";
+  if (coverage <= 0.2) return "#dc3545";
+  if (coverage <= 0.4) return "#fd7e14";
+  if (coverage <= 0.6) return "#ffc107";
+  if (coverage <= 0.8) return "#198754";
+  return "#0d6efd";
+}
+
+function badgeText(stats) {
+  return stats.coverage === null ? "N/A" : `${percent(stats.coverage)}%`;
+}
+
+function badgeHtml(stats) {
+  return `<span class="tfa-badge-dot" style="background:${coverageColor(stats.coverage)}"></span>${badgeText(stats)}`;
+}
+
+function scoreText(stats) {
+  return stats.pending ? `${stats.done}/${stats.applicable} · ${stats.pending} to review` : `${stats.done}/${stats.applicable}`;
+}
+
+function renderItem(factorNum, item, i) {
+  const status = itemStatus(factorNum, i);
+  const carried = pendingFor(factorNum, i);
+  const na = status === "na";
+  const id = `${factorNum}-${i}`;
+  let pendingHtml = "";
+  if (carried) {
+    const was = carried.s === "na" ? "N/A" : "done";
+    const wording = carried.t
+      ? ` for the earlier wording “${escapeHtml(carried.t)}”`
+      : ", in an earlier version of the checklist whose wording isn't known";
+    pendingHtml = `
+      <div class="tfa-pending" role="note">
+        Previously marked <strong>${was}</strong>${wording}. It doesn't count until you confirm it.
+        <div class="tfa-pending-actions">
+          <button class="tfa-link" type="button" id="confirm-${id}" onclick="confirmPending(${factorNum},${i})">Confirm as ${was}</button>
+          <button class="tfa-link" type="button" id="discard-${id}" onclick="discardPending(${factorNum},${i})">Discard</button>
+        </div>
+      </div>`;
+  }
+  return `
+    <li class="${na ? "is-na" : ""} ${carried ? "is-pending" : ""}">
+      <input type="checkbox" id="cb-${id}" ${status === "done" ? "checked" : ""} ${na ? "disabled" : ""} onchange="onCheck(${factorNum},${i},this.checked)">
+      <label for="cb-${id}">${escapeHtml(item.text)}</label>
+      <button class="tfa-na ${na ? "is-active" : ""}" type="button" id="na-${id}" aria-pressed="${na}" onclick="toggleNA(${factorNum},${i})" title="Mark as not applicable">N/A</button>
+      ${pendingHtml}
+    </li>`;
 }
 
 function renderFactors() {
@@ -758,35 +1154,20 @@ function renderFactors() {
       const card = document.createElement("article");
       card.className = "tfa-factor";
       card.id = `factor-${factor.num}`;
-
-      const checked = countChecked(factor.num);
-      const applicable = countApplicable(factor.num);
-      const mi = maturityInfo(factor.num);
-      const ms = maturityScore(factor.num);
+      const stats = factorStats(factor.num);
       const numStr = String(factor.num).padStart(2, "0");
 
       card.innerHTML = `
-        <div class="tfa-factor-head" onclick="toggleCard(${factor.num})">
-          <span class="tfa-factor-arrow">▶</span>
+        <button class="tfa-factor-head" type="button" id="head-${factor.num}" aria-expanded="false" aria-controls="body-${factor.num}" onclick="toggleCard(${factor.num})">
+          <span class="tfa-factor-arrow" aria-hidden="true">▶</span>
           <span class="tfa-factor-num">${numStr}</span>
           <span class="tfa-factor-name">${escapeHtml(factor.name)}</span>
-          <span class="tfa-factor-score" id="score-${factor.num}">${checked}/${applicable}</span>
-          <span class="tfa-badge" id="badge-${factor.num}">
-            <span class="tfa-badge-dot" style="background:${mi.bg}"></span>
-            L${ms} · ${mi.label}
-          </span>
-        </div>
-        <div class="tfa-factor-body">
+          <span class="tfa-factor-score" id="score-${factor.num}">${scoreText(stats)}</span>
+          <span class="tfa-badge" id="badge-${factor.num}">${badgeHtml(stats)}</span>
+        </button>
+        <div class="tfa-factor-body" id="body-${factor.num}">
           <ul class="tfa-checklist">
-            ${factor.items.map((item, i) => {
-              const na = isNA(factor.num, i);
-              return `
-              <li class="${na ? "is-na" : ""}">
-                <input type="checkbox" id="cb-${factor.num}-${i}" ${getChecked(factor.num, i) ? "checked" : ""} onchange="setChecked(${factor.num},${i},this.checked)">
-                <label for="cb-${factor.num}-${i}">${escapeHtml(item)}</label>
-                <button class="tfa-na ${na ? "is-active" : ""}" type="button" onclick="toggleNA(${factor.num},${i})" title="Mark as not applicable">N/A</button>
-              </li>`;
-            }).join("")}
+            ${factor.items.map((item, i) => renderItem(factor.num, item, i)).join("")}
           </ul>
         </div>
       `;
@@ -796,56 +1177,62 @@ function renderFactors() {
   }
 }
 
+// Re-render the checklist without losing which factors are open or where focus was.
+function rerenderFactors() {
+  const open = [...document.querySelectorAll(".tfa-factor.is-open")].map(c => Number(c.id.replace("factor-", "")));
+  const focusId = document.activeElement && document.activeElement.id;
+  renderFactors();
+  open.forEach(num => setOpen(num, true));
+  // A confirm/discard button disappears once used; focus its item's checkbox instead.
+  const el = focusId && (document.getElementById(focusId) ||
+    document.getElementById(focusId.replace(/^(confirm|discard)-/, "cb-")));
+  if (el && el.focus) el.focus();
+}
+
+function setOpen(num, open) {
+  const card = document.getElementById(`factor-${num}`);
+  const head = document.getElementById(`head-${num}`);
+  if (card) card.classList.toggle("is-open", open);
+  if (head) head.setAttribute("aria-expanded", String(open));
+}
+
 function toggleCard(num) {
-  document.getElementById(`factor-${num}`).classList.toggle("is-open");
+  const card = document.getElementById(`factor-${num}`);
+  setOpen(num, !card.classList.contains("is-open"));
 }
 
-function expandAll() {
-  document.querySelectorAll(".tfa-factor").forEach(c => c.classList.add("is-open"));
-}
-
-function collapseAll() {
-  document.querySelectorAll(".tfa-factor").forEach(c => c.classList.remove("is-open"));
-}
+function expandAll() { FACTORS.forEach(f => setOpen(f.num, true)); }
+function collapseAll() { FACTORS.forEach(f => setOpen(f.num, false)); }
 
 function resetAll() {
   if (!confirm(`Reset all items for "${activeProfileName()}"? This cannot be undone.`)) return;
-  db.profiles[db.activeProfile].state = {};
+  activeProfile().answers = {};
   saveDB();
   renderFactors();
   update();
 }
 
 // --- Summary ---
-function renderSummary() {
-  const bar = document.getElementById("summaryBar");
-  const totalChecked = FACTORS.reduce((s, f) => s + countChecked(f.num), 0);
-  const totalApplicable = FACTORS.reduce((s, f) => s + countApplicable(f.num), 0);
-  const avgMaturity = (FACTORS.reduce((s, f) => s + maturityScore(f.num), 0) / FACTORS.length).toFixed(1);
-
-  let html = `
-    <div class="tfa-summary-cell">
-      <p class="tfa-summary-key">Overall</p>
-      <div class="tfa-summary-value">${totalChecked}/${totalApplicable}</div>
-      <div class="tfa-summary-sub">Avg maturity ${avgMaturity}</div>
+function summaryCell(label, stats, tierKey) {
+  const pct = percent(stats.coverage);
+  const sub = [pct === null ? "Nothing applicable" : `${pct}% declared coverage`];
+  if (stats.naFactors) sub.push(`${stats.naFactors} N/A`);
+  if (stats.pending) sub.push(`${stats.pending} to review`);
+  return `
+    <div class="tfa-summary-cell"${tierKey ? ` data-tier="${tierKey}"` : ""}>
+      <p class="tfa-summary-key">${label}</p>
+      <div class="tfa-summary-value">${stats.done}/${stats.applicable}</div>
+      <div class="tfa-summary-sub">${sub.join(" · ")}</div>
     </div>
   `;
+}
 
+function renderSummary() {
+  let html = summaryCell("Overall", totalStats(FACTORS.map(f => f.num)));
   for (const [tierKey, tier] of Object.entries(TIERS)) {
-    const tierFactors = FACTORS.filter(f => tier.factors.includes(f.num));
-    const tierChecked = tierFactors.reduce((s, f) => s + countChecked(f.num), 0);
-    const tierApplicable = tierFactors.reduce((s, f) => s + countApplicable(f.num), 0);
-    const tierAvg = (tierFactors.reduce((s, f) => s + maturityScore(f.num), 0) / tierFactors.length).toFixed(1);
-    const shortLabel = tier.label.replace(/^Tier \d+ — /, "");
-    html += `
-      <div class="tfa-summary-cell" data-tier="${tierKey}">
-        <p class="tfa-summary-key">${shortLabel}</p>
-        <div class="tfa-summary-value">${tierChecked}/${tierApplicable}</div>
-        <div class="tfa-summary-sub">Avg ${tierAvg}</div>
-      </div>
-    `;
+    html += summaryCell(tier.label.replace(/^Tier \d+ — /, ""), totalStats(tier.factors), tierKey);
   }
-  bar.innerHTML = html;
+  document.getElementById("summaryBar").innerHTML = html;
 }
 
 // --- Chart ---
@@ -862,79 +1249,78 @@ function readThemeColors() {
   };
 }
 
-function buildDataset(profileId, colorIndex, theme) {
-  const profile = db.profiles[profileId];
-  if (!profile) return null;
-  const st = profile.state;
-  const color = COMPARE_COLORS[colorIndex % COMPARE_COLORS.length];
+// The single source for chart data: theme changes, renames, and compare
+// selection all rebuild from here, so the chart and its tooltips can't disagree.
+function buildDatasets(theme) {
+  const single = !isComparing();
   const tierColors = FACTORS.map(f => TIERS[f.tier].color);
-  const isSingle = !compareMode || compareSelected.size === 0;
+  return chartProfiles().filter(id => db.profiles[id]).map(id => {
+    const color = profileColor(id);
+    return {
+      profileId: id,
+      label: db.profiles[id].name,
+      data: FACTORS.map(f => percent(factorStats(f.num, id).coverage)),
+      backgroundColor: single ? theme.fill : color + "22",
+      borderColor: single ? theme.stroke : color,
+      borderWidth: 1.5,
+      pointBackgroundColor: single ? tierColors : color,
+      pointBorderColor: single ? tierColors : color,
+      pointRadius: single ? 3.5 : 3,
+      pointHoverRadius: 6
+    };
+  });
+}
 
-  return {
-    label: profile.name,
-    data: FACTORS.map(f => maturityScore(f.num, st)),
-    backgroundColor: isSingle ? theme.fill : color + "22",
-    borderColor: isSingle ? theme.stroke : color,
-    borderWidth: 1.5,
-    pointBackgroundColor: isSingle ? tierColors : color,
-    pointBorderColor: isSingle ? tierColors : color,
-    pointRadius: isSingle ? 3.5 : 3,
-    pointHoverRadius: 6
-  };
+function tooltipLabel(item) {
+  const f = FACTORS[item.dataIndex];
+  const s = factorStats(f.num, item.dataset.profileId);
+  const prefix = isComparing() ? item.dataset.label + ": " : "";
+  const value = s.coverage === null ? "Not applicable" : `${percent(s.coverage)}% declared — ${s.done}/${s.applicable} items`;
+  return prefix + value + (s.pending ? `, ${s.pending} to review` : "");
 }
 
 function initChart() {
   const canvas = document.getElementById("radarChart");
   if (!canvas) return;
   if (radarChart) { radarChart.destroy(); radarChart = null; }
+  if (typeof Chart === "undefined") {
+    document.getElementById("chartWrap").innerHTML =
+      `<p class="tfa-chart-fallback">The chart library could not be loaded. The checklist, totals, and the table below still work.</p>`;
+    return;
+  }
 
-  const ctx = canvas.getContext("2d");
-  const labels = FACTORS.map((f, i) => `${f.num}. ${SHORT_NAMES[i]}`);
   const theme = readThemeColors();
-
-  radarChart = new Chart(ctx, {
+  radarChart = new Chart(canvas.getContext("2d"), {
     type: "radar",
     data: {
-      labels,
-      datasets: [buildDataset(db.activeProfile, 0, theme)]
+      labels: FACTORS.map((f, i) => `${f.num}. ${SHORT_NAMES[i]}`),
+      datasets: buildDatasets(theme)
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
         legend: {
-          display: false,
+          display: isComparing(),
           labels: { color: theme.text, font: { size: 11 } }
         },
         tooltip: {
           callbacks: {
             title: (items) => FACTORS[items[0].dataIndex].num + ". " + FACTORS[items[0].dataIndex].name,
-            label: (item) => {
-              const f = FACTORS[item.dataIndex];
-              const profileId = compareMode && compareSelected.size > 0
-                ? [...compareSelected][item.datasetIndex]
-                : db.activeProfile;
-              const st = db.profiles[profileId] ? db.profiles[profileId].state : activeState();
-              const c = countChecked(f.num, st);
-              const a = countApplicable(f.num, st);
-              const ms = maturityScore(f.num, st);
-              const mi = MATURITY_LEVELS[ms];
-              const prefix = compareMode && compareSelected.size > 0 ? item.dataset.label + ": " : "";
-              return `${prefix}Level ${ms} (${mi.label}) — ${c}/${a} items`;
-            }
+            label: tooltipLabel
           }
         }
       },
       scales: {
         r: {
           min: 0,
-          max: 5,
+          max: 100,
           ticks: {
-            stepSize: 1,
+            stepSize: 20,
             color: theme.muted,
             backdropColor: "transparent",
             font: { size: 10 },
-            callback: (v) => ["None","Initial","Developing","Defined","Managed","Optimized"][v] || ""
+            callback: (v) => `${v}%`
           },
           pointLabels: {
             color: (ctx) => TIERS[FACTORS[ctx.index].tier].color,
@@ -950,39 +1336,45 @@ function initChart() {
 }
 
 function updateChart() {
+  renderChartTable();
   if (!radarChart) return;
   const theme = readThemeColors();
-
-  if (compareMode && compareSelected.size > 0) {
-    const ids = [...compareSelected];
-    radarChart.data.datasets = ids.map((id, i) => buildDataset(id, i, theme)).filter(Boolean);
-    radarChart.options.plugins.legend.display = true;
-    radarChart.options.plugins.legend.labels.color = theme.text;
-  } else {
-    radarChart.data.datasets = [buildDataset(db.activeProfile, 0, theme)];
-    radarChart.options.plugins.legend.display = false;
-  }
+  radarChart.data.datasets = buildDatasets(theme);
+  radarChart.options.plugins.legend.display = isComparing();
+  radarChart.options.plugins.legend.labels.color = theme.text;
   radarChart.options.scales.r.ticks.color = theme.muted;
   radarChart.options.scales.r.grid.color = theme.divider;
   radarChart.options.scales.r.angleLines.color = theme.divider;
   radarChart.update("none");
 }
 
+// The same data as the chart, readable without it.
+function renderChartTable() {
+  const el = document.getElementById("chartTable");
+  if (!el) return;
+  const ids = chartProfiles().filter(id => db.profiles[id]);
+  const head = ids.map(id => `<th scope="col">${escapeHtml(db.profiles[id].name)}</th>`).join("");
+  const rows = FACTORS.map(f => {
+    const cells = ids.map(id => {
+      const s = factorStats(f.num, id);
+      return `<td>${s.coverage === null ? "N/A" : `${percent(s.coverage)}% (${s.done}/${s.applicable})`}</td>`;
+    }).join("");
+    return `<tr><th scope="row">${f.num}. ${escapeHtml(f.name)}</th>${cells}</tr>`;
+  }).join("");
+  el.innerHTML = `<table class="tfa-table"><thead><tr><th scope="col">Factor</th>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
 function update() {
   updateChart();
   renderSummary();
+  renderReviewBar();
 
   for (const factor of FACTORS) {
-    const checked = countChecked(factor.num);
-    const applicable = countApplicable(factor.num);
-    const mi = maturityInfo(factor.num);
-    const ms = maturityScore(factor.num);
+    const stats = factorStats(factor.num);
     const scoreEl = document.getElementById(`score-${factor.num}`);
     const badgeEl = document.getElementById(`badge-${factor.num}`);
-    if (scoreEl) scoreEl.textContent = `${checked}/${applicable}`;
-    if (badgeEl) {
-      badgeEl.innerHTML = `<span class="tfa-badge-dot" style="background:${mi.bg}"></span>L${ms} · ${mi.label}`;
-    }
+    if (scoreEl) scoreEl.textContent = scoreText(stats);
+    if (badgeEl) badgeEl.innerHTML = badgeHtml(stats);
   }
 }
 
@@ -1007,6 +1399,7 @@ if (window.matchMedia) {
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => initChart());
 }
 
+saveDB();
 fullRender();
 initChart();
 </script>
