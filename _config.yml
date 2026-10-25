@@ -309,5 +309,6 @@ exclude:
   - "*.gemspec"
   - README.md
   - MAPPING.md
+  - CONTRIBUTING.md
   - docs/
   - tests/
